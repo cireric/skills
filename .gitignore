@@ -1,0 +1,56 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+*.egg
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# TypeScript / JavaScript
+node_modules/
+dist/
+*.tsbuildinfo
+.next/
+nuxt/
+.out/
+
+# Bash
+*.log
+*.pid
+*.lock
+
+# Env
+.env
+.env.*
+!.env.example
+
+# OpenCode
+.opencode/
+
+# tech-research workfiles (generated, cleaned by research.py clean)
+scope.json
+collected.json
+analysis.json
+docs/research/
+
+.omo/run-continuation/

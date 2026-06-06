@@ -38,6 +38,7 @@ Question in this order. Advance only when the user demonstrates solid understand
 6. **Vague answers** → "能更具体地说说吗？"
 7. **Shallow answers** → "能再深入一层吗？"
 8. **Avoided answers** → rephrase the question
+9. **Detect pseudo-understanding** — when the answer is right but the reasoning is wrong or absent, do NOT accept it. Probe: "你是怎么推导出这个结论的？" If their walkthrough reveals flawed or missing logic, treat it as a gap — ask a follow-up that targets the missing reasoning, not the conclusion.
 
 ## Ending
 
