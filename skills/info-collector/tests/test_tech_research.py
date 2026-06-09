@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for tech-research skill — data structures, validation, report generation."""
+"""Tests for info-collector skill — data structures, validation, report generation."""
 
 import argparse
 import json
@@ -353,7 +353,7 @@ class TestLoadConfig:
 
     def test_no_file_returns_none(self, tmp_path):
         # Create a fake skill dir with no config
-        fake_skill = tmp_path / "skills" / "tech-research"
+        fake_skill = tmp_path / "skills" / "info-collector"
         fake_skill.mkdir(parents=True)
         result = load_config(fake_skill)
         assert result is None
@@ -416,7 +416,7 @@ class TestFindProjectRoot:
     def test_finds_git(self, tmp_path):
         root = tmp_path / "project"
         (root / ".git").mkdir(parents=True)
-        skill_dir = root / ".opencode" / "skills" / "tech-research"
+        skill_dir = root / ".opencode" / "skills" / "info-collector"
         skill_dir.mkdir(parents=True)
         assert _find_project_root(skill_dir) == root
 
@@ -424,7 +424,7 @@ class TestFindProjectRoot:
         root = tmp_path / "project"
         root.mkdir(parents=True)
         (root / "AGENTS.md").write_text("# Agents", encoding="utf-8")
-        skill_dir = root / ".opencode" / "skills" / "tech-research"
+        skill_dir = root / ".opencode" / "skills" / "info-collector"
         skill_dir.mkdir(parents=True)
         assert _find_project_root(skill_dir) == root
 

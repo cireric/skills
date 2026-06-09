@@ -22,7 +22,7 @@ class TestFullWorkflowPipeline:
     def test_scope_to_report_full_pipeline(self, tmp_path, monkeypatch):
         """Complete pipeline: scope.json → research → report."""
         # Set up isolated skill directory
-        skill_dir = tmp_path / "tech-research"
+        skill_dir = tmp_path / "info-collector"
         skill_dir.mkdir()
         monkeypatch.setattr("research._SKILL_DIR", skill_dir)
 
@@ -115,7 +115,7 @@ class TestFullWorkflowPipeline:
 
     def test_workflow_with_filter_and_generate(self, tmp_path, monkeypatch):
         """Test filter → generate workflow with duplicate URLs."""
-        skill_dir = tmp_path / "tech-research"
+        skill_dir = tmp_path / "info-collector"
         skill_dir.mkdir()
         monkeypatch.setattr("research._SKILL_DIR", skill_dir)
 
@@ -149,7 +149,7 @@ class TestFullWorkflowPipeline:
 
     def test_workflow_config_lifecycle(self, tmp_path, monkeypatch):
         """Test init-config → show-config workflow."""
-        skill_dir = tmp_path / "tech-research"
+        skill_dir = tmp_path / "info-collector"
         skill_dir.mkdir()
         monkeypatch.setattr("research._SKILL_DIR", skill_dir)
 
@@ -180,7 +180,7 @@ class TestFullWorkflowPipeline:
 
     def test_workflow_clean_removes_workfiles(self, tmp_path, monkeypatch):
         """Test clean command removes workfiles."""
-        skill_dir = tmp_path / "tech-research"
+        skill_dir = tmp_path / "info-collector"
         skill_dir.mkdir()
         monkeypatch.setattr("research._SKILL_DIR", skill_dir)
 
@@ -208,7 +208,7 @@ class TestFullWorkflowPipeline:
 
     def test_subprocess_full_cli_workflow(self, tmp_path):
         """Test full workflow using subprocess CLI calls."""
-        skill_dir = tmp_path / "tech-research"
+        skill_dir = tmp_path / "info-collector"
         skill_dir.mkdir()
 
         # Copy research.py and scripts to temp location
@@ -272,7 +272,7 @@ class TestFullWorkflowPipeline:
 
     def test_workflow_with_missing_config_uses_defaults(self, tmp_path, monkeypatch):
         """Test that missing config falls back to defaults."""
-        skill_dir = tmp_path / "tech-research"
+        skill_dir = tmp_path / "info-collector"
         skill_dir.mkdir()
         monkeypatch.setattr("research._SKILL_DIR", skill_dir)
 
@@ -311,7 +311,7 @@ class TestWorkflowErrorHandling:
 
     def test_invalid_scope_stops_pipeline(self, tmp_path, monkeypatch):
         """Invalid scope should fail validation."""
-        skill_dir = tmp_path / "tech-research"
+        skill_dir = tmp_path / "info-collector"
         skill_dir.mkdir()
         monkeypatch.setattr("research._SKILL_DIR", skill_dir)
 
@@ -328,7 +328,7 @@ class TestWorkflowErrorHandling:
 
     def test_invalid_analysis_stops_generation(self, tmp_path, monkeypatch):
         """Invalid analysis should fail validation."""
-        skill_dir = tmp_path / "tech-research"
+        skill_dir = tmp_path / "info-collector"
         skill_dir.mkdir()
         monkeypatch.setattr("research._SKILL_DIR", skill_dir)
 
@@ -351,7 +351,7 @@ class TestWorkflowErrorHandling:
 
     def test_filter_with_no_sources(self, tmp_path, monkeypatch):
         """Filter should handle empty collected.json gracefully."""
-        skill_dir = tmp_path / "tech-research"
+        skill_dir = tmp_path / "info-collector"
         skill_dir.mkdir()
         monkeypatch.setattr("research._SKILL_DIR", skill_dir)
 

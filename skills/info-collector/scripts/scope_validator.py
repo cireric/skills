@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 _VALID_GOAL_TYPES: set[str] = {
     "panoramic_understanding",
     "tech_selection",

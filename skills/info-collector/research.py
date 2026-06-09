@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tech-research CLI: generate Markdown reports from analysis JSON."""
+"""Info-collector CLI: generate Markdown reports from analysis JSON."""
 
 from __future__ import annotations
 
@@ -372,7 +372,7 @@ def cmd_show_config(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Tech-research: generate Markdown reports from analysis JSON."
+        description="Info-collector: generate Markdown reports from analysis JSON."
     )
     subparsers = parser.add_subparsers(dest="command")
     subparsers.required = True

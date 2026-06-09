@@ -1,13 +1,14 @@
 ---
-name: tech-research
+name: info-collector
 description: >
-  Conduct structured technical research — search, analyze, and generate
-  Markdown reports. Use when user asks to research a technology topic,
-  compare solutions, or evaluate feasibility. Keywords: 技术调研, 调研,
-  research report, technical comparison, technology evaluation.
+  Collect, organize, and summarize structured information from the web and
+  local sources. Use when user asks to gather information on a topic, compile
+  facts, aggregate references, or build a knowledge base. Triggers: 收集一下,
+  帮我查查, 整理资料, 搜集, 汇总, 调研一下, find information, gather data,
+  look up, compile, collect facts, research topic, 帮我整理, 查资料.
 ---
 
-# Tech-Research Workflow
+# Info-Collector Workflow
 
 Three-phase pipeline with iterative search, quality filtering, and review loops. Detailed references in [SCOPE.md](./SCOPE.md) and [RESEARCH.md](./RESEARCH.md).
 
