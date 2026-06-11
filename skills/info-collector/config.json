@@ -1,4 +1,63 @@
 {
-  "output_dir": "docs/research",
-  "lang": "zh"
+  "sources": {
+    "1": {
+      "name": "Academic / Standards",
+      "sources": [
+        {"name": "arXiv", "domain": "arxiv.org", "site_query": "arxiv.org"},
+        {"name": "Google Scholar", "domain": "scholar.google.com", "site_query": "scholar.google.com"},
+        {"name": "PubMed", "domain": "pubmed.ncbi.nlm.nih.gov", "site_query": "pubmed.ncbi.nlm.nih.gov"},
+        {"name": "CNKI", "domain": "cnki.net", "site_query": "cnki.net"},
+        {"name": "W3C", "domain": "w3.org", "site_query": "w3.org"},
+        {"name": "IETF", "domain": "ietf.org", "site_query": "ietf.org"},
+        {"name": "ISO", "domain": "iso.org", "site_query": "iso.org"}
+      ]
+    },
+    "2": {
+      "name": "Documentation / Open Source",
+      "sources": [
+        {"name": "GitHub", "domain": "github.com", "site_query": "github.com"},
+        {"name": "MDN Web Docs", "domain": "developer.mozilla.org", "site_query": "developer.mozilla.org"},
+        {"name": "Wikipedia", "domain": "en.wikipedia.org", "site_query": "en.wikipedia.org"}
+      ]
+    },
+    "3": {
+      "name": "Industry / Expert Blogs",
+      "sources": [
+        {"name": "Medium", "domain": "medium.com", "site_query": "medium.com"},
+        {"name": "IEEE Spectrum", "domain": "spectrum.ieee.org", "site_query": "spectrum.ieee.org"},
+        {"name": "MIT Technology Review", "domain": "technologyreview.com", "site_query": "technologyreview.com"}
+      ]
+    },
+    "4": {
+      "name": "Community / UGC",
+      "sources": [
+        {"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com"},
+        {"name": "Stack Overflow", "domain": "stackoverflow.com", "site_query": "stackoverflow.com"},
+        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com"}
+      ]
+    }
+  },
+  "routes": {
+    "exploratory": {"entry_tier": 4, "path": [4, 2]},
+    "panoramic_understanding": {"entry_tier": 4, "path": [4, 2, 1]},
+    "tech_selection": {"entry_tier": 2, "path": [2, 1]},
+    "feasibility_assessment": {"entry_tier": 2, "path": [2, 1]},
+    "competitive_comparison": {"entry_tier": 4, "path": [4, 3]},
+    "academic_research": {"entry_tier": 1, "path": [1]},
+    "fact_check": {"entry_tier": 0, "path": [1, 2]},
+    "background_check": {"entry_tier": 3, "path": [3, 4, 1]},
+    "market_analysis": {"entry_tier": 3, "path": [3, 1]},
+    "other": {"entry_tier": 3, "path": [3, 2, 1]}
+  },
+  "output_dir": "reports/",
+  "goal_type_defaults": {
+    "exploratory": {
+      "depth": "quick",
+      "min_sources": 1
+    },
+    "fact_check": {
+      "depth": "quick",
+      "min_sources": 1
+    }
+  }
 }

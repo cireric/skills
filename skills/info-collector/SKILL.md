@@ -1,94 +1,210 @@
 ---
 name: info-collector
 description: >
-  Collect, organize, and summarize structured information from the web and
-  local sources. Use when user asks to gather information on a topic, compile
-  facts, aggregate references, or build a knowledge base. Triggers: 收集一下,
-  帮我查查, 整理资料, 搜集, 汇总, 调研一下, find information, gather data,
-  look up, compile, collect facts, research topic, 帮我整理, 查资料.
+  Collect, organize, and summarize structured information from web sources.
+  Triggers on 帮我查查, 搜集资料, 整理, 调研, research, collect info, find information,
+  gather data.
 ---
 
-# Info-Collector Workflow
+# Info-Collector Skill
 
-Three-phase pipeline with iterative search, quality filtering, and review loops. Detailed references in [SCOPE.md](./SCOPE.md) and [RESEARCH.md](./RESEARCH.md).
+Collect, organize, and summarize structured information from web sources.
 
----
+## Usage
 
-## Quick Start
+- **Trigger phrases**: 帮我查查, 搜集资料, 整理, 调研, research, collect info, find information, gather data
+- **Slash command**: `/info-collector` (also used for cross-session iteration with a previous report path)
+- **Output**: Markdown report in `<project_root>/<config.json:output_dir>` with YAML front matter
 
-User: "调研一下某个技术主题"
-→ Ask 3 quick questions (goal/audience/time). After answers + confirmation → proceed.
+## Path Convention
 
----
+All relative paths in this skill are relative to the **project root** (where `scripts/cli.py` is run from):
+
+| Reference | Actual location |
+|-----------|----------------|
+| `<project_root>/.workdir/` | `<cwd>/.workdir/` — e.g. `D:\Project\.workdir\` |
+| `<project_root>/<config.json:output_dir>` | `<cwd>/<output_dir>` — configured in `.opencode/skills/info-collector/config.json` |
 
 ## Phase 1: Scope
 
-1. **Config** — check `config.json`. First-time setup asks output_dir + lang.
-2. **Pre-fill** — list existing reports (silent, format awareness).
-3. **Scope interview** — ask 3 questions together (goal, audience, time budget) + branch questions by goal type. See [SCOPE.md](./SCOPE.md).
-   - New goal type: `exploratory` — for "just want to understand" motivations.
-4. **User confirmation** — show scope summary, ask user to confirm or modify.
-5. Save `scope.json`. Validate with `research.py validate-scope scope.json`.
+1. **Interview** the user to determine:
+   - Read `config.json` from `.opencode/skills/info-collector/config.json` and verify `output_dir` is set; if missing, warn the user and ask for an output directory path
+   - `topic` — what to research
+   - `goal_type` — which of the 9 types (or "其他" for custom)
+   - `depth` — quick | standard | deep
+   - `audience` — CTO | engineer | researcher | general (influences framing and language)
+   - `scope_description` — natural language summary
+   - `search_directions` — 1+ specific directions to search
 
-**Scope revision**: during Phase 2/3, if new constraints emerge, update `scope.json` and append to `revisions` array. Notify user of changes.
+2. Write `scope.json` to `<project_root>/.workdir/scope.json`.
 
----
+3. **Run gate**: `python scripts/cli.py proceed --from scope --to search`
+   - If exit code != 0 → show errors, fix scope.json, retry.
 
-## Phase 2: Research
+## Phase 2: Search-Collect-Filter
 
-1. **Search (iterative)** — `exa_web_search_exa` (≥3 queries round 1, then by coverage gaps). Log each round in `scope.json > search_log`. See [RESEARCH.md](./RESEARCH.md).
-2. **Collect** — `exa_web_fetch_exa` → save to `collected.json`. Content stored inline. Or use `research.py collect`.
-3. **Filter** — run `research.py filter` for URL dedup. Then agent-side: quality rating (high/medium/low/excluded), content dedup, timeliness. Update source fields: `quality`, `duplicate_of`, `filter_note`.
-4. **Coverage check** — validate against `scope.json` (only non-excluded, non-duplicate sources). Run supplementary search for gaps.
-5. **Analyze (3-step)**:
-   - Step 1: Extract claims → `analysis.json > claims` (statement, sources, type, confidence)
-   - Step 2: Cross-validate → multi-source = high, single-source = medium, contradictions → `contradictions`
-   - Step 3: Synthesize → organize into sections, each section gets min-claim confidence
+1. **Get source recommendations**: `python scripts/cli.py source <goal_type>`
 
-Full detail in [RESEARCH.md](./RESEARCH.md).
+2. **Search**: Use `exa_web_search_exa` + `exa_web_fetch_exa` (primary),
+   `playwright_browser_*` (supplementary). Use `site:` queries from recommended sources.
+   Aim for ~3 search rounds (soft limit).
 
----
+3. **Collect**: Add each result to `<project_root>/.workdir/collected.json`:
+   ```json
+   {"url": "...", "title": "...", "snippet": "...", "source_tier": 2, "fetched_content": "..."}
+   ```
+
+4. **Run gate**: `python scripts/cli.py proceed --from search --to analysis`
+   - Checks topic_coverage (BLOCKER) and min_sources (WARN).
+   - If BLOCKER → search more before proceeding.
 
 ## Phase 3: Report
 
-1. **Draft** — run with `--draft`:
+### 3a: Build analysis.json
 
-   ```bash
-   python ~/.agents/skills/tech-research/research.py generate analysis.json --draft
-   ```
+Synthesize findings from `<project_root>/.workdir/collected.json` into `<project_root>/.workdir/analysis.json`:
 
-   Then subagent review (input: report + collected.json + scope.json). Tags: [LOGIC]/[DATA] → block, [MISS]/[CLARITY] → auto-fix with collected.json. Max 10 rounds.
+```json
+{
+  "topic": "...",
+  "goal_type": "tech_selection",
+  "audience": "engineer",
+  "sections": [
+    {
+      "id": "comparison",
+      "title": "Comparison",
+      "content": "Synthesized analysis...",
+      "claims": [
+        {
+          "text": "Claim statement",
+          "source_urls": ["https://..."],
+          "evidence_type": "official_data | independent_benchmark | third_party_estimate | qualitative_trend | expert_opinion",
+          "confidence": "high | medium | low",
+          "precision": "exact | range | qualitative",
+          "source_metadata": {
+            "test_conditions": "Brief description of test methodology and hardware",
+            "test_date": "2026-Q1",
+            "source_type": "vendor_benchmark | independent_test | production_case | survey"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
 
-2. **User Review** — show draft summary + key conclusions to user. Max 2 rounds. Feedback paths:
-   - Small fix → edit analysis.json → regenerate
-   - Need more sources → back to Phase 2
-   - Scope change → back to Phase 1 (record revision)
+Every claim MUST have at least one source_url linking to a URL in collected.json.
 
-3. **Finalize** — regenerate without `--draft`. Evidence traceability check (each claim → source_url, AI-inferred labeled, gaps acknowledged). If fails → supplementary search (max 1 round).
+**Precision rules for claims:**
+- `evidence_type: "third_party_estimate"` or `"qualitative_trend"` → MUST NOT use `precision: "exact"` (gate BLOCKER)
+- `precision: "exact"` → MUST have `evidence_type` of `"official_data"` or `"independent_benchmark"`
+- Benchmark numbers from different test conditions → use `precision: "range"` and annotate in `source_metadata.test_conditions`
 
-4. **Cleanup** — ask user: "保留中间文件？". If no → `research.py clean`. If yes → files remain for future reference.
+**Methodology section:** For quantitative goal_types (`tech_selection`, `competitive_comparison`, `feasibility_assessment`, `market_analysis`, `academic_research`), include a `methodology` section in the draft report (not required in analysis.json, but required in draft/report.md). This section must describe:
+- Data sources and their test conditions
+- Limitations of cross-source comparisons
+- Date range of data collection
 
----
+### 3b: Generate draft
 
-## Cardinal Rules
+Write a draft report to `<project_root>/.workdir/draft/report.md`.
 
-- **Auto-fix must cite `collected.json`** as evidence — never hallucinate
-- **1% uncertainty = mark in report** — if unsure, label "needs-confirmation"
-- **Never modify `config.json`** during research — it's pre-configured
-- **Content stored inline** in `collected.json` — no external `content/` directory
-- **Coverage checks use filtered sources only** — exclude quality=excluded and duplicate_of≠null
+**Draft 必须保证来源可追溯：**
 
----
+- **每项量化声明（benchmark 数字、百分比等）必须附带来源标识**：可以是内联 URL、引用编号 `[1]` 映射到附录、或直接以链接形式给出
+- **Benchmark 数据必须附测试环境摘要**：至少包含硬件、OS、运行时版本、测试日期
+- 附录或每个来源名必须在报告中有对应的完整 URL 可点击
 
-## CLI Reference
+**Goal-type 差异化要求：**
 
-| Command                                   | Purpose                                          |
-| ----------------------------------------- | ------------------------------------------------ |
-| `generate <analysis.json>`                | Generate Markdown report                         |
-| `generate <analysis.json> --draft`        | Generate draft report (status: draft in front matter) |
-| `validate-scope <scope.json>`             | Validate scope.json schema                       |
-| `collect <sources.json> [--topic T]`      | Add sources to collected.json                    |
-| `filter`                                  | URL-deduplicate sources in collected.json        |
-| `init-config [--output-dir D] [--lang L]` | Initialize config.json                           |
-| `show-config`                             | Display current config                           |
-| `clean`                                   | Remove workfiles (scope/collected/analysis.json) |
+| goal_type | 最低追溯要求 |
+|-----------|-------------|
+| `tech_selection`, `competitive_comparison`, `feasibility_assessment` | 每项 benchmark 数据标注来源 URL + 测试环境（CPU/OS/版本/日期） |
+| `academic_research` | 正式引用格式（如 `[1]` 附录映射） |
+| `exploratory`, `market_analysis`, `background_check`, `fact_check`, `other` | 每个声明至少附带来源 URL 或引用编号 |
+| `panoramic_understanding` | 每段主要结论至少一个来源链接 |
+
+### Gate: proceed --from draft --to review
+
+Run: `python scripts/cli.py proceed --from draft --to review`
+- Validates analysis.json schema and draft/report.md existence.
+- **YOU MUST ASK THE USER**: "启动独立审查？"
+
+### 3c: Review
+
+If user says **yes**:
+1. Read `references/REVIEW_PROMPT.md` for the review prompt
+2. Launch a subagent with that prompt
+3. Subagent reads scope.json, collected.json, analysis.json
+4. Subagent writes `<project_root>/.workdir/review_report.md`
+5. Fix any issues found
+
+If user says **no** → quality will be set to `unreviewed` at finalization.
+
+### 3d: User confirmation
+
+Show the review report (or degradation notice) to user and ask:
+
+- User says **"可以了"** → Run: `python scripts/cli.py proceed --from review --to final`
+
+  This runs gateway.py with 5 hard checks inside:
+  - artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics
+  - BLOCKER fails = stop and fix
+  - WARN = noted but does not block
+
+  Then generate final report (saves to `<project_root>/<config.json:output_dir>/` automatically):
+  ```
+  python scripts/cli.py report --quality <passed|degraded|unreviewed> --search-rounds N --source-count N --version V
+  ```
+
+  **最终报告必须包含：**
+  - 来源 URL：报告中出现的每个来源名必须可追溯到完整 URL（内联链接或附录映射表）
+  - 测试环境：包含至少一行说明各 benchmark 的硬件、OS、运行时版本和测试日期
+  - 方法论文档：如适用 goal_type 的定量分析，方法论章节不可省略
+
+  验证命令（手动检查）：
+  ```
+  grep -c "http" <project_root>/<config.json:output_dir>/<topic>_v<V>.md  # 应该有足够多的 URL
+  ```
+
+- User says **"XX 方面不够，再查查"** → Return to Phase 2:
+  - Incremental search (do NOT reset scope.json)
+  - Re-run Phase 3 (3a -> 3b -> gate -> 3c -> 3d)
+  - Version auto-increments
+
+## Phase 4: Cleanup
+
+1. Run: `python scripts/cli.py proceed --from final --to cleanup`
+2. Ask user: "清除中间文件？"
+   - Yes -> `python scripts/cli.py clean`
+   - No -> `<project_root>/.workdir/` remains
+
+## Cross-Session Iteration
+
+**Trigger precondition**: User must:
+1. Invoke `/info-collector` slash command
+2. Provide previous report path (e.g. `<project_root>/<config.json:output_dir>/xxx_v1.md`)
+
+Without both -> start fresh Phase 1.
+
+When triggered:
+1. Read old report front matter -> extract topic, goal_type, scope
+2. "上次做了 [topic] 的 [goal_type] 调研，这次重点更新什么？"
+3. Quick re-scope (lightweight Phase 1)
+4. Fresh Phase 2-3 (new collected.json, deduplicate against old report)
+5. New report includes `parent` field pointing to old report path
+
+## Quality Values
+
+| Value  | Meaning |
+|--------|---------|
+| passed | Subagent review ran + gateway heuristics clean |
+| degraded | Gateway quality_heuristics fired WARN(s) |
+| unreviewed | User skipped subagent + gateway clean |
+
+## Important Rules
+
+1. Always run `proceed` commands. Never skip a gate.
+2. You MUST ask the user about review. Do not assume.
+3. Do not reuse old scope.json for a different topic.
+4. For "补充" iteration: preserve scope.json, increment version, re-ask review.
