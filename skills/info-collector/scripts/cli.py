@@ -9,17 +9,21 @@ from pathlib import Path
 from typing import cast
 
 WORKDIR = Path(".workdir")
+_CONFIG_PATH = Path(__file__).parent.parent / "config.json"
+
+
+def _load_config() -> dict | None:
+    """Load config.json from the skill directory. Returns None if missing."""
+    if _CONFIG_PATH.exists():
+        with open(_CONFIG_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    return None
 
 
 def cmd_proceed(args: argparse.Namespace) -> None:
     from .proceed import proceeds
 
-    config_path = Path(__file__).parent.parent / "config.json"
-    config = None
-    if config_path.exists():
-        with open(config_path, encoding="utf-8") as f:
-            config = json.load(f)
-
+    config = _load_config()
     ok, errors = proceeds(WORKDIR, args.from_phase, args.to_phase, config)
     for err in errors:
         print(f"  {err}", file=sys.stderr)
@@ -45,11 +49,7 @@ def cmd_gateway(args: argparse.Namespace) -> None:
 def cmd_report(args: argparse.Namespace) -> None:
     from .reporter import generate_report
 
-    config_path = Path(__file__).parent.parent / "config.json"
-    config = None
-    if config_path.exists():
-        with open(config_path, encoding="utf-8") as f:
-            config = json.load(f)
+    config = _load_config()
 
     analysis_path = WORKDIR / "analysis.json"
     scope_path = WORKDIR / "scope.json"
@@ -66,7 +66,7 @@ def cmd_report(args: argparse.Namespace) -> None:
     scope_data = read_json(scope_path) if scope_path.exists() else {}
     report_language = scope_data.get("report_language")
     if not report_language:
-        report_language = (config or {}).get("default_report_language", "en")
+        report_language = (config or {}).get("default_report_language", "zh")
     report = generate_report(
         analysis_path,
         scope_path,
@@ -77,7 +77,7 @@ def cmd_report(args: argparse.Namespace) -> None:
         parent=args.parent,
         report_language=report_language,
     )
-    default_output = (config or {}).get("output_dir", "output/research")
+    default_output = (config or {}).get("output_dir", "./reports/")
     output_path = Path(args.output) if args.output else Path(default_output)
     output_path.mkdir(parents=True, exist_ok=True)
     topic = _read_topic(scope_path)
@@ -90,12 +90,7 @@ def cmd_report(args: argparse.Namespace) -> None:
 def cmd_source(args: argparse.Namespace) -> None:
     from .lib.source_router import recommend_sources
 
-    config_path = Path(__file__).parent.parent / "config.json"
-    config = None
-    if config_path.exists():
-        with open(config_path, encoding="utf-8") as f:
-            config = json.load(f)
-
+    config = _load_config()
     result = recommend_sources(args.goal_type, config)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

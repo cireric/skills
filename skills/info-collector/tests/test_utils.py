@@ -11,6 +11,15 @@ class TestNormalizeUrl:
     def test_preserves_query_string(self):
         assert normalize_url("https://example.com/p?a=1") == "https://example.com/p?a=1"
 
+    def test_strips_www_prefix(self):
+        assert normalize_url("https://www.example.com/path") == "https://example.com/path"
+
+    def test_sorts_query_params(self):
+        assert normalize_url("https://example.com/path?b=2&a=1") == "https://example.com/path?a=1&b=2"
+
+    def test_www_and_query_combined(self):
+        assert normalize_url("https://WWW.Example.COM/path?z=1&a=2") == "https://example.com/path?a=2&z=1"
+
     def test_returns_root_for_empty_path(self):
         assert normalize_url("https://EXAMPLE.COM") == "https://example.com/"
 

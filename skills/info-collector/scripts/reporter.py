@@ -20,6 +20,8 @@ _LABELS: dict[tuple[str, str], str] = {
     ("date", "zh"): "日期",
     ("source_type", "en"): "Source Type",
     ("source_type", "zh"): "来源类型",
+    ("methodology", "en"): "Methodology",
+    ("methodology", "zh"): "方法论",
 }
 
 
@@ -123,7 +125,7 @@ def _build_claim_ref(claim: dict, reference_map: dict[str, int]) -> str:
     if not urls:
         return ""
     first_url = urls[0]
-    ref_num = reference_map.get(first_url)
+    ref_num = reference_map.get(normalize_url(first_url))
     if ref_num is not None:
         return f"[{ref_num}]"
     return ""

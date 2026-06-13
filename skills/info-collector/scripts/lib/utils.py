@@ -3,15 +3,20 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 
 def normalize_url(url: str) -> str:
     parsed = urlparse(url.strip())
     scheme = parsed.scheme.lower()
-    netloc = parsed.netloc.lower()
+    netloc = parsed.netloc.lower().removeprefix("www.")
     path = parsed.path.lower().rstrip("/") or "/"
-    return urlunparse((scheme, netloc, path, parsed.params, parsed.query, ""))
+    if parsed.query:
+        params = parse_qs(parsed.query, keep_blank_values=True)
+        sorted_query = urlencode(sorted(params.items()), doseq=True)
+    else:
+        sorted_query = ""
+    return urlunparse((scheme, netloc, path, parsed.params, sorted_query, ""))
 
 
 def read_json(path: Path) -> Any:

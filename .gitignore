@@ -52,5 +52,7 @@ scope.json
 collected.json
 analysis.json
 docs/research/
+reports/
+.workdir/
 
 .omo/run-continuation/

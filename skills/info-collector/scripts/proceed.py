@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import cast
 
 from .gateway import CheckResult
 from .gateway import run_all as run_gateway
+from .lib.source_router import get_default_min_sources
 from .lib.utils import ensure_dir, read_json
 
 
@@ -94,7 +96,6 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
         return [f"Cannot read collected.json: {e}"], []
     if not collected or len(collected) < 1:
         blockers.append("collected.json must have at least 1 entry")
-    from .lib.source_router import get_default_min_sources
 
     goal_type = _get_goal_type(workdir)
     min_src = get_default_min_sources(goal_type, config)
@@ -105,8 +106,9 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
     if needed:
         covered = set()
         for entry in collected:
+            combined_text = (entry.get("title", "") + " " + entry.get("snippet", "")).lower()
             for keyword in needed:
-                if keyword.lower() in (entry.get("title", "") + entry.get("snippet", "")).lower():
+                if re.search(r'\b' + re.escape(keyword.lower()) + r'\b', combined_text):
                     covered.add(keyword)
         missing = needed - covered
         if missing:

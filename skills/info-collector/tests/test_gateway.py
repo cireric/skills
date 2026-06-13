@@ -4,8 +4,11 @@ import json
 from pathlib import Path
 
 from scripts.gateway import (
+    CheckResult,
     check_analysis_schema,
     check_artifact_exists,
+    check_claim_metadata,
+    check_precision_inflation,
     check_quality_heuristics,
     check_section_coverage,
     check_url_traceability,
@@ -352,3 +355,176 @@ class TestRunAll:
         )
         results = run_all(tmp_path, "tech_selection")
         assert len(results) == 7  # noqa: PLR2004
+
+
+class TestCheckPrecisionInflation:
+    def test_blocker_exact_with_inappropriate_evidence(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "X",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "third_party_estimate",
+                        "precision": "exact",
+                    }],
+                }],
+            },
+        )
+        result = check_precision_inflation(tmp_path)
+        assert not result.passed
+        assert result.level == "BLOCKER"
+        assert "exact" in result.message
+
+    def test_warn_third_party_with_precise_number(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "Achieves 98% accuracy",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "third_party_estimate",
+                        "precision": "range",
+                    }],
+                }],
+            },
+        )
+        result = check_precision_inflation(tmp_path)
+        assert not result.passed
+        assert result.level == "WARN"
+
+    def test_blocker_and_warn_combined(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [
+                        {
+                            "text": "X",
+                            "source_urls": ["https://a.com"],
+                            "evidence_type": "third_party_estimate",
+                            "precision": "exact",
+                        },
+                        {
+                            "text": "Achieves 95%",
+                            "source_urls": ["https://b.com"],
+                            "evidence_type": "third_party_estimate",
+                            "precision": "range",
+                        },
+                    ],
+                }],
+            },
+        )
+        result = check_precision_inflation(tmp_path)
+        assert not result.passed
+        assert result.level == "BLOCKER"
+
+    def test_no_issues_pass(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "Reliable data",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "official_data",
+                        "precision": "exact",
+                    }],
+                }],
+            },
+        )
+        result = check_precision_inflation(tmp_path)
+        assert result.passed
+
+    def test_exact_with_expert_opinion_blocked(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "X",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "expert_opinion",
+                        "precision": "exact",
+                    }],
+                }],
+            },
+        )
+        result = check_precision_inflation(tmp_path)
+        assert not result.passed
+        assert result.level == "BLOCKER"
+
+
+class TestCheckClaimMetadata:
+    def test_quantitative_missing_metadata_warn(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "claims": [
+                        {"text": "A", "source_urls": ["https://a.com"]},
+                        {"text": "B", "source_urls": ["https://b.com"]},
+                        {"text": "C", "source_urls": ["https://c.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact"},
+                    ],
+                }],
+            },
+        )
+        result = check_claim_metadata(tmp_path, "tech_selection")
+        assert not result.passed
+        assert result.level == "WARN"
+
+    def test_quantitative_all_metadata_pass(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "claims": [{
+                        "text": "A",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "official_data",
+                        "confidence": "high",
+                        "precision": "exact",
+                    }],
+                }],
+            },
+        )
+        result = check_claim_metadata(tmp_path, "tech_selection")
+        assert result.passed
+
+    def test_non_quantitative_skipped(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {"sections": [{"claims": [{"text": "A", "source_urls": ["https://a.com"]}]}]},
+        )
+        result = check_claim_metadata(tmp_path, "exploratory")
+        assert result.passed
+        assert "Skipped" in result.message
+
+    def test_zero_claims_pass(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {"sections": []})
+        result = check_claim_metadata(tmp_path, "tech_selection")
+        assert result.passed
+
+
+class TestCheckResultDataclass:
+    def test_default_message_empty(self):
+        r = CheckResult(name="x", level="BLOCKER", passed=True)
+        assert r.message == ""
+
+    def test_custom_message(self):
+        r = CheckResult(name="x", level="WARN", passed=False, message="details")
+        assert r.message == "details"
+
+    def test_attribute_access(self):
+        r = CheckResult(name="test", level="BLOCKER", passed=False, message="err")
+        assert r.name == "test"
+        assert r.level == "BLOCKER"
+        assert not r.passed
+        assert r.message == "err"

@@ -201,7 +201,8 @@ def check_precision_inflation(workdir: Path) -> CheckResult:
         analysis = read_json(workdir / "analysis.json")
     except Exception:
         return CheckResult("precision_inflation", "BLOCKER", True, "Cannot read analysis.json")
-    issues = []
+    blockers = []
+    warnings = []
     for section in analysis.get("sections", []):
         sec_id = section.get("id", "?")
         for ci, claim in enumerate(section.get("claims", [])):
@@ -210,18 +211,20 @@ def check_precision_inflation(workdir: Path) -> CheckResult:
             prec = claim.get("precision")
             # BLOCKER: exact precision + inappropriate evidence type
             if prec == "exact" and ev in ("third_party_estimate", "qualitative_trend", "expert_opinion"):
-                issues.append(
+                blockers.append(
                     f"sections.{sec_id}.claims[{ci}]: precision='exact' with "
                     f"evidence_type='{ev}' — use precision='range' or 'qualitative'"
                 )
             # WARN: third_party_estimate with precise-looking numbers even without annotation
             if ev == "third_party_estimate" and _PRECISE_NUMBER_PATTERN.search(text):
-                issues.append(
+                warnings.append(
                     f"sections.{sec_id}.claims[{ci}]: evidence_type='third_party_estimate' "
                     f"but text contains precise number — use precision='range' or rephrase qualitatively"
                 )
-    if issues:
-        return CheckResult("precision_inflation", "BLOCKER", False, "; ".join(issues))
+    if blockers:
+        return CheckResult("precision_inflation", "BLOCKER", False, "; ".join(blockers + warnings))
+    if warnings:
+        return CheckResult("precision_inflation", "WARN", False, "; ".join(warnings))
     return CheckResult("precision_inflation", "BLOCKER", True)
 
 

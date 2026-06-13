@@ -180,7 +180,23 @@ class TestRenderTestConditions:
                 },
             },
         ]
-        ref_map = {"https://a.com": 1}
+        ref_map = {"https://a.com/": 1}
+        md = _render_test_conditions(claims, ref_map)
+        assert "[1]" in md
+
+    def test_reference_map_with_non_normalized_url(self):
+        claims = [
+            {
+                "text": "Claim A",
+                "source_urls": ["https://WWW.Example.COM/Path/"],
+                "source_metadata": {
+                    "test_conditions": "A100-80GB",
+                    "test_date": "2026-Q1",
+                    "source_type": "independent_test",
+                },
+            },
+        ]
+        ref_map = {"https://example.com/path": 1}
         md = _render_test_conditions(claims, ref_map)
         assert "[1]" in md
 

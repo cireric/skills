@@ -7,7 +7,7 @@
 ## Gate 1: `proceed --from scope --to search`
 
 - Validates scope.json schema
-- Required: topic, goal_type, depth, scope_description, search_directions
+- Required: topic, goal_type, depth, audience, scope_description, search_directions
 - BLOCKER on missing fields
 
 ## Gate 2: `proceed --from search --to analysis`
@@ -24,13 +24,14 @@
 
 ## Gate 4: `proceed --from review --to final`
 
-- Invokes gateway.py with 5 hard checks
+- Invokes gateway.py with 7 checks
 - Always runs, even if user skipped subagent review
-- 5 checks: artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics
+- 7 checks: artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, claim_metadata
 
 ## Gate 5: `proceed --from final --to cleanup`
 
 - No structural checks
+- **Note**: This gate skips phase detection — it passes regardless of the current detected phase. This allows cleanup to run at any point, but also means accidental invocation won't produce a phase-mismatch error.
 - Transitions to cleanup phase
 
 ## Quality Determination
