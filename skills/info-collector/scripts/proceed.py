@@ -3,14 +3,58 @@
 from __future__ import annotations
 
 import re
+import string
 import sys
 from pathlib import Path
 from typing import cast
 
+import jieba
+
+from .cli import _find_project_root
 from .gateway import CheckResult
 from .gateway import run_all as run_gateway
-from .lib.source_router import get_default_min_sources
-from .lib.utils import ensure_dir, read_json
+from .lib.source_router import get_default_min_sources, get_route, recommend_sources
+from .lib.utils import ensure_dir, read_json, write_json
+
+
+jieba.setLogLevel(jieba.logging.INFO)
+
+
+_ENGLISH_STOP_WORDS = frozenset({
+    "a", "the", "is", "are", "of", "in", "on", "to", "for", "with", "and",
+    "or", "but", "that", "this", "it", "from", "by", "at", "be", "was", "has",
+    "had", "can", "will", "may", "not", "no", "do", "did", "what", "how",
+    "which", "who", "when", "where", "why",
+})
+
+_CHINESE_STOP_WORDS = frozenset({
+    "的", "了", "在", "是", "和", "与", "或", "等", "中", "上", "下", "对",
+    "被", "从", "到", "为", "以", "及", "其", "之", "而", "把", "让", "给",
+    "向", "于", "就", "也", "都", "还", "要", "能", "会", "可", "应", "该",
+    "已", "曾", "将", "正", "着", "过", "来", "去", "出", "起", "回", "开",
+    "关", "比", "更", "最", "很", "多", "少", "大", "小", "长", "群",
+})
+
+_STOP_WORDS = _ENGLISH_STOP_WORDS | _CHINESE_STOP_WORDS
+
+_DEPTH_MIN_SOURCES_PER_DIRECTION = {"quick": 1, "standard": 3, "deep": 5}
+
+
+def _is_stop_word(token: str) -> bool:
+    """Return True if token should be filtered out."""
+    if len(token) <= 1:
+        return True
+    if all(c in string.punctuation for c in token):
+        return True
+    if token in _STOP_WORDS:
+        return True
+    return False
+
+
+def _tokenize_direction(direction: str) -> list[str]:
+    """Tokenize a search direction using jieba and filter stop words."""
+    tokens = jieba.lcut(direction.lower())
+    return [t for t in tokens if not _is_stop_word(t)]
 
 
 def detect_current_phase(workdir: Path) -> str:
@@ -101,21 +145,83 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
     min_src = get_default_min_sources(goal_type, config)
     if len(collected) < min_src:
         warnings.append(f"min_sources warning: {len(collected)} < {min_src} (configurable WARN)")
+
+    # Tier coverage check (ADR 0007): verify collected sources cover each tier in the route
+    route = get_route(goal_type, config)
+    route_path = route.get("path", [])
+    if route_path and collected:
+        covered_tiers = {entry.get("source_tier") for entry in collected if entry.get("source_tier")}
+        missing_tiers = [t for t in route_path if t not in covered_tiers]
+        if missing_tiers:
+            warnings.append(
+                f"tier_coverage WARN: route requires tiers {route_path}, "
+                f"but tiers {missing_tiers} have no sources in collected.json"
+            )
+
     scope = read_json(workdir / "scope.json")
     needed = set(scope.get("search_directions", []))
     if needed:
         covered = set()
+        direction_counts: dict[str, int] = {d: 0 for d in needed}
         for entry in collected:
             combined_text = (entry.get("title", "") + " " + entry.get("snippet", "")).lower()
-            for keyword in needed:
-                if re.search(r'\b' + re.escape(keyword.lower()) + r'\b', combined_text):
-                    covered.add(keyword)
+            for direction in needed:
+                tokens = _tokenize_direction(direction)
+                if tokens and all(token in combined_text for token in tokens):
+                    covered.add(direction)
+                    direction_counts[direction] += 1
+
+        # Per-direction min sources check (ADR 0010)
+        depth = scope.get("depth", "standard")
+        min_per_direction = _DEPTH_MIN_SOURCES_PER_DIRECTION.get(depth, 3)
+        for direction in needed:
+            count = direction_counts.get(direction, 0)
+            if count < min_per_direction:
+                warnings.append(
+                    f"per_direction_min_sources WARN: direction '{direction}' "
+                    f"has {count} sources, depth='{depth}' requires {min_per_direction}"
+                )
+
         missing = needed - covered
         if missing:
             blockers.append(
                 f"topic_coverage BLOCKER: search directions not covered: {', '.join(missing)}"
             )
     return blockers, warnings
+
+
+def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
+    """Generate search_plan.json based on route × search_directions (ADR 0011)."""
+    scope = read_json(workdir / "scope.json")
+    goal_type = scope.get("goal_type", "other")
+    directions = scope.get("search_directions", [])
+    depth = scope.get("depth", "standard")
+
+    route = get_route(goal_type, config)
+    route_path = route.get("path", [])
+    rec = recommend_sources(goal_type, config)
+    recommended = rec.get("recommended_sources", {})
+
+    min_per_direction = _DEPTH_MIN_SOURCES_PER_DIRECTION.get(depth, 3)
+
+    tasks = []
+    for direction in directions:
+        for tier in route_path:
+            tier_sources = recommended.get(tier, [])
+            site_queries = [s.get("site_query", s.get("domain", "")) for s in tier_sources]
+            is_chinese_tier = any(
+                s.get("domain", "").endswith((".cn", ".com.cn")) or "cnki" in s.get("domain", "")
+                for s in tier_sources
+            )
+            tasks.append({
+                "direction": direction,
+                "tier": tier,
+                "query_language": "zh" if is_chinese_tier else "en",
+                "site_queries": site_queries,
+                "min_sources": min_per_direction,
+            })
+
+    write_json({"goal_type": goal_type, "depth": depth, "route": route_path, "tasks": tasks}, workdir / "search_plan.json")
 
 
 def _get_goal_type(workdir: Path) -> str:
@@ -149,6 +255,8 @@ def proceeds(
 
     if from_phase == "scope":
         errors.extend(_check_scope_schema(workdir))
+        if not errors:
+            _generate_search_plan(workdir, config)
 
     elif from_phase == "search":
         search_blockers, search_warnings = _check_search_gate(workdir, config)
