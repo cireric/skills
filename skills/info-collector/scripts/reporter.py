@@ -67,7 +67,6 @@ def build_front_matter(
     search_rounds: int,
     source_count: int,
     version: int = 1,
-    parent: str | None = None,
     audience: str | None = None,
     report_language: str | None = None,
 ) -> str:
@@ -76,8 +75,6 @@ def build_front_matter(
     lines.append(f"goal_type: {goal_type}")
     lines.append(f"date: {date.today().isoformat()}")
     lines.append(f"version: {version}")
-    if parent:
-        lines.append(f"parent: {parent}")
     if audience:
         lines.append(f"audience: {audience}")
     if report_language:
@@ -95,7 +92,12 @@ def _render_test_conditions(claims: list[dict], reference_map: dict[str, int] | 
     for idx, claim in enumerate(claims):
         meta = claim.get("source_metadata")
         if meta and isinstance(meta, dict):
-            claims_with_meta.append((idx, claim, meta))
+            conditions = meta.get("test_conditions", "")
+            test_date = meta.get("test_date", "")
+            source_type = meta.get("source_type", "")
+            if not (conditions or test_date or source_type):
+                continue
+            claims_with_meta.append((idx, claim, meta, conditions, test_date, source_type))
 
     if not claims_with_meta:
         return ""
@@ -107,14 +109,11 @@ def _render_test_conditions(claims: list[dict], reference_map: dict[str, int] | 
     col_source_type = _label("source_type", lang)
     lines = [f"\n**{heading}:**\n", f"| {col_claim} | {col_conditions} | {col_date} | {col_source_type} |", "|---|---|---|---|"]
 
-    for idx, claim, meta in claims_with_meta:
+    for idx, claim, meta, conditions, test_date, source_type in claims_with_meta:
         if reference_map is not None:
             claim_ref = _build_claim_ref(claim, reference_map)
         else:
             claim_ref = f"#{idx + 1}"
-        conditions = meta.get("test_conditions", "")
-        test_date = meta.get("test_date", "")
-        source_type = meta.get("source_type", "")
         lines.append(f"| {claim_ref} | {conditions} | {test_date} | {source_type} |")
 
     return "\n".join(lines)
@@ -164,7 +163,6 @@ def generate_report(
     search_rounds: int,
     source_count: int,
     version: int = 1,
-    parent: str | None = None,
     report_language: str | None = None,
 ) -> str:
     analysis = read_json(analysis_path)
@@ -183,7 +181,6 @@ def generate_report(
         search_rounds,
         source_count,
         version,
-        parent,
         audience,
         report_language,
     )

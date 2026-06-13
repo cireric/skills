@@ -30,6 +30,15 @@ def write_json(data, path: Path) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+def _find_project_root() -> Path:
+    """Walk up from CWD to find the first directory containing .git."""
+    current = Path.cwd()
+    for parent in [current] + list(current.parents):
+        if (parent / ".git").exists():
+            return parent
+    return current
+
+
 def ensure_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path

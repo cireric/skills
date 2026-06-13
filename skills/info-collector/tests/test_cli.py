@@ -228,3 +228,27 @@ class TestCmdClean:
         with patch("scripts.cli.WORKDIR", workdir):
             cmd_clean(_make_namespace())
         assert not workdir.exists()
+
+
+class TestProjectRootDetection:
+    def test_find_project_root_finds_git(self, tmp_path):
+        from scripts.cli import _find_project_root
+
+        (tmp_path / ".git").mkdir()
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            assert _find_project_root() == tmp_path
+
+    def test_find_project_root_walks_up(self, tmp_path):
+        from scripts.cli import _find_project_root
+
+        (tmp_path / ".git").mkdir()
+        subdir = tmp_path / "skills" / "info-collector"
+        subdir.mkdir(parents=True)
+        with patch("pathlib.Path.cwd", return_value=subdir):
+            assert _find_project_root() == tmp_path
+
+    def test_find_project_root_fallback_to_cwd(self, tmp_path):
+        from scripts.cli import _find_project_root
+
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            assert _find_project_root() == tmp_path

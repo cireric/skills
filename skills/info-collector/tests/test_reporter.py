@@ -74,10 +74,10 @@ class TestBuildFrontMatter:
         assert "quality: passed" in fm
         assert "version: 1" in fm
 
-    def test_includes_parent(self):
-        fm = build_front_matter("T", "fact_check", "S", "passed", 1, 3, parent="parent.md")
-        assert "parent: parent.md" in fm
-        assert "version: 1" in fm
+    def test_no_parent_field(self):
+        """ADR 0009: cross-session iteration removed, no parent in front matter."""
+        fm = build_front_matter("T", "fact_check", "S", "passed", 1, 3)
+        assert "parent:" not in fm
 
     def test_custom_version(self):
         fm = build_front_matter("T", "fact_check", "S", "passed", 1, 3, version=3)
@@ -183,6 +183,49 @@ class TestRenderTestConditions:
         ref_map = {"https://a.com/": 1}
         md = _render_test_conditions(claims, ref_map)
         assert "[1]" in md
+
+    def test_all_empty_metadata_fields_no_row(self):
+        claims = [
+            {
+                "text": "Claim A",
+                "source_urls": ["https://a.com"],
+                "source_metadata": {
+                    "test_conditions": "",
+                    "test_date": "",
+                    "source_type": "",
+                },
+            },
+        ]
+        md = _render_test_conditions(claims)
+        assert md == ""
+
+    def test_mixed_empty_and_populated_metadata(self):
+        claims = [
+            {
+                "text": "Claim A",
+                "source_urls": ["https://a.com"],
+                "source_metadata": {
+                    "test_conditions": "",
+                    "test_date": "",
+                    "source_type": "",
+                },
+            },
+            {
+                "text": "Claim B",
+                "source_urls": ["https://b.com"],
+                "source_metadata": {
+                    "test_conditions": "H100-80GB",
+                    "test_date": "2026-Q1",
+                    "source_type": "vendor_benchmark",
+                },
+            },
+        ]
+        md = _render_test_conditions(claims)
+        assert "**Test Conditions:**" in md
+        assert "Claim A" not in md
+        assert "H100-80GB" in md
+        assert "2026-Q1" in md
+        assert "vendor_benchmark" in md
 
     def test_reference_map_with_non_normalized_url(self):
         claims = [

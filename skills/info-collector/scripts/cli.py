@@ -8,7 +8,9 @@ import sys
 from pathlib import Path
 from typing import cast
 
-WORKDIR = Path(".workdir")
+from .lib.utils import _find_project_root
+
+WORKDIR = _find_project_root() / ".workdir"
 _CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 
 
@@ -74,11 +76,10 @@ def cmd_report(args: argparse.Namespace) -> None:
         search_rounds=args.search_rounds or 1,
         source_count=args.source_count or _count_sources(),
         version=args.version or 1,
-        parent=args.parent,
         report_language=report_language,
     )
     default_output = (config or {}).get("output_dir", "./reports/")
-    output_path = Path(args.output) if args.output else Path(default_output)
+    output_path = Path(args.output) if args.output else _find_project_root() / default_output
     output_path.mkdir(parents=True, exist_ok=True)
     topic = _read_topic(scope_path)
     safe_topic = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in topic.lower())
@@ -147,7 +148,6 @@ def main() -> None:
     p_report.add_argument("--search-rounds", type=int)
     p_report.add_argument("--source-count", type=int)
     p_report.add_argument("--version", type=int, default=1)
-    p_report.add_argument("--parent")
     p_report.add_argument("--output")
     p_report.set_defaults(func=cmd_report)
 
