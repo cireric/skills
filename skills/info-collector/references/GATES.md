@@ -24,9 +24,9 @@
 
 ## Gate 4: `proceed --from review --to final`
 
-- Invokes gateway.py with 7 checks
+- Invokes gateway.py with 10 checks
 - Always runs, even if user skipped subagent review
-- 7 checks: artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, claim_metadata
+- 10 checks: artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata
 
 ## Gate 5: `proceed --from final --to cleanup`
 

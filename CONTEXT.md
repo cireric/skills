@@ -27,9 +27,9 @@ The research pipeline has ordered phases. Each phase transition triggers a **gat
 Quality checks at phase transitions. Each gate returns BLOCKER (must fix) or WARN (noted but not blocking).
 
 - **scope→search**: validates scope.json schema (required fields + enum values)
-- **search→analysis**: topic_coverage (BLOCKER) + min_sources (WARN)
+- **search→analysis**: topic_coverage (BLOCKER, token-level matching via jieba) + tier_coverage (WARN) + per_direction_min_sources (WARN, driven by depth) + min_sources (WARN)
 - **draft→review**: analysis.json schema + draft existence
-- **review→final**: 7 gateway checks (artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, claim_metadata)
+- **review→final**: 10 gateway checks (artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata)
 - **final→cleanup**: no structural checks
 
 ### goal_type
@@ -44,10 +44,10 @@ Research objective type. Drives source routing, required sections, and metadata 
 | market_analysis | quantitative | overview, data, trends, conclusion, methodology |
 | academic_research | quantitative | abstract, findings, references, methodology |
 | fact_check | verification | claims, evidence, conclusion |
-| exploratory | exploratory | overview, details |
-| panoramic_understanding | exploratory | overview, details |
-| background_check | exploratory | overview, details |
-| other | exploratory | overview, details |
+| exploratory | exploratory | overview + ≥1 other (any id) |
+| panoramic_understanding | exploratory | overview + ≥1 other (any id) |
+| background_check | exploratory | overview + ≥1 other (any id) |
+| other | exploratory | overview + ≥1 other (any id) |
 
 **quantitative goal_type** — The 5 goal types that require methodology sections and claim metadata validation (evidence_type/confidence/precision). Defined in code as `_QUANTITATIVE_GOAL_TYPES`.
 
@@ -68,7 +68,7 @@ Report reader type (CTO, engineer, researcher, general). A **hint field** — re
 
 ### depth
 
-Search depth (quick, standard, deep). A **hint field** — recorded in scope.json, influences AI behavior, but does not drive any deterministic code logic beyond config defaults.
+Search depth (quick, standard, deep). A **behavior-driving field** — drives per-direction minimum source count in search gate (quick=1, standard=3, deep=5) and search plan generation. Contrasts with `audience`, which remains a hint field.
 
 ### report_language
 
@@ -76,7 +76,7 @@ Language for the final report output (e.g., "zh", "en"). Stored in scope.json (p
 
 ### hint field
 
-A scope.json field that informs AI behavior without driving deterministic code logic. Currently: audience, depth. Contrast with goal_type, which drives 5 code-level behavior differences.
+A scope.json field that informs AI behavior without driving deterministic code logic. Currently: audience only. Contrast with goal_type (drives 5+ code-level behavior differences) and depth (drives per-direction source counts).
 
 ### Claim
 
@@ -87,9 +87,11 @@ A statement in analysis.json with structured metadata:
 - **evidence_type** — official_data, independent_benchmark, third_party_estimate, qualitative_trend, expert_opinion
 - **confidence** — high, medium, low
 - **precision** — exact, range, qualitative
+- **metric_type** — What kind of measurement this claim represents: swe_bench_verified, swe_bench_pro, terminal_bench, pr_merge_rate, refactoring_safety, custom. Used by gateway to prevent mixing different metrics in the same table.
+- **verified** — Boolean (default false). Set to true by review subagent after confirming source_url content actually supports the claim. Required for review→final gate.
 - **source_metadata** — Metadata about the claim's source testing conditions: test_conditions (hardware, OS, runtime), test_date, source_type (vendor_benchmark, independent_test, production_case, survey)
 
-Precision rules: `precision: exact` requires `evidence_type: official_data` or `independent_benchmark`. `third_party_estimate` and `qualitative_trend` must not use `precision: exact`.
+Precision rules: `precision: exact` requires `evidence_type: official_data` or `independent_benchmark`. `third_party_estimate` and `qualitative_trend` must not use `precision: exact`. Conflicting metric values with `precision: exact` must be changed to `precision: range` with explanation.
 
 ### Test conditions
 
@@ -110,6 +112,22 @@ A required section (id="methodology") for quantitative goal_types. Written by AI
 ### Setup wizard
 
 First-run configuration wizard. AI-conversational (no new Python code). Triggers when config.json does not exist. Collects: output_dir, default_report_language, default_depth, source customization. User can re-invoke at any time.
+
+### topic_coverage
+
+The search→analysis gate check that verifies collected sources cover all search_directions. Uses jieba tokenization: each direction is split into tokens, and a direction is considered "covered" when all its tokens appear in collected.json entries' title + snippet. This allows natural language directions in any language (Chinese, English, mixed) without requiring specific keyword formatting.
+
+### project root
+
+The directory containing `.git/`. Used as the base for resolving all relative paths (output_dir, WORKDIR). Auto-detected by walking up from CWD to find the first `.git`-containing directory. Falls back to CWD if not in a git repository. Defined in code as `_find_project_root()`.
+
+### search plan
+
+Auto-generated search plan (`.workdir/search_plan.json`) produced after scope→search gate passes. Based on goal_type route and search_directions, generates specific search tasks per direction × tier with English/Chinese keyword conversion and site: filters. AI executes the plan rather than free-form searching. Ensures systematic coverage and source tier diversity.
+
+### tier_coverage
+
+search→analysis gate check (WARN level) that verifies collected.json contains at least one source from each tier in the goal_type's route. For example, panoramic_understanding's route [4, 2, 1] requires sources from Tier 4 (Community), Tier 2 (Documentation), and Tier 1 (Academic).
 
 ### Artifacts
 

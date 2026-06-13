@@ -13,7 +13,7 @@ Collect, organize, and summarize structured information from web sources.
 ## Usage
 
 - **Trigger phrases**: 帮我查查, 搜集资料, 整理, 调研, research, collect info, find information, gather data
-- **Slash command**: `/info-collector` (also used for cross-session iteration with a previous report path)
+- **Slash command**: `/info-collector`
 - **Output**: Markdown report in `<project_root>/<config.json:output_dir>` with YAML front matter
 
 ## Path Convention
@@ -78,7 +78,7 @@ After collecting answers, write config.json and confirm: "配置已写入 config
    ```
 
 4. **Run gate**: `python scripts/cli.py proceed --from search --to analysis`
-   - Checks topic_coverage (BLOCKER) and min_sources (WARN).
+    - Checks topic_coverage (BLOCKER), tier_coverage (WARN), per_direction_min_sources (WARN), and min_sources (WARN).
    - If BLOCKER → search more before proceeding.
 
 ## Phase 3: Report
@@ -178,19 +178,18 @@ Show the review report (or degradation notice) to user and ask:
 
 - User says **"可以了"** → Run: `python scripts/cli.py proceed --from review --to final`
 
-  This runs gateway.py with 7 checks inside:
-  - artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, claim_metadata
+  This runs gateway.py with 10 checks inside:
+  - artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata
   - BLOCKER fails = stop and fix
   - WARN = noted but does not block
 
-  Then generate final report (saves to `<project_root>/<config.json:output_dir>/` automatically):
+   Then generate final report (saves to `<project_root>/<config.json:output_dir>/` automatically):
 
-  ```
-  python scripts/cli.py report --quality <passed|degraded|unreviewed> --search-rounds N --source-count N --version V [--parent PATH] [--output DIR]
-  ```
+   ```
+   python scripts/cli.py report --quality <passed|degraded|unreviewed> --search-rounds N --source-count N --version V [--output DIR]
+   ```
 
-  - `--parent PATH`: For cross-session iteration, link to a previous report (writes `parent: PATH` in front matter)
-  - `--output DIR`: Override config.json `output_dir` for this report
+   - `--output DIR`: Override config.json `output_dir` for this report
 
   **最终报告必须包含：**
   - 来源 URL：报告中出现的每个来源名必须可追溯到完整 URL（内联链接或附录映射表）
@@ -214,23 +213,6 @@ Show the review report (or degradation notice) to user and ask:
 2. Ask user: "清除中间文件？"
    - Yes -> `python scripts/cli.py clean`
    - No -> `<project_root>/.workdir/` remains
-
-## Cross-Session Iteration
-
-**Trigger precondition**: User must:
-
-1. Invoke `/info-collector` slash command
-2. Provide previous report path (e.g. `<project_root>/<config.json:output_dir>/xxx_v1.md`)
-
-Without both -> start fresh Phase 1.
-
-When triggered:
-
-1. Read old report front matter -> extract topic, goal_type, scope
-2. "上次做了 [topic] 的 [goal_type] 调研，这次重点更新什么？"
-3. Quick re-scope (lightweight Phase 1)
-4. Fresh Phase 2-3 (new collected.json, deduplicate against old report)
-5. New report includes `parent` field pointing to old report path
 
 ## CLI Commands Reference
 

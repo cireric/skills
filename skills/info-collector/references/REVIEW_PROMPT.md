@@ -12,6 +12,12 @@ Read these files from the skill's .workdir/:
     content in collected.json. Are the URLs real? Do they support the claim?
     **Also check**: Does the draft report *text* actually include the source URL
     or a clickable reference for the claim, not just the analysis.json metadata?
+1.5. **Claim verification**: For EVERY claim in analysis.json:
+    - Read the claim's source_urls
+    - Find the corresponding entries in collected.json
+    - Verify that the fetched_content of those entries actually supports the claim text
+    - Set the claim's `verified` field to `true` if confirmed, or note the discrepancy in your review
+    - If a source URL's content does NOT support the claim, flag it as a critical issue
 2. **Contradictions**: Do any claims within or across sections contradict each other?
 3. **Coverage gaps**: Are there search_directions in scope.json that have no
    corresponding analysis?
@@ -62,3 +68,7 @@ Write your review to .workdir/review_report.md with this structure:
 ## Overall Verdict
 **pass** / **pass_with_issues** / **fail**
 ```
+
+After completing your review, update analysis.json:
+- Set `verified: true` on every claim you have confirmed against its source
+- Do NOT set verified: true on claims you could not confirm
