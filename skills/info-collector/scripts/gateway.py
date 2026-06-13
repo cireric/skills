@@ -27,6 +27,15 @@ _VALID_EVIDENCE_TYPES = frozenset({
 _VALID_CONFIDENCE = frozenset({"high", "medium", "low"})
 _VALID_PRECISION = frozenset({"exact", "range", "qualitative"})
 
+_VALID_METRIC_TYPES = frozenset({
+    "swe_bench_verified",
+    "swe_bench_pro",
+    "terminal_bench",
+    "pr_merge_rate",
+    "refactoring_safety",
+    "custom",
+})
+
 
 @dataclass
 class CheckResult:
@@ -79,12 +88,31 @@ _REQUIRED_SECTION_IDS: dict[str, list[str]] = {
     "market_analysis": ["overview", "data", "trends", "conclusion", "methodology"],
 }
 
+_EXPLORATORY_GOAL_TYPES = frozenset({"exploratory", "panoramic_understanding", "background_check", "other"})
+
 
 def check_section_coverage(workdir: Path, goal_type: str) -> CheckResult:
     try:
         analysis = read_json(workdir / "analysis.json")
     except Exception as e:
         return CheckResult("section_coverage", "BLOCKER", False, str(e))
+    if goal_type in _EXPLORATORY_GOAL_TYPES:
+        present = {s["id"] for s in analysis.get("sections", [])}
+        if "overview" not in present:
+            return CheckResult(
+                "section_coverage",
+                "BLOCKER",
+                False,
+                "Missing 'overview' section for exploratory goal_type",
+            )
+        if len(present) < 2:
+            return CheckResult(
+                "section_coverage",
+                "BLOCKER",
+                False,
+                f"Exploratory goal_type requires at least 2 sections, found {len(present)}: {', '.join(present)}",
+            )
+        return CheckResult("section_coverage", "BLOCKER", True)
     required = _REQUIRED_SECTION_IDS.get(goal_type, ["overview", "details"])
     present = {s["id"] for s in analysis.get("sections", [])}
     missing = [r for r in required if r not in present]
@@ -109,6 +137,8 @@ def _validate_section_claims(sections: list) -> str | None:
                     return f"sections[{i}].claims[{j}] missing '{field}'"
             if not claim.get("source_urls"):
                 return f"sections[{i}].claims[{j}].source_urls is empty"
+            if "metric_type" in claim and claim["metric_type"] not in _VALID_METRIC_TYPES:
+                return f"sections[{i}].claims[{j}] has invalid metric_type '{claim['metric_type']}'"
     return None
 
 
@@ -221,11 +251,119 @@ def check_precision_inflation(workdir: Path) -> CheckResult:
                     f"sections.{sec_id}.claims[{ci}]: evidence_type='third_party_estimate' "
                     f"but text contains precise number — use precision='range' or rephrase qualitatively"
                 )
+        # Data variance check: same metric_type, exact precision, conflicting values
+        by_metric: dict[str, list[dict]] = {}
+        for claim in section.get("claims", []):
+            mt = claim.get("metric_type")
+            if not mt:
+                continue
+            by_metric.setdefault(mt, []).append(claim)
+        for mt, claims in by_metric.items():
+            values = []
+            for claim in claims:
+                if claim.get("precision") != "exact":
+                    continue
+                text = claim.get("text", "")
+                matches = _PRECISE_NUMBER_PATTERN.findall(text)
+                for match in matches:
+                    num_str = match[0].replace(",", "")
+                    try:
+                        values.append(float(num_str))
+                    except ValueError:
+                        pass
+            if len(values) >= 2:
+                min_val = min(values)
+                max_val = max(values)
+                avg = sum(values) / len(values)
+                if avg > 0 and (max_val - min_val) / avg > 0.05:
+                    blockers.append(
+                        f"sections.{sec_id}: same metric_type '{mt}' has conflicting exact values "
+                        f"({min_val} vs {max_val}) — use precision='range' and explain variance"
+                    )
     if blockers:
         return CheckResult("precision_inflation", "BLOCKER", False, "; ".join(blockers + warnings))
     if warnings:
         return CheckResult("precision_inflation", "WARN", False, "; ".join(warnings))
     return CheckResult("precision_inflation", "BLOCKER", True)
+
+
+def check_claim_verified(workdir: Path) -> CheckResult:
+    """BLOCKER if any claim in analysis.json has verified=False or missing verified field.
+
+    This check only runs during the review->final gate (review_report.md exists).
+    """
+    review_report = workdir / "review_report.md"
+    if not review_report.exists():
+        return CheckResult("claim_verified", "BLOCKER", True, "Skipped (review not yet done)")
+    try:
+        analysis = read_json(workdir / "analysis.json")
+    except Exception as e:
+        return CheckResult("claim_verified", "BLOCKER", False, str(e))
+    for section in analysis.get("sections", []):
+        sec_id = section.get("id", "?")
+        for claim in section.get("claims", []):
+            verified = claim.get("verified")
+            if verified is not True:
+                text = claim.get("text", "")[:50]
+                return CheckResult(
+                    "claim_verified",
+                    "BLOCKER",
+                    False,
+                    f"Claim in section '{sec_id}' not verified: {text}",
+                )
+    return CheckResult("claim_verified", "BLOCKER", True)
+
+
+def check_source_metadata(workdir: Path) -> CheckResult:
+    """BLOCKER if official_data/independent_benchmark claims lack source_metadata.test_conditions."""
+    try:
+        analysis = read_json(workdir / "analysis.json")
+    except Exception as e:
+        return CheckResult("source_metadata", "BLOCKER", False, str(e))
+    for section in analysis.get("sections", []):
+        sec_id = section.get("id", "?")
+        for ci, claim in enumerate(section.get("claims", [])):
+            ev = claim.get("evidence_type")
+            if ev in ("official_data", "independent_benchmark"):
+                meta = claim.get("source_metadata")
+                if not meta or not isinstance(meta, dict):
+                    return CheckResult(
+                        "source_metadata", "BLOCKER", False,
+                        f"sections.{sec_id}.claims[{ci}]: evidence_type='{ev}' requires source_metadata",
+                    )
+                tc = meta.get("test_conditions", "")
+                if not tc or (isinstance(tc, str) and not tc.strip()):
+                    return CheckResult(
+                        "source_metadata", "BLOCKER", False,
+                        f"sections.{sec_id}.claims[{ci}]: evidence_type='{ev}' requires non-empty source_metadata.test_conditions",
+                    )
+    return CheckResult("source_metadata", "BLOCKER", True)
+
+
+def check_metric_type_homogeneity(workdir: Path) -> CheckResult:
+    try:
+        analysis = read_json(workdir / "analysis.json")
+    except Exception:
+        return CheckResult("metric_type_homogeneity", "BLOCKER", True, "Cannot read analysis.json")
+    for section in analysis.get("sections", []):
+        sec_id = section.get("id", "?")
+        types = set()
+        for claim in section.get("claims", []):
+            mt = claim.get("metric_type")
+            if not mt:
+                continue
+            ev = claim.get("evidence_type")
+            if ev in ("official_data", "independent_benchmark"):
+                types.add(mt)
+        if len(types) > 1:
+            return CheckResult(
+                "metric_type_homogeneity",
+                "BLOCKER",
+                False,
+                f"Section '{sec_id}' mixes metric_types: {sorted(types)}. "
+                "Split into separate sections or tables.",
+            )
+    return CheckResult("metric_type_homogeneity", "BLOCKER", True)
 
 
 def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
@@ -236,5 +374,8 @@ def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
         check_analysis_schema(workdir),
         check_quality_heuristics(workdir),
         check_precision_inflation(workdir),
+        check_metric_type_homogeneity(workdir),
         check_claim_metadata(workdir, goal_type),
+        check_claim_verified(workdir),
+        check_source_metadata(workdir),
     ]

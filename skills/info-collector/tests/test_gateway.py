@@ -8,9 +8,12 @@ from scripts.gateway import (
     check_analysis_schema,
     check_artifact_exists,
     check_claim_metadata,
+    check_claim_verified,
+    check_metric_type_homogeneity,
     check_precision_inflation,
     check_quality_heuristics,
     check_section_coverage,
+    check_source_metadata,
     check_url_traceability,
     run_all,
 )
@@ -258,6 +261,41 @@ class TestCheckSectionCoverage:
         result = check_section_coverage(tmp_path, "exploratory")
         assert result.passed
 
+    def test_panoramic_understanding_loose_check_passes(self, tmp_path):
+        """Exploratory goal_types should pass with overview + any other section."""
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{"id": "overview"}, {"id": "findings"}],
+            },
+        )
+        result = check_section_coverage(tmp_path, "panoramic_understanding")
+        assert result.passed
+
+    def test_panoramic_understanding_missing_overview_fails(self, tmp_path):
+        """Exploratory goal_types should fail when overview is missing."""
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{"id": "findings"}, {"id": "methodology"}],
+            },
+        )
+        result = check_section_coverage(tmp_path, "panoramic_understanding")
+        assert not result.passed
+        assert "overview" in result.message
+
+    def test_panoramic_understanding_only_overview_fails(self, tmp_path):
+        """Exploratory goal_types should fail when only overview is present."""
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{"id": "overview"}],
+            },
+        )
+        result = check_section_coverage(tmp_path, "panoramic_understanding")
+        assert not result.passed
+        assert "2" in result.message
+
 
 class TestCheckAnalysisSchema:
     def test_valid_schema(self, tmp_path):
@@ -354,7 +392,7 @@ class TestRunAll:
             },
         )
         results = run_all(tmp_path, "tech_selection")
-        assert len(results) == 7  # noqa: PLR2004
+        assert len(results) == 10  # 7 original + metric_type_homogeneity + claim_verified + source_metadata
 
 
 class TestCheckPrecisionInflation:
@@ -461,6 +499,96 @@ class TestCheckPrecisionInflation:
         assert not result.passed
         assert result.level == "BLOCKER"
 
+    def test_data_variance_same_value_passes(self, tmp_path):
+        """Same metric_type, same exact value → passes."""
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [
+                        {
+                            "text": "Achieves 54% accuracy",
+                            "source_urls": ["https://a.com"],
+                            "evidence_type": "official_data",
+                            "precision": "exact",
+                            "metric_type": "swe_bench_verified",
+                        },
+                        {
+                            "text": "Also reported at 54%",
+                            "source_urls": ["https://b.com"],
+                            "evidence_type": "official_data",
+                            "precision": "exact",
+                            "metric_type": "swe_bench_verified",
+                        },
+                    ],
+                }],
+            },
+        )
+        result = check_precision_inflation(tmp_path)
+        assert result.passed
+
+    def test_data_variance_conflicting_exact_blocker(self, tmp_path):
+        """Same metric_type, conflicting exact values → BLOCKER."""
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [
+                        {
+                            "text": "Achieves 54% accuracy",
+                            "source_urls": ["https://a.com"],
+                            "evidence_type": "official_data",
+                            "precision": "exact",
+                            "metric_type": "swe_bench_verified",
+                        },
+                        {
+                            "text": "Achieves 75% accuracy",
+                            "source_urls": ["https://b.com"],
+                            "evidence_type": "official_data",
+                            "precision": "exact",
+                            "metric_type": "swe_bench_verified",
+                        },
+                    ],
+                }],
+            },
+        )
+        result = check_precision_inflation(tmp_path)
+        assert not result.passed
+        assert result.level == "BLOCKER"
+        assert "s1: same metric_type" in result.message
+        assert "swe_bench_verified" in result.message
+
+    def test_data_variance_range_precision_passes(self, tmp_path):
+        """Same metric_type, conflicting values but precision=range → passes."""
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [
+                        {
+                            "text": "Between 54% and 75% accuracy",
+                            "source_urls": ["https://a.com"],
+                            "evidence_type": "official_data",
+                            "precision": "range",
+                            "metric_type": "swe_bench_verified",
+                        },
+                        {
+                            "text": "Approximately 65% accuracy",
+                            "source_urls": ["https://b.com"],
+                            "evidence_type": "official_data",
+                            "precision": "range",
+                            "metric_type": "swe_bench_verified",
+                        },
+                    ],
+                }],
+            },
+        )
+        result = check_precision_inflation(tmp_path)
+        assert result.passed
+
 
 class TestCheckClaimMetadata:
     def test_quantitative_missing_metadata_warn(self, tmp_path):
@@ -528,3 +656,206 @@ class TestCheckResultDataclass:
         assert r.level == "BLOCKER"
         assert not r.passed
         assert r.message == "err"
+
+
+class TestCheckClaimVerified:
+    def test_claim_verified_all_pass(self, tmp_path):
+        (tmp_path / "review_report.md").write_text("# Review", encoding="utf-8")
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "overview",
+                        "claims": [
+                            {"text": "Claim one", "source_urls": ["https://a.com"], "verified": True},
+                            {"text": "Claim two", "source_urls": ["https://b.com"], "verified": True},
+                        ],
+                    }
+                ],
+            },
+        )
+        result = check_claim_verified(tmp_path)
+        assert result.passed
+
+    def test_claim_verified_missing_fails(self, tmp_path):
+        (tmp_path / "review_report.md").write_text("# Review", encoding="utf-8")
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "overview",
+                        "claims": [
+                            {"text": "Claim one", "source_urls": ["https://a.com"], "verified": True},
+                            {"text": "Claim two missing verified", "source_urls": ["https://b.com"]},
+                        ],
+                    }
+                ],
+            },
+        )
+        result = check_claim_verified(tmp_path)
+        assert not result.passed
+        assert result.level == "BLOCKER"
+        assert "Claim in section 'overview' not verified" in result.message
+
+    def test_claim_verified_false_fails(self, tmp_path):
+        (tmp_path / "review_report.md").write_text("# Review", encoding="utf-8")
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "comparison",
+                        "claims": [
+                            {"text": "Claim one", "source_urls": ["https://a.com"], "verified": True},
+                            {"text": "Claim two is false", "source_urls": ["https://b.com"], "verified": False},
+                        ],
+                    }
+                ],
+            },
+        )
+        result = check_claim_verified(tmp_path)
+        assert not result.passed
+        assert result.level == "BLOCKER"
+        assert "Claim in section 'comparison' not verified" in result.message
+
+    def test_claim_verified_skipped_before_review(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "overview",
+                        "claims": [
+                            {"text": "Claim one", "source_urls": ["https://a.com"]},
+                        ],
+                    }
+                ],
+            },
+        )
+        result = check_claim_verified(tmp_path)
+        assert result.passed
+        assert "Skipped" in result.message
+
+
+class TestCheckSourceMetadata:
+    def test_official_data_without_source_metadata_blocker(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "comparison",
+                        "claims": [
+                            {
+                                "text": "Model X achieves 95% accuracy",
+                                "source_urls": ["https://example.com"],
+                                "evidence_type": "official_data",
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+        result = check_source_metadata(tmp_path)
+        assert not result.passed
+        assert result.level == "BLOCKER"
+        assert "requires source_metadata" in result.message
+
+    def test_independent_benchmark_without_source_metadata_blocker(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "comparison",
+                        "claims": [
+                            {
+                                "text": "Model Y scores 88% on benchmark",
+                                "source_urls": ["https://example.com"],
+                                "evidence_type": "independent_benchmark",
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+        result = check_source_metadata(tmp_path)
+        assert not result.passed
+        assert result.level == "BLOCKER"
+        assert "requires source_metadata" in result.message
+
+    def test_official_data_without_test_conditions_blocker(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "comparison",
+                        "claims": [
+                            {
+                                "text": "Model X achieves 95% accuracy",
+                                "source_urls": ["https://example.com"],
+                                "evidence_type": "official_data",
+                                "source_metadata": {
+                                    "test_date": "2026-Q1",
+                                    "source_type": "official_docs",
+                                },
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+        result = check_source_metadata(tmp_path)
+        assert not result.passed
+        assert result.level == "BLOCKER"
+        assert "test_conditions" in result.message
+
+    def test_official_data_with_source_metadata_passes(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "comparison",
+                        "claims": [
+                            {
+                                "text": "Model X achieves 95% accuracy",
+                                "source_urls": ["https://example.com"],
+                                "evidence_type": "official_data",
+                                "source_metadata": {
+                                    "test_conditions": "A100-80GB, CUDA 12.1",
+                                    "test_date": "2026-Q1",
+                                    "source_type": "official_docs",
+                                },
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+        result = check_source_metadata(tmp_path)
+        assert result.passed
+
+    def test_third_party_estimate_not_affected(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "overview",
+                        "claims": [
+                            {
+                                "text": "Some estimate",
+                                "source_urls": ["https://example.com"],
+                                "evidence_type": "third_party_estimate",
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+        result = check_source_metadata(tmp_path)
+        assert result.passed
