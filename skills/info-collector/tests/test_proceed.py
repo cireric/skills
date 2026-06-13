@@ -12,18 +12,18 @@ def _write_json(path, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def _make_scope(workdir, goal_type="tech_selection", depth="standard"):
-    _write_json(
-        workdir / "scope.json",
-        {
-            "topic": "Test",
-            "goal_type": goal_type,
-            "depth": depth,
-            "audience": "engineer",
-            "scope_description": "Test scope",
-            "search_directions": ["AI", "ML"],
-        },
-    )
+def _make_scope(workdir, goal_type="tech_selection", depth="standard", report_language=None):
+    data = {
+        "topic": "Test",
+        "goal_type": goal_type,
+        "depth": depth,
+        "audience": "engineer",
+        "scope_description": "Test scope",
+        "search_directions": ["AI", "ML"],
+    }
+    if report_language is not None:
+        data["report_language"] = report_language
+    _write_json(workdir / "scope.json", data)
 
 
 class TestDetectCurrentPhase:
@@ -75,6 +75,28 @@ class TestProceeds:
         assert not ok
         error_text = "; ".join(errors)
         assert "goal_type" in error_text
+
+    def test_scope_gate_with_valid_report_language(self, tmp_path):
+        _make_scope(tmp_path, report_language="zh")
+        ok, errors = proceeds(tmp_path, "scope", "search")
+        assert ok, errors
+
+    def test_scope_gate_with_empty_report_language(self, tmp_path):
+        _make_scope(tmp_path, report_language="")
+        ok, errors = proceeds(tmp_path, "scope", "search")
+        assert not ok
+        assert "report_language" in errors[0]
+
+    def test_scope_gate_without_report_language(self, tmp_path):
+        _make_scope(tmp_path)
+        ok, errors = proceeds(tmp_path, "scope", "search")
+        assert ok, errors
+
+    def test_scope_gate_with_non_string_report_language(self, tmp_path):
+        _make_scope(tmp_path, report_language=123)
+        ok, errors = proceeds(tmp_path, "scope", "search")
+        assert not ok
+        assert "report_language" in errors[0]
 
     def test_scope_gate_invalid_phase(self, tmp_path):
         ok, errors = proceeds(tmp_path, "scope", "search")
@@ -172,6 +194,12 @@ class TestProceeds:
                         "title": "Rec",
                         "content": "C",
                         "claims": [{"text": "C3", "source_urls": ["https://a.com"]}],
+                    },
+                    {
+                        "id": "methodology",
+                        "title": "Methodology",
+                        "content": "M",
+                        "claims": [],
                     },
                 ],
             },

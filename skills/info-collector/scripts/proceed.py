@@ -77,6 +77,10 @@ def _check_scope_schema(workdir: Path) -> list[str]:
         errors.append(f"Invalid audience: {scope.get('audience')} (must be CTO, engineer, researcher, or general)")
     if not scope.get("search_directions"):
         errors.append("scope.json search_directions must be a non-empty list")
+    if "report_language" in scope:
+        rl = scope["report_language"]
+        if not isinstance(rl, str) or not rl:
+            errors.append("report_language must be a non-empty string if present")
     return errors
 
 

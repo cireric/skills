@@ -25,6 +25,19 @@ All relative paths in this skill are relative to the **project root** (where `sc
 | `<project_root>/.workdir/` | `<cwd>/.workdir/` — e.g. `D:\Project\.workdir\` |
 | `<project_root>/<config.json:output_dir>` | `<cwd>/<output_dir>` — configured in `.opencode/skills/info-collector/config.json` |
 
+## Setup Wizard
+
+When config.json does not exist (first run), guide the user through setup:
+
+1. **output_dir**: Ask where reports should be saved. Accept relative (resolved against project root) or absolute paths. Default: `docs/research`
+2. **default_report_language**: Ask preferred report language (e.g., zh, en). This becomes the default for every research unless overridden in Phase 1. Default: `zh`
+3. **default_depth**: Ask typical research depth (quick/standard/deep). Default: `standard`
+4. **Source customization**: Show the 4-tier source list from config.json. Ask if user wants to add or remove sources per tier (e.g., add Dev.to to Tier 2, remove Medium from Tier 2)
+
+After collecting answers, write config.json and confirm: "配置已写入 config.json"
+
+**Re-running the wizard**: User can request setup wizard at any time by saying "重新配置" or "run setup wizard". This overwrites the existing config.json.
+
 ## Phase 1: Scope
 
 1. **Interview** the user to determine:
@@ -48,6 +61,8 @@ All relative paths in this skill are relative to the **project root** (where `sc
 2. **Search**: Use `exa_web_search_exa` + `exa_web_fetch_exa` (primary),
    `playwright_browser_*` (supplementary). Use `site:` queries from recommended sources.
    Aim for ~3 search rounds (soft limit).
+
+**Search language rule**: Search English-language sources using English queries even if the topic is in Chinese. Translate search keywords to English for `site:` queries on English domains (arxiv.org, github.com, stackoverflow.com, etc.). Use Chinese queries only for Chinese domains (cnki.net, zhihu.com, baidu.com, etc.). This ensures high-quality results from international sources regardless of topic language.
 
 3. **Collect**: Add each result to `<project_root>/.workdir/collected.json`:
    ```json
@@ -100,10 +115,12 @@ Every claim MUST have at least one source_url linking to a URL in collected.json
 - `precision: "exact"` → MUST have `evidence_type` of `"official_data"` or `"independent_benchmark"`
 - Benchmark numbers from different test conditions → use `precision: "range"` and annotate in `source_metadata.test_conditions`
 
-**Methodology section:** For quantitative goal_types (`tech_selection`, `competitive_comparison`, `feasibility_assessment`, `market_analysis`, `academic_research`), include a `methodology` section in the draft report (not required in analysis.json, but required in draft/report.md). This section must describe:
+**Methodology section:** For quantitative goal_types (`tech_selection`, `competitive_comparison`, `feasibility_assessment`, `market_analysis`, `academic_research`), include a section with `id="methodology"` in analysis.json. This section must describe:
 - Data sources and their test conditions
 - Limitations of cross-source comparisons
 - Date range of data collection
+
+**Narrative writing**: Write full Markdown narrative in each section's `content` field. Tables, emphasis, transitions, and structured formatting are all valid. The `content` field is rendered as-is in the final report, so write it as you would want the final report section to read.
 
 ### 3b: Generate draft
 
@@ -123,6 +140,8 @@ Write a draft report to `<project_root>/.workdir/draft/report.md`.
 | `academic_research` | 正式引用格式（如 `[1]` 附录映射） |
 | `exploratory`, `market_analysis`, `background_check`, `fact_check`, `other` | 每个声明至少附带来源 URL 或引用编号 |
 | `panoramic_understanding` | 每段主要结论至少一个来源链接 |
+
+**Draft positioning**: The draft is a review-readable rendering of analysis.json. Review fixes should target analysis.json (not the draft file). The final report is rendered by reporter.py from the reviewed analysis.json, so all corrections must be reflected in analysis.json to appear in the final output.
 
 ### Gate: proceed --from draft --to review
 

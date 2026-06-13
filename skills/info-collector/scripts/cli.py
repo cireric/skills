@@ -60,7 +60,13 @@ def cmd_report(args: argparse.Namespace) -> None:
         print("scope.json not found", file=sys.stderr)
         sys.exit(1)
 
+    from .lib.utils import read_json
+
     quality = args.quality or _detect_quality()
+    scope_data = read_json(scope_path) if scope_path.exists() else {}
+    report_language = scope_data.get("report_language")
+    if not report_language:
+        report_language = (config or {}).get("default_report_language", "en")
     report = generate_report(
         analysis_path,
         scope_path,
@@ -69,6 +75,7 @@ def cmd_report(args: argparse.Namespace) -> None:
         source_count=args.source_count or _count_sources(),
         version=args.version or 1,
         parent=args.parent,
+        report_language=report_language,
     )
     default_output = (config or {}).get("output_dir", "output/research")
     output_path = Path(args.output) if args.output else Path(default_output)

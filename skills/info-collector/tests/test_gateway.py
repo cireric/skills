@@ -75,6 +75,7 @@ class TestCheckSectionCoverage:
                     {"id": "overview"},
                     {"id": "comparison"},
                     {"id": "recommendation"},
+                    {"id": "methodology"},
                 ],
             },
         )
@@ -90,6 +91,169 @@ class TestCheckSectionCoverage:
         )
         result = check_section_coverage(tmp_path, "tech_selection")
         assert not result.passed
+        assert "comparison" in result.message
+
+    def test_missing_methodology_tech_selection(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "overview"},
+                    {"id": "comparison"},
+                    {"id": "recommendation"},
+                ],
+            },
+        )
+        result = check_section_coverage(tmp_path, "tech_selection")
+        assert not result.passed
+        assert "methodology" in result.message
+
+    def test_missing_methodology_feasibility_assessment(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "overview"},
+                    {"id": "analysis"},
+                    {"id": "conclusion"},
+                ],
+            },
+        )
+        result = check_section_coverage(tmp_path, "feasibility_assessment")
+        assert not result.passed
+        assert "methodology" in result.message
+
+    def test_missing_methodology_competitive_comparison(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "overview"},
+                    {"id": "comparison"},
+                    {"id": "positioning"},
+                ],
+            },
+        )
+        result = check_section_coverage(tmp_path, "competitive_comparison")
+        assert not result.passed
+        assert "methodology" in result.message
+
+    def test_missing_methodology_market_analysis(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "overview"},
+                    {"id": "data"},
+                    {"id": "trends"},
+                    {"id": "conclusion"},
+                ],
+            },
+        )
+        result = check_section_coverage(tmp_path, "market_analysis")
+        assert not result.passed
+        assert "methodology" in result.message
+
+    def test_missing_methodology_academic_research(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "abstract"},
+                    {"id": "findings"},
+                    {"id": "references"},
+                ],
+            },
+        )
+        result = check_section_coverage(tmp_path, "academic_research")
+        assert not result.passed
+        assert "methodology" in result.message
+
+    def test_with_methodology_tech_selection(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "overview"},
+                    {"id": "comparison"},
+                    {"id": "recommendation"},
+                    {"id": "methodology"},
+                ],
+            },
+        )
+        result = check_section_coverage(tmp_path, "tech_selection")
+        assert result.passed
+
+    def test_with_methodology_feasibility_assessment(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "overview"},
+                    {"id": "analysis"},
+                    {"id": "conclusion"},
+                    {"id": "methodology"},
+                ],
+            },
+        )
+        result = check_section_coverage(tmp_path, "feasibility_assessment")
+        assert result.passed
+
+    def test_with_methodology_competitive_comparison(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "overview"},
+                    {"id": "comparison"},
+                    {"id": "positioning"},
+                    {"id": "methodology"},
+                ],
+            },
+        )
+        result = check_section_coverage(tmp_path, "competitive_comparison")
+        assert result.passed
+
+    def test_with_methodology_market_analysis(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "overview"},
+                    {"id": "data"},
+                    {"id": "trends"},
+                    {"id": "conclusion"},
+                    {"id": "methodology"},
+                ],
+            },
+        )
+        result = check_section_coverage(tmp_path, "market_analysis")
+        assert result.passed
+
+    def test_with_methodology_academic_research(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "abstract"},
+                    {"id": "findings"},
+                    {"id": "references"},
+                    {"id": "methodology"},
+                ],
+            },
+        )
+        result = check_section_coverage(tmp_path, "academic_research")
+        assert result.passed
+
+    def test_non_quantitative_no_methodology(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{"id": "overview"}, {"id": "details"}],
+            },
+        )
+        result = check_section_coverage(tmp_path, "exploratory")
+        assert result.passed
 
 
 class TestCheckAnalysisSchema:

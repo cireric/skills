@@ -71,12 +71,12 @@ def check_url_traceability(workdir: Path) -> CheckResult:
 
 
 _REQUIRED_SECTION_IDS: dict[str, list[str]] = {
-    "tech_selection": ["overview", "comparison", "recommendation"],
-    "feasibility_assessment": ["overview", "analysis", "conclusion"],
+    "tech_selection": ["overview", "comparison", "recommendation", "methodology"],
+    "feasibility_assessment": ["overview", "analysis", "conclusion", "methodology"],
     "fact_check": ["claims", "evidence", "conclusion"],
-    "competitive_comparison": ["overview", "comparison", "positioning"],
-    "academic_research": ["abstract", "findings", "references"],
-    "market_analysis": ["overview", "data", "trends", "conclusion"],
+    "competitive_comparison": ["overview", "comparison", "positioning", "methodology"],
+    "academic_research": ["abstract", "findings", "references", "methodology"],
+    "market_analysis": ["overview", "data", "trends", "conclusion", "methodology"],
 }
 
 

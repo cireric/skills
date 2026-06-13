@@ -65,8 +65,19 @@ def get_default_min_sources(goal_type: str, config: dict | None = None) -> int:
 
 
 def get_default_depth(goal_type: str, config: dict | None = None) -> str:
-    """Return search depth for a goal_type from config or default 'standard'."""
+    """Return search depth for a goal_type.
+
+    Priority chain:
+      1. goal_type_defaults[goal_type].depth (if goal_type has explicit config)
+      2. config.default_depth (top-level config fallback)
+      3. hardcoded 'standard'
+    """
     cfg = _get_config(config)
-    defaults: dict = cfg.get("goal_type_defaults", {})
+    defaults: dict = cfg.get("goal_type_defaults", {}) or {}
     goal_cfg: dict = defaults.get(goal_type, {})
-    return cast(str, goal_cfg.get("depth", "standard"))
+    if "depth" in goal_cfg:
+        return cast(str, goal_cfg["depth"])
+    config_depth = cfg.get("default_depth")
+    if config_depth is not None:
+        return cast(str, config_depth)
+    return "standard"

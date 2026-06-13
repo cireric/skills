@@ -44,12 +44,14 @@
     "feasibility_assessment": {"entry_tier": 2, "path": [2, 1]},
     "competitive_comparison": {"entry_tier": 4, "path": [4, 3]},
     "academic_research": {"entry_tier": 1, "path": [1]},
-    "fact_check": {"entry_tier": 0, "path": [1, 2]},
+    "fact_check": {"entry_tier": 1, "path": [1, 2, 4]},
     "background_check": {"entry_tier": 3, "path": [3, 4, 1]},
     "market_analysis": {"entry_tier": 3, "path": [3, 1]},
     "other": {"entry_tier": 3, "path": [3, 2, 1]}
   },
-  "output_dir": "reports/",
+  "output_dir": "./reports/",
+  "default_report_language": "zh",
+  "default_depth": "standard",
   "goal_type_defaults": {
     "exploratory": {
       "depth": "quick",

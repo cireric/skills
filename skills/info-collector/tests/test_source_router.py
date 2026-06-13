@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from scripts.lib.source_router import (
+    _get_config,
     get_default_depth,
     get_default_min_sources,
     get_route,
@@ -94,3 +98,63 @@ class TestGetDefaults:
     def test_default_depth_with_override(self):
         cfg = {"goal_type_defaults": {"exploratory": {"depth": "quick"}}}
         assert get_default_depth("exploratory", cfg) == "quick"
+
+
+class TestRouteConfigIntegrity:
+    """Tests against the live config.json to validate route configuration integrity."""
+
+    @staticmethod
+    def _load_real_config() -> dict:
+        config_path = Path(__file__).parent.parent / "config.json"
+        with open(config_path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_all_routes_have_valid_entry_tier(self):
+        """Every route entry_tier must point to an existing source tier key."""
+        config = self._load_real_config()
+        source_tiers = set(config["sources"].keys())
+        routes = config["routes"]
+        for goal_type, route in routes.items():
+            assert str(route["entry_tier"]) in source_tiers, (
+                f"Route '{goal_type}' has entry_tier={route['entry_tier']} "
+                f"which is not a valid source tier (keys: {sorted(source_tiers)})"
+            )
+
+    def test_fact_check_entry_tier_is_academic(self):
+        """fact_check route must start at Academic/Standards tier (1) and include Community tier (4)."""
+        config = self._load_real_config()
+        route = config["routes"]["fact_check"]
+        assert route["entry_tier"] == 1
+        assert 4 in route["path"]
+
+    def test_fact_check_recommends_academic_sources(self):
+        """recommend_sources for fact_check must return Academic tier sources."""
+        config = self._load_real_config()
+        result = recommend_sources("fact_check", config)
+        assert result["entry_tier"] == 1
+        assert 1 in result["recommended_sources"]
+
+    def test_default_depth_fallback_to_config_default(self):
+        """When goal_type not in goal_type_defaults, config.default_depth is used."""
+        cfg = {"goal_type_defaults": {}, "default_depth": "deep"}
+        assert get_default_depth("unknown_type", cfg) == "deep"
+        cfg2 = {"goal_type_defaults": None, "default_depth": "deep"}
+        assert get_default_depth("unknown_type", cfg2) == "deep"
+
+    def test_default_depth_goal_type_overrides_config(self):
+        """Goal_type_defaults.depth takes priority over config.default_depth."""
+        cfg = {
+            "goal_type_defaults": {"exploratory": {"depth": "quick"}},
+            "default_depth": "deep",
+        }
+        assert get_default_depth("exploratory", cfg) == "quick"
+
+    def test_default_depth_hardcoded_fallback(self):
+        """When neither goal_type_defaults nor config.default_depth exist, fall back to 'standard'."""
+        cfg: dict = {}
+        assert get_default_depth("unknown_type", cfg) == "standard"
+
+    def test_get_config_injects_test_config(self):
+        """_get_config returns the injected test config directly."""
+        cfg = {"test": True}
+        assert _get_config(cfg) is cfg

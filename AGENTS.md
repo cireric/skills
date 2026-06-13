@@ -72,6 +72,12 @@ Markdown-only — no CLI, no code. Socratic questioning in 3 layers:
 - `monkeypatch` to override `_SKILL_DIR` in integration tests
 - CLI tests construct `Namespace` args directly (no subprocess)
 
+## Task Planning Workflow
+
+按任务复杂度选择规划方式。详见 `docs/task-planning-workflow.md`。
+
+核心规则：grill-with-docs 不可跳过；每层约束逐级收紧；同文件 issue 串行执行。
+
 ## Common Mistakes
 
 1. **Use venv Python**: always `.venv/bin/python`, never bare `python`
