@@ -85,7 +85,31 @@ After collecting answers, write config.json and confirm: "配置已写入 config
 
 ### 3a: Build analysis.json
 
-Synthesize findings from `<project_root>/.workdir/collected.json` into `<project_root>/.workdir/analysis.json`:
+Synthesize findings from `<project_root>/.workdir/collected.json` into `<project_root>/.workdir/analysis.json`.
+
+**⚠️ Content quality is the #1 priority.** The `content` field is rendered as-is in the final report by reporter.py. If the content is thin, the final report will be thin. Write as if you are writing the final report section.
+
+#### Step 1: Plan sections
+
+Read collected.json and scope.json. Decide the sections (id, title) based on goal_type requirements (see section_coverage check in gateway.py). Write the section plan but do NOT write content yet.
+
+#### Step 2: Write each section's content independently (parallel)
+
+For **each section**, delegate an independent agent call to write the `content` field as **full, engineer-grade Markdown**:
+
+1. **One section per agent call** — never write all sections in a single call. This prevents token-limit compression and ensures each section gets full output capacity.
+2. **Write content FIRST, extract claims AFTER** — within each call, first write the complete Markdown narrative (tables, comparisons, detailed parameters, architecture breakdowns), then extract structured claims from what you wrote.
+3. **Content must include**:
+   - **Structured tables** for any multi-dimensional comparison (framework features, benchmark scores, protocol specs, pricing, etc.). Tables are the primary way engineers extract information — prefer tables over paragraphs for comparisons.
+   - **Specific numbers with context** — not "scores around 70%" but "Claude Opus 4.5: 80.9% on Verified, ~45-48% on Pro, ~33pt gap"
+   - **Architecture details** — not "uses AsyncGenerator" but "AsyncGenerator core loop, ~4,683 lines, 43+ built-in tools, 5-layer permission model (from full-auto to per-action approval), DeepImmutable state management"
+   - **Concrete examples** — not "supports parallel agents" but "git worktrees isolate each agent's working directory, branch, and staging area; `/apply-worktree` rebase/merges changes back"
+4. **Content length guidance**: Each section's content should be 500-2000 words of substantive analysis. If a section has less than 300 words, it is almost certainly too thin — check if tables or details are missing.
+5. **Use sub-headings (###) within content** to organize complex sections. Example: a "Framework Comparison" section should have ### sub-headings per framework.
+
+#### Step 3: Assemble analysis.json
+
+Merge all sections into a single analysis.json:
 
 ```json
 {
@@ -96,7 +120,7 @@ Synthesize findings from `<project_root>/.workdir/collected.json` into `<project
 		{
 			"id": "comparison",
 			"title": "Comparison",
-			"content": "Synthesized analysis...",
+			"content": "Full Markdown narrative with tables, details, and sub-headings...",
 			"claims": [
 				{
 					"text": "Claim statement",
@@ -130,11 +154,23 @@ Every claim MUST have at least one source_url linking to a URL in collected.json
 - Limitations of cross-source comparisons
 - Date range of data collection
 
-**Narrative writing**: Write full Markdown narrative in each section's `content` field. Tables, emphasis, transitions, and structured formatting are all valid. The `content` field is rendered as-is in the final report, so write it as you would want the final report section to read.
+#### Anti-patterns (DO NOT)
+
+- ❌ Writing all sections in a single agent call → token-limit compression makes content thin
+- ❌ Writing claims before content → constraints thinking, produces checklist not narrative
+- ❌ Using paragraphs where a table would be clearer → engineers scan tables, not walls of text
+- ❌ Vague qualifiers without numbers → "significantly higher" is useless; "23% vs 80.9%, ~33pt gap" is useful
+- ❌ Omitting architecture details because "the reader can look it up" → the report IS the lookup
 
 ### 3b: Generate draft
 
 Write a draft report to `<project_root>/.workdir/draft/report.md`.
+
+**In the new flow, the draft is a rendering of analysis.json — not a rewrite.** Since 3a already produces full Markdown content in each section, the draft should:
+
+1. Use analysis.json's `content` fields as the report body (they are already engineer-grade Markdown)
+2. Add inline source references `[N]` to quantitative claims within the narrative, using the reference map from claims.source_urls
+3. Verify all claims from analysis.json are represented in the draft
 
 **Draft 必须保证来源可追溯：**
 
