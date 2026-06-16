@@ -1,3 +1,8 @@
+import json
+import builtins
+
+import pytest
+from scripts.lib.exceptions import ArtifactError
 from scripts.lib.utils import ensure_dir, normalize_url, read_json, write_json
 
 
@@ -35,9 +40,7 @@ class TestReadWriteJson:
         assert read_json(path) == data
 
     def test_read_missing_file(self, tmp_path):
-        import pytest
-
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(ArtifactError):
             read_json(tmp_path / "nope.json")
 
 
@@ -51,3 +54,83 @@ class TestEnsureDir:
     def test_noop_on_existing(self, tmp_path):
         result = ensure_dir(tmp_path)
         assert result == tmp_path
+
+
+class TestReadJsonRetry:
+    def test_retries_on_oserror(self, monkeypatch, tmp_path):
+        path = tmp_path / "test.json"
+        data = {"key": "value"}
+        json.dump(data, path.open("w"))
+
+        attempts = [0]
+        original_open = builtins.open
+
+        def _open(*args, **kwargs):
+            attempts[0] += 1
+            if attempts[0] == 1:
+                raise OSError("Temporary error")
+            return original_open(*args, **kwargs)
+
+        monkeypatch.setattr("builtins.open", _open)
+        assert read_json(path) == data
+        assert attempts[0] == 2
+
+    def test_raises_artifact_error_after_retries(self, monkeypatch, tmp_path):
+        path = tmp_path / "test.json"
+
+        def _open(*args, **kwargs):
+            raise OSError("Persistent error")
+
+        monkeypatch.setattr("builtins.open", _open)
+        with pytest.raises(ArtifactError) as exc_info:
+            read_json(path)
+        assert "Failed after 3 attempts" in str(exc_info.value)
+
+    def test_json_decode_error_not_retried(self, monkeypatch, tmp_path):
+        path = tmp_path / "test.json"
+        path.write_text("{}", encoding="utf-8")
+
+        call_count = [0]
+        original_load = json.load
+
+        def _load(*args, **kwargs):
+            call_count[0] += 1
+            raise json.JSONDecodeError("Bad JSON", "", 0)
+
+        monkeypatch.setattr("json.load", _load)
+        with pytest.raises(ArtifactError) as exc_info:
+            read_json(path)
+        assert "Invalid JSON" in str(exc_info.value)
+        assert call_count[0] == 1
+
+
+class TestWriteJsonRetry:
+    def test_retries_on_oserror(self, monkeypatch, tmp_path):
+        path = tmp_path / "test.json"
+        data = {"key": "value"}
+
+        attempts = [0]
+        original_open = builtins.open
+
+        def _open(*args, **kwargs):
+            attempts[0] += 1
+            if attempts[0] == 1:
+                raise OSError("Temporary error")
+            return original_open(*args, **kwargs)
+
+        monkeypatch.setattr("builtins.open", _open)
+        write_json(data, path)
+        assert attempts[0] == 2
+        assert read_json(path) == data
+
+    def test_raises_artifact_error_after_retries(self, monkeypatch, tmp_path):
+        path = tmp_path / "test.json"
+        data = {"key": "value"}
+
+        def _open(*args, **kwargs):
+            raise OSError("Persistent error")
+
+        monkeypatch.setattr("builtins.open", _open)
+        with pytest.raises(ArtifactError) as exc_info:
+            write_json(data, path)
+        assert "Failed after 3 attempts" in str(exc_info.value)

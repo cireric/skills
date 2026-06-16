@@ -24,9 +24,9 @@
 
 ## Gate 4: `proceed --from review --to final`
 
-- Invokes gateway.py with 10 checks
+- Invokes gateway.py with 14 checks
 - Always runs, even if user skipped subagent review
-- 10 checks: artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata
+- 14 checks: artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata, content_concreteness (verifies claims cite specific data/figures rather than vague generalities), methodology_depth (validates that research methodology and limitations are documented), source_tier_balance (WARN if Tier 1+2 ratio < 30% for quantitative goal types), recommendation_structure (WARN if tech_selection/competitive_comparison recommendation lacks table or "不推荐")
 
 ## Gate 5: `proceed --from final --to cleanup`
 

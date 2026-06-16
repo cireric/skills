@@ -7,7 +7,10 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.cli import cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_source, WORKDIR
+import pytest
+
+from scripts.cli import cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_source, main, WORKDIR
+from scripts.lib.exceptions import InfoCollectorError
 
 
 def _write_json(path, data):
@@ -78,19 +81,19 @@ class TestCmdGateway:
                     {
                         "id": "overview",
                         "title": "O",
-                        "content": "C",
+                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
                         "claims": [{"text": "T", "source_urls": ["https://a.com"]}],
                     },
                     {
                         "id": "comparison",
                         "title": "Cmp",
-                        "content": "C",
+                        "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
                         "claims": [{"text": "T", "source_urls": ["https://a.com"]}],
                     },
                     {
                         "id": "recommendation",
                         "title": "Rec",
-                        "content": "C",
+                        "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
                         "claims": [{"text": "T", "source_urls": ["https://a.com"]}],
                     },
                     {
@@ -252,3 +255,15 @@ class TestProjectRootDetection:
 
         with patch("pathlib.Path.cwd", return_value=tmp_path):
             assert _find_project_root() == tmp_path
+
+
+class TestMain:
+    def test_catches_info_collector_error(self, monkeypatch):
+        def _raise_error(*_args, **_kwargs):
+            raise InfoCollectorError("something went wrong")
+
+        monkeypatch.setattr("scripts.cli.cmd_proceed", _raise_error)
+        monkeypatch.setattr("sys.argv", ["prog", "proceed", "--from", "scope", "--to", "search"])
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1

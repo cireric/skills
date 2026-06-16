@@ -106,6 +106,12 @@ For **each section**, delegate an independent agent call to write the `content` 
    - **Concrete examples** — not "supports parallel agents" but "git worktrees isolate each agent's working directory, branch, and staging area; `/apply-worktree` rebase/merges changes back"
 4. **Content length guidance**: Each section's content should be 500-2000 words of substantive analysis. If a section has less than 300 words, it is almost certainly too thin — check if tables or details are missing.
 5. **Use sub-headings (###) within content** to organize complex sections. Example: a "Framework Comparison" section should have ### sub-headings per framework.
+6. **No top-level headings in content**: Content must not start with `# ` or `## `. All headings must be `### ` or below. The section `title` itself serves as the `## ` level — content is nested under it.
+7. **Concreteness self-check**: Before finalizing each section's content, verify:
+   - Every number has context (not "70% accuracy" but "70% on MNIST, 65% on CIFAR-10 under 5-shot conditions")
+   - Every entity has a specific name (not "a framework" but "LangChain v0.3")
+   - Comparisons use tables, not paragraphs
+   - Each claim has its source URL adjacent (inline or footnote within the content)
 
 #### Step 3: Assemble analysis.json
 
@@ -154,6 +160,53 @@ Every claim MUST have at least one source_url linking to a URL in collected.json
 - Limitations of cross-source comparisons
 - Date range of data collection
 
+#### Step 3.5: Run concreteness check
+
+After assembling analysis.json, run the gateway check to catch content issues before drafting:
+
+`python scripts/cli.py gateway`
+
+- If BLOCKER → fix analysis.json and re-run gateway
+- If clean → proceed to 3b
+
+This catches issues like missing methodology sections, precision violations, and content quality problems early.
+
+#### Recommendation structure (for `tech_selection` / `competitive_comparison`)
+
+For `tech_selection` and `competitive_comparison` goal types, the report must include a structured recommendation section with three components written in the `content` field of analysis.json (no separate schema fields).
+
+**推荐矩阵 (Recommendation Matrix):**
+
+A comparison table that scores each option against key criteria:
+
+| Criteria | Weight | Option A | Option B | Option C |
+|----------|--------|----------|----------|----------|
+| Performance | 30% | ⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ |
+| Cost | 25% | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ |
+| Ecosystem | 25% | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+| Learning Curve | 20% | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ |
+
+Scores must be justified with evidence from the report body. Use emoji scales (⭐/★), numeric (1-5), or descriptive (Strong/Moderate/Weak). Include a weight column when criteria have different importance.
+
+**关键决策因素 (Key Decision Factors):**
+
+A numbered list of the most important factors users should consider when choosing:
+
+1. **Factor name** — Explanation supported by evidence from comparison sections
+2. **Factor name** — Explanation supported by evidence from comparison sections
+
+Each factor must reference specific data rather than general impressions.
+
+**不推荐场景 (Not-Recommended Scenarios):**
+
+Explicitly state when each option should NOT be chosen:
+
+- **Option A** — 不推荐用于 X 场景，因为... (Not recommended for X scenario because...)
+- **Option B** — 不推荐用于 Y 场景，因为...
+- **Option C** — 不推荐用于 Z 场景，因为...
+
+This section must use explicit "不推荐" or "not recommended" language so readers can quickly identify unsuitable options. Place it under a section with `id: "recommendation"` (or as part of `id: "comparison"` if space is tight).
+
 #### Anti-patterns (DO NOT)
 
 - ❌ Writing all sections in a single agent call → token-limit compression makes content thin
@@ -161,6 +214,9 @@ Every claim MUST have at least one source_url linking to a URL in collected.json
 - ❌ Using paragraphs where a table would be clearer → engineers scan tables, not walls of text
 - ❌ Vague qualifiers without numbers → "significantly higher" is useless; "23% vs 80.9%, ~33pt gap" is useful
 - ❌ Omitting architecture details because "the reader can look it up" → the report IS the lookup
+- ❌ Content starting with `## Section Title` — top-level headings create structural conflicts with the report template
+- ❌ Pronouns without antecedents — "它支持并行处理" → what is "它"? Name it explicitly every time
+- ❌ Separating sources from claims — source URLs must be adjacent to their claims, not collected at the end
 
 ### 3b: Generate draft
 
@@ -186,6 +242,19 @@ Write a draft report to `<project_root>/.workdir/draft/report.md`.
 | `academic_research`                                                         | 正式引用格式（如 `[1]` 附录映射）                              |
 | `exploratory`, `market_analysis`, `background_check`, `fact_check`, `other` | 每个声明至少附带来源 URL 或引用编号                            |
 | `panoramic_understanding`                                                   | 每段主要结论至少一个来源链接                                   |
+
+**Tier-aware source citations:**
+
+Different source tiers require different language in body text to accurately reflect their evidentiary weight:
+
+| Source Tier | Citation Language Rule | Example |
+|-------------|----------------------|---------|
+| Tier 1 (official docs, standards body) | Cite as authoritative | "According to OpenAI's official documentation..." |
+| Tier 2 (industry reports, established media) | Cite with source attribution | "A 2025 Gartner report estimates..." |
+| Tier 3 (blogs, tutorials, community posts) | Use qualifier: "according to a blog post", "a community analysis suggests" | "A community benchmark on Reddit suggests..." |
+| Tier 4 (forums, personal pages, unverified) | Use strong qualifier: "an unverified source claims", "according to a forum post" | "An unverified forum post claims..." |
+
+Never present Tier 3 or Tier 4 findings with the same authority as Tier 1 or Tier 2. This rule applies to both the draft and final report — the citations in body text must let readers assess evidentiary weight at a glance.
 
 **Draft positioning**: The draft is a review-readable rendering of analysis.json. Review fixes should target analysis.json (not the draft file). The final report is rendered by reporter.py from the reviewed analysis.json, so all corrections must be reflected in analysis.json to appear in the final output.
 
@@ -215,7 +284,7 @@ Show the review report (or degradation notice) to user and ask:
 - User says **"可以了"** → Run: `python scripts/cli.py proceed --from review --to final`
 
   This runs gateway.py with 10 checks inside:
-  - artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata
+  - artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata, content_concreteness, methodology_depth
   - BLOCKER fails = stop and fix
   - WARN = noted but does not block
 

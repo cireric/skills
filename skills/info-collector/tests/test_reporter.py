@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from scripts.reporter import (
+    _TIER_LABELS,
     _build_reference_map,
     _label,
     _render_references,
@@ -63,6 +64,60 @@ class TestRenderReferences:
     def test_empty_map(self):
         md = _render_references({}, [])
         assert md == ""
+
+
+class TestRenderReferencesWithTier:
+    def test_tier_1_reference(self):
+        ref_map = {"https://a.com/": 1}
+        collected = [{"url": "https://a.com", "title": "Source A", "source_tier": "1"}]
+        md = _render_references(ref_map, collected)
+        assert "[1]: https://a.com/ — Source A (★★★☆ Tier 1)" in md
+
+    def test_tier_2_reference(self):
+        ref_map = {"https://b.com/": 1}
+        collected = [{"url": "https://b.com", "title": "Source B", "source_tier": "2"}]
+        md = _render_references(ref_map, collected)
+        assert "[1]: https://b.com/ — Source B (★★☆☆ Tier 2)" in md
+
+    def test_tier_3_reference(self):
+        ref_map = {"https://c.com/": 1}
+        collected = [{"url": "https://c.com", "title": "Source C", "source_tier": "3"}]
+        md = _render_references(ref_map, collected)
+        assert "[1]: https://c.com/ — Source C (★☆☆☆ Tier 3)" in md
+
+    def test_tier_4_reference(self):
+        ref_map = {"https://d.com/": 1}
+        collected = [{"url": "https://d.com", "title": "Source D", "source_tier": "4"}]
+        md = _render_references(ref_map, collected)
+        assert "[1]: https://d.com/ — Source D (☆☆☆☆ Tier 4)" in md
+
+    def test_no_tier_no_label(self):
+        ref_map = {"https://e.com/": 1}
+        collected = [{"url": "https://e.com", "title": "Source E"}]
+        md = _render_references(ref_map, collected)
+        assert "[1]: https://e.com/ — Source E" in md
+        assert "Tier" not in md
+
+    def test_mixed_tier_references(self):
+        ref_map = {"https://a.com/": 1, "https://b.com/": 2, "https://c.com/": 3}
+        collected = [
+            {"url": "https://a.com", "title": "Source A", "source_tier": "1"},
+            {"url": "https://b.com", "title": "Source B"},
+            {"url": "https://c.com", "title": "Source C", "source_tier": "3"},
+        ]
+        md = _render_references(ref_map, collected)
+        assert "[1]: https://a.com/ — Source A (★★★☆ Tier 1)" in md
+        assert "[2]: https://b.com/ — Source B" in md
+        assert "[3]: https://c.com/ — Source C (★☆☆☆ Tier 3)" in md
+        lines = md.splitlines()
+        ref_lines = [l for l in lines if l.startswith("[")]
+        assert len(ref_lines) == 3
+
+    def test_tier_labels_dict(self):
+        assert _TIER_LABELS["1"] == "★★★☆ Tier 1"
+        assert _TIER_LABELS["2"] == "★★☆☆ Tier 2"
+        assert _TIER_LABELS["3"] == "★☆☆☆ Tier 3"
+        assert _TIER_LABELS["4"] == "☆☆☆☆ Tier 4"
 
 
 class TestBuildFrontMatter:
@@ -321,6 +376,59 @@ class TestSectionsToMarkdown:
         md = sections_to_markdown(analysis)
         assert "Just intro." in md
         assert "Sources:" not in md
+
+    def test_duplicate_title_stripped(self):
+        """Content starting with ## {title} — duplicate heading stripped."""
+        analysis = {
+            "sections": [
+                {
+                    "id": "overview",
+                    "title": "Overview",
+                    "content": "## Overview\nSome content here.",
+                    "claims": [],
+                }
+            ],
+        }
+        md = sections_to_markdown(analysis)
+        assert md.count("## Overview") == 1
+        assert "Some content here." in md
+
+    def test_subheading_preserved(self):
+        """### headings in content are NOT stripped."""
+        analysis = {
+            "sections": [
+                {
+                    "id": "overview",
+                    "title": "Overview",
+                    "content": "### Overview\nSome content here.",
+                    "claims": [],
+                }
+            ],
+        }
+        md = sections_to_markdown(analysis)
+        lines = md.splitlines()
+        h2_lines = [l for l in lines if l.strip().startswith("## ") and not l.strip().startswith("### ")]
+        assert len(h2_lines) == 1
+        assert h2_lines[0] == "## Overview"
+        assert "### Overview" in md
+        assert "Some content here." in md
+
+    def test_non_matching_heading_preserved(self):
+        """## Different Title in content is NOT stripped."""
+        analysis = {
+            "sections": [
+                {
+                    "id": "overview",
+                    "title": "Overview",
+                    "content": "## Different Title\nSome content here.",
+                    "claims": [],
+                }
+            ],
+        }
+        md = sections_to_markdown(analysis)
+        assert md.count("## Overview") == 1
+        assert "## Different Title" in md
+        assert "Some content here." in md
 
 
 class TestGenerateReport:

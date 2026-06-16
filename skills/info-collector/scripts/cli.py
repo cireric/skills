@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
+from .lib.exceptions import InfoCollectorError
 from .lib.utils import _find_project_root
 
 WORKDIR = _find_project_root() / ".workdir"
@@ -159,7 +160,11 @@ def main() -> None:
     p_clean.set_defaults(func=cmd_clean)
 
     args = parser.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except InfoCollectorError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

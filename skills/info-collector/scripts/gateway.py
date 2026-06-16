@@ -7,8 +7,24 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .lib.constants import _CHINESE_STOP_WORDS
+from .lib.exceptions import ArtifactError
 from .lib.utils import normalize_url, read_json
 
+
+_VAGUE_PHRASES_ZH = frozenset({
+    "比较优秀", "性能良好", "值得关注", "较为突出", "比较突出",
+    "相对较好", "较为成熟", "相当不错", "比较强大", "较为完善",
+    "比较稳定", "比较丰富",
+})
+_VAGUE_PHRASES_EN = frozenset({
+    "relatively good", "quite impressive", "worth considering", "fairly well",
+    "somewhat better", "reasonably good", "fairly strong", "quite capable",
+    "generally positive", "relatively mature",
+})
+_VAGUE_DENSITY_THRESHOLD = 0.10
+_CONCRETENESS_STRICT_GOAL_TYPES = frozenset({"tech_selection", "competitive_comparison"})
+_YEAR_PATTERN = re.compile(r'\b(20[0-9]{2})\b')
 
 # Goal types that involve quantitative analysis (benchmarks, data, metrics).
 _QUANTITATIVE_GOAL_TYPES = frozenset({
@@ -26,6 +42,8 @@ _VALID_EVIDENCE_TYPES = frozenset({
 })
 _VALID_CONFIDENCE = frozenset({"high", "medium", "low"})
 _VALID_PRECISION = frozenset({"exact", "range", "qualitative"})
+
+_TIER_BALANCE_THRESHOLD = 0.30
 
 _VALID_METRIC_TYPES = frozenset({
     "swe_bench_verified",
@@ -59,7 +77,7 @@ def check_url_traceability(workdir: Path) -> CheckResult:
     try:
         analysis = read_json(workdir / "analysis.json")
         collected = read_json(workdir / "collected.json")
-    except Exception as e:
+    except ArtifactError as e:
         return CheckResult("url_traceability", "BLOCKER", False, str(e))
     collected_urls = {normalize_url(item["url"]) for item in collected if "url" in item}
     untraceable = []
@@ -94,7 +112,7 @@ _EXPLORATORY_GOAL_TYPES = frozenset({"exploratory", "panoramic_understanding", "
 def check_section_coverage(workdir: Path, goal_type: str) -> CheckResult:
     try:
         analysis = read_json(workdir / "analysis.json")
-    except Exception as e:
+    except ArtifactError as e:
         return CheckResult("section_coverage", "BLOCKER", False, str(e))
     if goal_type in _EXPLORATORY_GOAL_TYPES:
         present = {s["id"] for s in analysis.get("sections", [])}
@@ -145,7 +163,7 @@ def _validate_section_claims(sections: list) -> str | None:
 def check_analysis_schema(workdir: Path) -> CheckResult:
     try:
         analysis = read_json(workdir / "analysis.json")
-    except Exception as e:
+    except ArtifactError as e:
         return CheckResult("analysis_schema", "BLOCKER", False, str(e))
     for key, label in (("topic", "str"), ("goal_type", "str")):
         if key not in analysis or not isinstance(analysis[key], str):
@@ -158,6 +176,13 @@ def check_analysis_schema(workdir: Path) -> CheckResult:
     err = _validate_section_claims(sections)
     if err:
         return CheckResult("analysis_schema", "BLOCKER", False, err)
+    for section in sections:
+        content = section.get("content", "")
+        if content.startswith("## "):
+            return CheckResult(
+                "analysis_schema", "WARN", True,
+                "Section content starts with '## ' (possible duplicate markdown heading)",
+            )
     return CheckResult("analysis_schema", "BLOCKER", True)
 
 
@@ -168,7 +193,7 @@ _SINGLE_SOURCE_RATIO = 0.5
 def check_quality_heuristics(workdir: Path) -> CheckResult:
     try:
         analysis = read_json(workdir / "analysis.json")
-    except Exception:
+    except ArtifactError:
         return CheckResult("quality_heuristics", "WARN", True, "Cannot read analysis.json")
     single_source_claims = 0
     total_claims = 0
@@ -191,7 +216,7 @@ def check_claim_metadata(workdir: Path, goal_type: str) -> CheckResult:
         return CheckResult("claim_metadata", "WARN", True, "Skipped (non-quantitative goal type)")
     try:
         analysis = read_json(workdir / "analysis.json")
-    except Exception:
+    except ArtifactError:
         return CheckResult("claim_metadata", "WARN", True, "Cannot read analysis.json")
     total = 0
     missing = 0
@@ -229,7 +254,7 @@ def check_precision_inflation(workdir: Path) -> CheckResult:
     WARN if evidence_type='third_party_estimate' and claim text contains precise-looking numbers."""
     try:
         analysis = read_json(workdir / "analysis.json")
-    except Exception:
+    except ArtifactError:
         return CheckResult("precision_inflation", "BLOCKER", True, "Cannot read analysis.json")
     blockers = []
     warnings = []
@@ -297,7 +322,7 @@ def check_claim_verified(workdir: Path) -> CheckResult:
         return CheckResult("claim_verified", "BLOCKER", True, "Skipped (review not yet done)")
     try:
         analysis = read_json(workdir / "analysis.json")
-    except Exception as e:
+    except ArtifactError as e:
         return CheckResult("claim_verified", "BLOCKER", False, str(e))
     for section in analysis.get("sections", []):
         sec_id = section.get("id", "?")
@@ -318,7 +343,7 @@ def check_source_metadata(workdir: Path) -> CheckResult:
     """BLOCKER if official_data/independent_benchmark claims lack source_metadata.test_conditions."""
     try:
         analysis = read_json(workdir / "analysis.json")
-    except Exception as e:
+    except ArtifactError as e:
         return CheckResult("source_metadata", "BLOCKER", False, str(e))
     for section in analysis.get("sections", []):
         sec_id = section.get("id", "?")
@@ -343,7 +368,7 @@ def check_source_metadata(workdir: Path) -> CheckResult:
 def check_metric_type_homogeneity(workdir: Path) -> CheckResult:
     try:
         analysis = read_json(workdir / "analysis.json")
-    except Exception:
+    except ArtifactError:
         return CheckResult("metric_type_homogeneity", "BLOCKER", True, "Cannot read analysis.json")
     for section in analysis.get("sections", []):
         sec_id = section.get("id", "?")
@@ -366,6 +391,242 @@ def check_metric_type_homogeneity(workdir: Path) -> CheckResult:
     return CheckResult("metric_type_homogeneity", "BLOCKER", True)
 
 
+def _count_words(text: str) -> int:
+    if not text:
+        return 0
+    count = 0
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if '\u4e00' <= ch <= '\u9fff':
+            j = i + 1
+            while j < len(text) and '\u4e00' <= text[j] <= '\u9fff':
+                j += 1
+            count += 1
+            i = j
+        elif ch.isspace() or ('\u3000' <= ch <= '\u303f') or ('\uff00' <= ch <= '\uffef'):
+            i += 1
+        else:
+            j = i + 1
+            while j < len(text) and not text[j].isspace() and not ('\u4e00' <= text[j] <= '\u9fff') and not ('\u3000' <= text[j] <= '\u303f') and not ('\uff00' <= text[j] <= '\uffef'):
+                j += 1
+            token = text[i:j]
+            if token.strip():
+                count += 1
+            i = j
+    return count
+
+
+_VERSION_PATTERN = re.compile(r'\bv\d+\.\d+', re.IGNORECASE)
+_LIST_ITEM_PATTERN = re.compile(r'^\s*\d+\.', re.MULTILINE)
+_NUMBER_PATTERN = re.compile(r'\b\d+(?:\.\d+)?\b')
+
+
+def _has_valid_number(text: str) -> bool:
+    text = _YEAR_PATTERN.sub("", text)
+    text = _VERSION_PATTERN.sub("", text)
+    text = _LIST_ITEM_PATTERN.sub("", text)
+    return bool(_NUMBER_PATTERN.search(text))
+
+
+def _has_concrete_name(text: str) -> bool:
+    if re.search(r'`[^`]+`', text):
+        return True
+    sentences = re.split(r'[.!?。！？]+', text)
+    for sentence in sentences:
+        stripped = sentence.strip()
+        if not stripped:
+            continue
+        words = stripped.split()
+        for i, word in enumerate(words):
+            clean = word.strip(",.;:;!?()[]{{}}'\"")
+            if i == 0:
+                if len(clean) >= 2 and clean[0].isupper() and clean[1:].islower():
+                    return True
+                continue
+            if len(clean) >= 2 and clean[0].isupper():
+                return True
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if '\u4e00' <= ch <= '\u9fff':
+            j = i + 1
+            while j < len(text) and '\u4e00' <= text[j] <= '\u9fff':
+                j += 1
+            segment = text[i:j]
+            if len(segment) >= 2 and segment not in _CHINESE_STOP_WORDS and segment not in _VAGUE_PHRASES_ZH:
+                return True
+            i = j
+        else:
+            i += 1
+    return False
+
+
+def check_content_concreteness(workdir: Path, goal_type: str) -> CheckResult:
+    if goal_type not in _QUANTITATIVE_GOAL_TYPES:
+        return CheckResult("content_concreteness", "WARN", True, "Skipped (non-quantitative goal type)")
+    try:
+        analysis = read_json(workdir / "analysis.json")
+    except ArtifactError:
+        return CheckResult("content_concreteness", "WARN", True, "Cannot read analysis.json")
+    vague_issues = []
+    number_issues = []
+    name_issues = []
+    for section in analysis.get("sections", []):
+        sec_id = section.get("id", "?")
+        content = section.get("content", "")
+        claims = section.get("claims", [])
+        has_claims = bool(claims)
+        total_words = _count_words(content)
+        vague_count = 0
+        lower_content = content.lower()
+        for phrase in _VAGUE_PHRASES_ZH:
+            vague_count += lower_content.count(phrase.lower())
+        for phrase in _VAGUE_PHRASES_EN:
+            vague_count += lower_content.count(phrase.lower())
+        if total_words > 0 and vague_count / total_words > _VAGUE_DENSITY_THRESHOLD:
+            vague_issues.append(f"Section '{sec_id}': vague phrase density {vague_count / total_words:.0%} exceeds threshold")
+        if has_claims:
+            if not _has_valid_number(content):
+                if goal_type in _CONCRETENESS_STRICT_GOAL_TYPES:
+                    number_issues.append(f"Section '{sec_id}': no valid numbers found")
+                else:
+                    number_issues.append(f"Section '{sec_id}': no valid numbers found (advisory)")
+            if not _has_concrete_name(content):
+                if goal_type in _CONCRETENESS_STRICT_GOAL_TYPES:
+                    name_issues.append(f"Section '{sec_id}': no concrete names found")
+                else:
+                    name_issues.append(f"Section '{sec_id}': no concrete names found (advisory)")
+    blockers = []
+    warnings = []
+    if vague_issues:
+        warnings.extend(vague_issues)
+    if goal_type in _CONCRETENESS_STRICT_GOAL_TYPES:
+        if number_issues:
+            blockers.extend(number_issues)
+        if name_issues:
+            blockers.extend(name_issues)
+    else:
+        if number_issues:
+            warnings.extend(number_issues)
+        if name_issues:
+            warnings.extend(name_issues)
+    if blockers:
+        return CheckResult("content_concreteness", "BLOCKER", False, "; ".join(blockers + warnings))
+    if warnings:
+        return CheckResult("content_concreteness", "WARN", False, "; ".join(warnings))
+    return CheckResult("content_concreteness", "BLOCKER", True)
+
+
+_METHODOLOGY_MIN_WORDS = 150
+
+
+def check_methodology_depth(workdir: Path, goal_type: str) -> CheckResult:
+    """WARN if methodology section is too short or lacks a Markdown table."""
+    if goal_type not in _QUANTITATIVE_GOAL_TYPES:
+        return CheckResult("methodology_depth", "WARN", True, "Skipped (non-quantitative goal type)")
+    try:
+        analysis = read_json(workdir / "analysis.json")
+    except ArtifactError:
+        return CheckResult("methodology_depth", "WARN", True, "Cannot read analysis.json")
+    methodology = None
+    for section in analysis.get("sections", []):
+        if section.get("id") == "methodology":
+            methodology = section
+            break
+    if methodology is None:
+        return CheckResult("methodology_depth", "WARN", True, "Skipped (no methodology section)")
+    content = methodology.get("content", "")
+    issues = []
+    word_count = _count_words(content)
+    if word_count < _METHODOLOGY_MIN_WORDS:
+        issues.append(f"Methodology section has only {word_count} words (min {_METHODOLOGY_MIN_WORDS})")
+    if "|" not in content:
+        issues.append("Methodology section has no Markdown table")
+    if issues:
+        return CheckResult("methodology_depth", "WARN", False, "; ".join(issues))
+    return CheckResult("methodology_depth", "WARN", True)
+
+
+def check_recommendation_structure(workdir: Path, goal_type: str) -> CheckResult:
+    """WARN if recommendation section lacks comparison table or '不推荐'/'not recommended'."""
+    if goal_type not in ("tech_selection", "competitive_comparison"):
+        return CheckResult(
+            "recommendation_structure", "WARN", True, "Skipped (non-applicable goal type)"
+        )
+    try:
+        analysis = read_json(workdir / "analysis.json")
+    except ArtifactError:
+        return CheckResult("recommendation_structure", "WARN", True, "Cannot read analysis.json")
+    recommendation = None
+    for section in analysis.get("sections", []):
+        if section.get("id") == "recommendation":
+            recommendation = section
+            break
+    if recommendation is None:
+        return CheckResult(
+            "recommendation_structure", "WARN", True, "Skipped (no recommendation section)"
+        )
+    content = recommendation.get("content", "")
+    issues = []
+    if "|" not in content:
+        issues.append("recommendation section lacks comparison table")
+    if "不推荐" not in content and "not recommended" not in content:
+        issues.append(
+            "recommendation section lacks '不推荐'/'not recommended' "
+            "for tech_selection/competitive_comparison"
+        )
+    if issues:
+        return CheckResult("recommendation_structure", "WARN", False, "; ".join(issues))
+    return CheckResult("recommendation_structure", "WARN", True)
+
+
+def check_source_tier_balance(workdir: Path, goal_type: str) -> CheckResult:
+    """WARN if referenced sources have <30% Tier 1+2 sources."""
+    if goal_type not in _QUANTITATIVE_GOAL_TYPES:
+        return CheckResult("source_tier_balance", "WARN", True, "Skipped (non-quantitative goal type)")
+    try:
+        analysis = read_json(workdir / "analysis.json")
+        collected = read_json(workdir / "collected.json")
+    except Exception as e:
+        return CheckResult("source_tier_balance", "WARN", True, str(e))
+    if not collected:
+        return CheckResult("source_tier_balance", "WARN", True, "Skipped (no collected items)")
+    collected_by_url = {}
+    for item in collected:
+        if "url" in item:
+            collected_by_url[normalize_url(item["url"])] = item
+    referenced_urls = set()
+    for section in analysis.get("sections", []):
+        for claim in section.get("claims", []):
+            for url in claim.get("source_urls", []):
+                referenced_urls.add(normalize_url(url))
+    if not referenced_urls:
+        return CheckResult("source_tier_balance", "WARN", True, "Skipped (no referenced URLs)")
+    tier1_2_count = 0
+    total_with_tier = 0
+    for norm_url in referenced_urls:
+        item = collected_by_url.get(norm_url)
+        if item is None:
+            continue
+        tier = item.get("source_tier")
+        if tier is not None:
+            total_with_tier += 1
+            if tier in (1, 2):
+                tier1_2_count += 1
+    if total_with_tier == 0:
+        return CheckResult("source_tier_balance", "WARN", True, "Skipped (no sources with tier)")
+    ratio = tier1_2_count / total_with_tier
+    if ratio < _TIER_BALANCE_THRESHOLD:
+        return CheckResult(
+            "source_tier_balance",
+            "WARN",
+            False,
+            f"Low Tier 1+2 source ratio: {tier1_2_count}/{total_with_tier} ({ratio:.0%}) < {_TIER_BALANCE_THRESHOLD:.0%}",
+        )
+    return CheckResult("source_tier_balance", "WARN", True)
+
+
 def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
     return [
         check_artifact_exists(workdir),
@@ -378,4 +639,8 @@ def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
         check_claim_metadata(workdir, goal_type),
         check_claim_verified(workdir),
         check_source_metadata(workdir),
+        check_content_concreteness(workdir, goal_type),
+        check_methodology_depth(workdir, goal_type),
+        check_recommendation_structure(workdir, goal_type),
+        check_source_tier_balance(workdir, goal_type),
     ]

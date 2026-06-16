@@ -14,26 +14,14 @@ from .cli import _find_project_root
 from .gateway import CheckResult
 from .gateway import run_all as run_gateway
 from .lib.source_router import get_default_min_sources, get_route, recommend_sources
+from .lib.exceptions import ArtifactError
 from .lib.utils import ensure_dir, read_json, write_json
 
 
 jieba.setLogLevel(jieba.logging.INFO)
 
 
-_ENGLISH_STOP_WORDS = frozenset({
-    "a", "the", "is", "are", "of", "in", "on", "to", "for", "with", "and",
-    "or", "but", "that", "this", "it", "from", "by", "at", "be", "was", "has",
-    "had", "can", "will", "may", "not", "no", "do", "did", "what", "how",
-    "which", "who", "when", "where", "why",
-})
-
-_CHINESE_STOP_WORDS = frozenset({
-    "的", "了", "在", "是", "和", "与", "或", "等", "中", "上", "下", "对",
-    "被", "从", "到", "为", "以", "及", "其", "之", "而", "把", "让", "给",
-    "向", "于", "就", "也", "都", "还", "要", "能", "会", "可", "应", "该",
-    "已", "曾", "将", "正", "着", "过", "来", "去", "出", "起", "回", "开",
-    "关", "比", "更", "最", "很", "多", "少", "大", "小", "长", "群",
-})
+from .lib.constants import _CHINESE_STOP_WORDS, _ENGLISH_STOP_WORDS
 
 _STOP_WORDS = _ENGLISH_STOP_WORDS | _CHINESE_STOP_WORDS
 
@@ -98,7 +86,7 @@ def _check_scope_schema(workdir: Path) -> list[str]:
     errors = []
     try:
         scope = read_json(workdir / "scope.json")
-    except Exception as e:
+    except ArtifactError as e:
         return [f"Cannot read scope.json: {e}"]
     required = ["topic", "goal_type", "depth", "audience", "scope_description", "search_directions"]
     for field in required:
@@ -136,7 +124,7 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
     warnings: list[str] = []
     try:
         collected = read_json(workdir / "collected.json")
-    except Exception as e:
+    except ArtifactError as e:
         return [f"Cannot read collected.json: {e}"], []
     if not collected or len(collected) < 1:
         blockers.append("collected.json must have at least 1 entry")
@@ -228,7 +216,7 @@ def _get_goal_type(workdir: Path) -> str:
     try:
         scope = read_json(workdir / "scope.json")
         return cast(str, scope.get("goal_type", "other"))
-    except Exception:
+    except ArtifactError:
         return "other"
 
 

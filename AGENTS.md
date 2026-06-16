@@ -1,88 +1,55 @@
-# Agent Quick Reference
+# Agent Rules
 
-## Environment
+项目级规则。全局规则见 `~/.config/opencode/AGENTS.md`，项目级规则不可削弱全局规则。
+目录结构、CLI 命令、运行方式等说明见 `README.md`。
 
-- **Python 3.14** on macOS (darwin)
-- **Virtualenv required**: `.venv/bin/python` for all Python commands; `pytest` installed in venv only
-- **No package manager**: stdlib only, no pip dependencies beyond `pytest`
+## 必做
 
-## Project Structure
+| 规则 | 说明 |
+|------|------|
+| 使用 venv Python | 所有 Python 命令用 `.venv/bin/python`，禁止 bare `python` |
+| 不提交工作文件 | `scope.json`, `collected.json`, `analysis.json`, `docs/research/` 是临时产物，已 gitignore |
+| 不改 config.json | 预配置文件，运行期间修改会破坏可复现性 |
 
-```
-skills/
-├── tech-research/          # Python CLI skill — structured technical research reports
-│   ├── research.py         # CLI entrypoint (subcommands below)
-│   ├── scripts/            # Internal modules (config, models, scope_validator, reporter)
-│   ├── config.json         # Pre-configured: output_dir=docs/research, lang=zh
-│   ├── SCOPE.md            # Scope interview reference
-│   ├── RESEARCH.md         # Research phase reference
-│   ├── SKILL.md            # Skill definition & workflow
-│   └── tests/              # pytest suite
-└── reading-grill/          # Markdown-only skill — Socratic comprehension quiz
-    ├── SKILL.md            # Skill definition (no code, no CLI)
-    └── tests/              # pytest suite
-```
+## 约定
 
-- **Two independent skills**: no shared code between them
-- **Workfiles are ephemeral**: `scope.json`, `collected.json`, `analysis.json` — generated and cleaned by CLI
+- `conftest.py` 将 skill 目录加入 `sys.path` 以支持 import
+- 用 `tmp_path` fixture 做文件隔离，不污染工作目录
+- 用 `monkeypatch` 覆盖 `_SKILL_DIR`（集成测试）
+- CLI 测试直接构造 `Namespace` args，不启动子进程
 
-## Running Tests
-
-```bash
-# All tests (165 total)
-.venv/bin/python -m pytest skills/ -v
-
-# Single skill
-.venv/bin/python -m pytest skills/tech-research/tests/ -v
-.venv/bin/python -m pytest skills/reading-grill/tests/ -v
-```
-
-## Tech-Research CLI
-
-**Run from**: `skills/tech-research/` directory
-
-| Command                                   | Purpose                                                               |
-| ----------------------------------------- | --------------------------------------------------------------------- |
-| `generate <analysis.json>`                | Generate Markdown report (`--draft`, `--output-dir`, `--no-validate`) |
-| `validate-scope <scope.json>`             | Validate scope.json schema                                            |
-| `collect <sources.json>`                  | Merge sources into collected.json                                     |
-| `filter`                                  | URL-deduplicate sources in collected.json                             |
-| `init-config [--output-dir D] [--lang L]` | Create config.json                                                    |
-| `show-config`                             | Display current config                                                |
-| `clean`                                   | Remove scope/collected/analysis.json                                  |
-
-**Workflow** (3-phase pipeline):
-
-1. **Scope** → `scope.json` (goal_type, audience, time_constraint)
-2. **Research** → `collected.json` → `filter` for dedup → `analysis.json` (claims, cross-validation, synthesis)
-3. **Report** → `generate` → Markdown report in `docs/research/`
-
-## Reading-Grill Skill
-
-Markdown-only — no CLI, no code. Socratic questioning in 3 layers:
-
-- **L1 Recall** → **L2 Understanding** → **L3 Critical reflection**
-- One question per turn, never correct directly
-- Stop on "停" or 3 consecutive L3 passes
-
-## Testing Conventions
-
-- `conftest.py` adds skill dir to `sys.path` for imports
-- `tmp_path` fixture for file isolation
-- `monkeypatch` to override `_SKILL_DIR` in integration tests
-- CLI tests construct `Namespace` args directly (no subprocess)
-
-## Task Planning Workflow
+## 任务规划
 
 按任务复杂度选择规划方式。详见 `docs/task-planning-workflow.md`。
 
-核心规则：grill-with-docs 不可跳过；每层约束逐级收紧；同文件 issue 串行执行。
+核心规则：
+1. grill-with-docs 不可跳过 — 术语不对齐 = 后续 skill 各说各话
+2. 每层约束逐级收紧 — PRD 约束 issues，issue 的 acceptance criteria 约束执行
+3. 同文件 issue 串行执行 — 并行写同一文件会丢失改动
 
-## Common Mistakes
+## 知识层级
 
-1. **Use venv Python**: always `.venv/bin/python`, never bare `python`
-2. **Don't commit workfiles**: `scope.json`, `collected.json`, `analysis.json`, `docs/research/` are gitignored
-3. **Don't modify config.json during research**: pre-configured; changes break reproducibility
-4. **Path handling**: use `Path`, resolve early; `output_dir` resolved against project root (where `.git` is)
-5. **URL normalization**: `_normalize_url()` lowercases, strips www, sorts query params — affects dedup
-6. **Run CLI from skill dir**: `cd skills/tech-research` before running `research.py`
+| 位置 | 定位 | 生命周期 |
+|------|------|----------|
+| `AGENTS.md` | 行为规则（必做/禁做/约定） | 持久 |
+| `docs/adr/` | 不可逆架构决策快照 | 持久，可 supersede |
+| `.omo/notepads/` | 临时踩坑记录 | 临时 — 被吸收后删除 |
+
+notepads 清理规则：
+- 踩坑经验已写入 AGENTS.md 规则 → 删除 notepads 条目
+- 踩坑已触发架构决策入 ADR → 删除 notepads 条目
+- 尚未被任何规则/ADR 吸收 → 保留
+- 流程缺陷尚未解决 → 保留
+
+`.omo/` 归档规则：
+
+项目任务完成后，`.omo/` 下仅保留 `notepads/`（未吸收的踩坑经验），其余目录删除。
+
+| 目录 | 归档操作 |
+|------|----------|
+| `notepads/` | 保留（清理已吸收的条目后） |
+| `boulder.json` | 删除（运行时进度，任务完成即失效） |
+| `drafts/` | 删除（中间产物暂存） |
+| `evidence/` | 删除（QA 证据，测试通过即失效） |
+| `plans/` | 删除（计划已完成，决策在 ADR） |
+| `run-continuation/` | 删除（会话续接状态，会话结束即失效） |

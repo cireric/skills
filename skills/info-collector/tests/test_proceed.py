@@ -3,7 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.proceed import detect_current_phase, get_gateway_results, proceeds
+from scripts.lib.exceptions import ArtifactError
+from scripts.proceed import (
+    _check_scope_schema,
+    _check_search_gate,
+    detect_current_phase,
+    get_gateway_results,
+    proceeds,
+)
 
 
 def _write_json(path, data):
@@ -203,19 +210,19 @@ class TestProceeds:
                     {
                         "id": "overview",
                         "title": "O",
-                        "content": "C",
+                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
                         "claims": [{"text": "C1", "source_urls": ["https://a.com"], "verified": True}],
                     },
                     {
                         "id": "comparison",
                         "title": "Cmp",
-                        "content": "C",
+                        "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
                         "claims": [{"text": "C2", "source_urls": ["https://a.com"], "verified": True}],
                     },
                     {
                         "id": "recommendation",
                         "title": "Rec",
-                        "content": "C",
+                        "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
                         "claims": [{"text": "C3", "source_urls": ["https://a.com"], "verified": True}],
                     },
                     {
@@ -430,3 +437,28 @@ class TestTierCoverage:
         from scripts.proceed import _check_search_gate
         blockers, warnings = _check_search_gate(tmp_path)
         assert any("tier_coverage" in w for w in warnings)
+
+
+class TestProceedArtifactErrorHandling:
+    """ArtifactError from read_json is caught gracefully by narrowed handlers."""
+
+    def test_check_scope_schema_handles_artifact_error(self, tmp_path, monkeypatch):
+        """_check_scope_schema catches ArtifactError, returns error message."""
+        def _raise_read_json(*args, **kwargs):
+            raise ArtifactError(str(tmp_path / "scope.json"), "file not found")
+
+        monkeypatch.setattr("scripts.proceed.read_json", _raise_read_json)
+        errors = _check_scope_schema(tmp_path)
+        assert len(errors) == 1
+        assert "Cannot read scope.json" in errors[0]
+
+    def test_check_search_gate_handles_artifact_error(self, tmp_path, monkeypatch):
+        """_check_search_gate catches ArtifactError, returns blocker tuple."""
+        def _raise_read_json(*args, **kwargs):
+            raise ArtifactError(str(tmp_path / "collected.json"), "file not found")
+
+        monkeypatch.setattr("scripts.proceed.read_json", _raise_read_json)
+        blockers, warnings = _check_search_gate(tmp_path)
+        assert len(blockers) == 1
+        assert "Cannot read collected.json" in blockers[0]
+        assert len(warnings) == 0

@@ -5,6 +5,13 @@ from pathlib import Path
 
 from .lib.utils import normalize_url, read_json
 
+_TIER_LABELS: dict[str, str] = {
+    "1": "★★★☆ Tier 1",
+    "2": "★★☆☆ Tier 2",
+    "3": "★☆☆☆ Tier 3",
+    "4": "☆☆☆☆ Tier 4",
+}
+
 _LABELS: dict[tuple[str, str], str] = {
     ("sources", "en"): "Sources",
     ("sources", "zh"): "数据来源",
@@ -55,7 +62,13 @@ def _render_references(reference_map: dict[str, int], collected: list[dict], lan
     for norm_url, num in sorted_refs:
         item = collected_by_url.get(norm_url)
         title = item.get("title", norm_url) if item else norm_url
-        parts.append(f"[{num}]: {norm_url} — {title}")
+        line = f"[{num}]: {norm_url} — {title}"
+        if item is not None:
+            tier = item.get("source_tier")
+            tier_key = str(tier) if tier is not None else None
+            if tier_key and tier_key in _TIER_LABELS:
+                line += f" ({_TIER_LABELS[tier_key]})"
+        parts.append(line)
     return "\n".join(parts)
 
 
@@ -135,8 +148,13 @@ def sections_to_markdown(analysis: dict, collected: list[dict] | None = None, la
     collected = collected or []
     ref_map = _build_reference_map(analysis, collected)
     for sec in analysis.get("sections", []):
-        parts.append(f"\n## {sec.get('title', sec.get('id', ''))}\n")
-        parts.append(sec.get("content", ""))
+        title = sec.get("title", sec.get("id", ""))
+        parts.append(f"\n## {title}\n")
+        content = sec.get("content", "")
+        heading = f"## {title}"
+        if content.startswith(heading):
+            content = content[len(heading) :].lstrip("\n")
+        parts.append(content)
         claims = sec.get("claims", [])
         if claims:
             parts.append(f"\n**{_label('sources', lang)}:**\n")
