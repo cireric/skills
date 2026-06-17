@@ -47,12 +47,11 @@ nuxt/
 # OpenCode
 .opencode/
 
-# tech-research workfiles (generated, cleaned by research.py clean)
-scope.json
-collected.json
-analysis.json
+# omo
+.omo/run-continuation/
+
 docs/research/
 reports/
 .workdir/
 
-.omo/run-continuation/
+

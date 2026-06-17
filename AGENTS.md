@@ -7,7 +7,7 @@
 
 | 规则 | 说明 |
 |------|------|
-| 使用 venv Python | 所有 Python 命令用 venv Python：Linux/Mac `.venv/bin/python`，Windows `.venv\Scripts\python.exe`。禁止 bare `python` |
+| 使用 venv Python | 所有 Python 命令用 venv Python：Linux/Mac `.venv/bin/python`，Windows `.venv\Scripts\python.exe`。禁止 bare `python`。**必须配合 `workdir=项目根目录` 使用**，确保相对路径 `.venv/` 可解析 |
 | 不提交工作文件 | `scope.json`, `collected.json`, `analysis.json`, `docs/research/` 是临时产物，已 gitignore |
 | 不改 config.json | 预配置文件，运行期间修改会破坏可复现性 |
 | 依赖先查后装 | 执行 skill 脚本前，先 `pip list` 或 `import` 检查第三方库是否已安装；缺失时用 venv pip 安装 |

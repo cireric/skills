@@ -26,7 +26,7 @@ The research pipeline has ordered phases. Each phase transition triggers a **gat
 Quality checks at phase transitions. Each gate returns BLOCKER (must fix) or WARN (noted but not blocking).
 
 - **scope→search**: validates scope.json schema (required fields + enum values)
-- **search→analysis**: topic_coverage (BLOCKER, token-level matching) + tier_coverage (WARN) + per_direction_min_sources (WARN, driven by depth) + min_sources (WARN)
+- **search→analysis**: topic_coverage (BLOCKER, token matching + covered_directions override) + tier_coverage (WARN) + per_direction_min_sources (WARN, driven by depth, uses covered_directions when available) + min_sources (WARN)
 - **analysis→review**: analysis.json schema + url_traceability (BLOCKER)
 - **review→final**: 15 gateway checks (artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata, content_concreteness, methodology_depth, recommendation_structure, source_tier_balance, claim_dedup)
 - **final→cleanup**: no structural checks
@@ -110,7 +110,11 @@ First-run configuration wizard. AI-conversational (no new Python code). Triggers
 
 ### topic_coverage
 
-The search→analysis gate check that verifies collected sources cover all search_directions. Uses jieba tokenization: each direction is split into tokens, and a direction is considered "covered" when all its tokens appear in collected.json entries' title + snippet. This allows natural language directions in any language (Chinese, English, mixed) without requiring specific keyword formatting.
+The search→analysis gate check that verifies collected sources cover all search_directions. Uses inline CJK segmentation: each direction is split into tokens (English by whitespace/punctuation, Chinese by continuous character segments U+4E00–U+9FFF), filtered by stop-word sets. A direction is considered "covered" when a threshold of its tokens appear in collected.json entries' title + snippet, OR when the entry's `covered_directions` field explicitly lists that direction. CJK-heavy directions downgrade from BLOCKER to WARN due to segmentation imprecision (no external word segmentation library).
+
+### covered_directions
+
+An optional field in collected.json entries where the agent declares which search_directions this source covers. Values must be a subset of scope.json's search_directions, max 3 per entry. Used by topic_coverage and per_direction_min_sources checks as a supplement to token matching — when present, overrides token-based direction assignment for that entry.
 
 ### project root
 
@@ -127,7 +131,7 @@ search→analysis gate check (WARN level) that verifies collected.json contains 
 ### Artifacts
 
 - **scope.json** — Phase 1 output: topic, goal_type, depth, audience, report_language, scope_description, search_directions
-- **collected.json** — Phase 2 output: array of {url, title, snippet, source_tier, fetched_content}
+- **collected.json** — Phase 2 output: array of {url, title, snippet, source_tier, fetched_content, covered_directions?}
 - **analysis.json** — Phase 3a output: topic, goal_type, audience, sections (each with id, title, content, claims)
 - **review_report.md** — Phase 3b output: subagent review findings
 - **config.json** — Skill configuration: sources (4 tiers), routes (10 goal_types), output_dir, default_report_language, default_report_language, default_depth, goal_type_defaults

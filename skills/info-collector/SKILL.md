@@ -75,9 +75,15 @@ After collecting answers, write `skills/info-collector/config.json` and confirm:
    	"title": "...",
    	"snippet": "...",
    	"source_tier": 2,
-   	"fetched_content": "..."
+   	"fetched_content": "...",
+   	"covered_directions": ["direction 1", "direction 2"]
    }
    ```
+
+   **`covered_directions`** (optional, ADR 0017): A list of search_directions from scope.json that this source covers. Use this when the source's title/snippet doesn't contain enough matching tokens for the gate to recognize coverage (e.g., a source titled "Securing CI/CD in an agentic world" covers the direction "agentic coding security risks" but token overlap may be below threshold). Constraints:
+   - Values must be a subset of `scope.json`'s `search_directions`
+   - Maximum 3 directions per entry (prevent lazy "covers everything" declarations)
+   - Invalid values are ignored with a WARN
 
 4. **Run gate**: `python scripts/cli.py proceed --from search --to analysis`
     - Checks topic_coverage (BLOCKER), tier_coverage (WARN), per_direction_min_sources (WARN), and min_sources (WARN).
@@ -116,6 +122,31 @@ For **each section**, delegate an independent agent call to write the `content` 
    ## Output path
    Write your section JSON to: <project_root>/.workdir/analysis_section_<id>.json
    Do NOT write to the project root.
+   ```
+5. **Include JSON schema in every subagent prompt** — embed the exact expected structure to minimize schema violations:
+
+   ```
+   ## Required JSON structure
+   Write a single JSON object with these EXACT fields (no others):
+   {
+     "id": "<section_id>",
+     "title": "<section title>",
+     "content": "<full Markdown content, must NOT start with ## >",
+     "claims": [
+       {
+         "text": "<claim statement>",
+         "source_urls": ["<url from allowed list>"],
+         "evidence_type": "official_data|independent_benchmark|third_party_estimate|qualitative_trend|expert_opinion",
+         "confidence": "high|medium|low",
+         "precision": "exact|range|qualitative",
+         "source_metadata": { "test_conditions": "...", "test_date": "...", "source_type": "..." }
+       }
+     ]
+   }
+   - Use "id" NOT "section_id"
+   - Use "source_urls" NOT "sources"
+   - "claims" is REQUIRED, use [] if no claims
+   - Do NOT add fields like "word_count", "language", etc.
    ```
 3. **Content must include**:
    - **Structured tables** for any multi-dimensional comparison (framework features, benchmark scores, protocol specs, pricing, etc.). Tables are the primary way engineers extract information — prefer tables over paragraphs for comparisons.
@@ -281,6 +312,7 @@ If user says **yes**:
 4. Subagent writes `<project_root>/.workdir/review_report.md` — **include the explicit `.workdir/` output path in the subagent prompt** to prevent writing to project root
 5. Fix any issues found in analysis.json
 6. **After fixing analysis.json, you MUST re-run the gate**: `python scripts/cli.py proceed --from analysis --to review` — this re-runs the validation checks on the updated analysis.json. Do NOT skip this step; fixes to analysis.json can introduce new violations (e.g., broken url_traceability, schema errors) that must be caught before proceeding.
+   - **If the gate refuses** because phase has already advanced to `post_review` (review_report.md exists), reset the phase first: `python scripts/cli.py reset --phase review` — this removes review_report.md and allows re-running the analysis→review gate.
 
 If user says **no** → quality will be set to `unreviewed` at finalization.
 

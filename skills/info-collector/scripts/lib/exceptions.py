@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 
 class InfoCollectorError(Exception):
     """Base exception for info-collector."""
@@ -23,3 +25,11 @@ class ArtifactError(InfoCollectorError):
         self.path = path
         self.reason = reason
         super().__init__(f"Artifact error at {path}: {reason}")
+
+
+@dataclass
+class ValidationError:
+    """Schema validation error — pure data carrier, not an Exception."""
+
+    field: str
+    message: str

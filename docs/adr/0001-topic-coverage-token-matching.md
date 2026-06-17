@@ -1,7 +1,8 @@
 # ADR 0001: topic_coverage gate 使用分词匹配
 
-- **Status**: Accepted
+- **Status**: Superseded
 - **Date**: 2026-06-13
+- **Superseded-by**: 0012
 - **Context**: info-collector skill
 
 ## Context
