@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts.cli import cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_source, main, WORKDIR
+from scripts.cli import _detect_quality, cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_reset, cmd_source, main, WORKDIR
 from scripts.lib.exceptions import InfoCollectorError
 
 
@@ -21,6 +21,51 @@ def _write_json(path, data):
 
 def _make_namespace(**kwargs):
     return argparse.Namespace(**kwargs)
+
+
+class TestDetectQuality:
+    def test_verdict_pass(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        (workdir / "review_report.md").write_text(
+            "## Overall Verdict\n**pass**\n", encoding="utf-8"
+        )
+        with patch("scripts.cli.WORKDIR", workdir):
+            assert _detect_quality() == "passed"
+
+    def test_verdict_pass_with_issues(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        (workdir / "review_report.md").write_text(
+            "## Overall Verdict\n**pass_with_issues**\n", encoding="utf-8"
+        )
+        with patch("scripts.cli.WORKDIR", workdir):
+            assert _detect_quality() == "degraded"
+
+    def test_verdict_fail_exits(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        (workdir / "review_report.md").write_text(
+            "## Overall Verdict\n**fail**\n", encoding="utf-8"
+        )
+        with patch("scripts.cli.WORKDIR", workdir), pytest.raises(SystemExit) as exc:
+            _detect_quality()
+        assert exc.value.code == 1
+
+    def test_verdict_unparseable_fallback(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        (workdir / "review_report.md").write_text(
+            "## Overall Verdict\n**unknown_verdict**\n", encoding="utf-8"
+        )
+        with patch("scripts.cli.WORKDIR", workdir):
+            assert _detect_quality() == "degraded"
+
+    def test_no_review_report(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        with patch("scripts.cli.WORKDIR", workdir):
+            assert _detect_quality() == "unreviewed"
 
 
 class TestCmdProceed:
@@ -323,6 +368,50 @@ class TestProjectRootDetection:
 
         with patch("pathlib.Path.cwd", return_value=tmp_path):
             assert _find_project_root() == tmp_path
+
+
+class TestCmdReset:
+    def test_reset_scope_removes_all(self, tmp_path, monkeypatch):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        _write_json(workdir / "scope.json", {"topic": "test"})
+        _write_json(workdir / "collected.json", [{"url": "https://a.com"}])
+        _write_json(workdir / "analysis.json", {"topic": "test", "sections": []})
+        (workdir / "review_report.md").write_text("review")
+        monkeypatch.setattr("scripts.cli.WORKDIR", workdir)
+        cmd_reset(_make_namespace(phase="scope"))
+        assert not (workdir / "scope.json").exists()
+        assert not (workdir / "collected.json").exists()
+        assert not (workdir / "analysis.json").exists()
+        assert not (workdir / "review_report.md").exists()
+
+    def test_reset_analysis_preserves_scope_and_collected(self, tmp_path, monkeypatch):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        _write_json(workdir / "scope.json", {"topic": "test"})
+        _write_json(workdir / "collected.json", [{"url": "https://a.com"}])
+        _write_json(workdir / "analysis.json", {"topic": "test", "sections": []})
+        monkeypatch.setattr("scripts.cli.WORKDIR", workdir)
+        cmd_reset(_make_namespace(phase="analysis"))
+        assert (workdir / "scope.json").exists()
+        assert (workdir / "collected.json").exists()
+        assert not (workdir / "analysis.json").exists()
+
+    def test_reset_invalid_phase_exits(self, tmp_path, monkeypatch):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        monkeypatch.setattr("scripts.cli.WORKDIR", workdir)
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_reset(_make_namespace(phase="invalid"))
+        assert exc_info.value.code == 1
+
+    def test_main_parses_reset(self, monkeypatch):
+        called = []
+        monkeypatch.setattr("scripts.cli.cmd_reset", lambda args: called.append(args))
+        monkeypatch.setattr("sys.argv", ["prog", "reset", "--phase", "scope"])
+        main()
+        assert len(called) == 1
+        assert called[0].phase == "scope"
 
 
 class TestMain:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import cast
@@ -107,10 +108,54 @@ def cmd_clean(args: argparse.Namespace) -> None:
         print(f"{WORKDIR} does not exist")
 
 
+_PHASE_ARTIFACTS: dict[str, list[str]] = {
+    "scope": ["scope.json", "search_plan.json", "collected.json", "analysis.json", "review_report.md"],
+    "search": ["collected.json", "analysis.json", "review_report.md"],
+    "analysis": ["analysis.json", "review_report.md"],
+    "review": ["review_report.md"],
+}
+
+
+def cmd_reset(args: argparse.Namespace) -> None:
+    phase = args.phase
+    if phase not in _PHASE_ARTIFACTS:
+        print(f"Invalid phase: {phase}. Must be one of: {', '.join(_PHASE_ARTIFACTS)}", file=sys.stderr)
+        sys.exit(1)
+    removed = []
+    for name in _PHASE_ARTIFACTS[phase]:
+        path = WORKDIR / name
+        if path.exists():
+            path.unlink()
+            removed.append(name)
+    if removed:
+        print(f"Reset from phase '{phase}': removed {', '.join(removed)}")
+    else:
+        print(f"Reset from phase '{phase}': nothing to remove")
+
+
 def _detect_quality() -> str:
-    if (WORKDIR / "review_report.md").exists():
+    review_path = WORKDIR / "review_report.md"
+    if not review_path.exists():
+        return "unreviewed"
+    try:
+        content = review_path.read_text(encoding="utf-8")
+    except OSError:
+        return "unreviewed"
+    # Find "## Overall Verdict" section and parse the verdict
+    match = re.search(r"##\s*Overall\s+Verdict\s*\n\s*\*\*(pass|pass_with_issues|fail)\*\*", content, re.IGNORECASE)
+    if not match:
+        # Fallback: conservative — degraded if review exists but verdict unparseable
+        return "degraded"
+    verdict = match.group(1).lower()
+    if verdict == "pass":
         return "passed"
-    return "unreviewed"
+    elif verdict == "pass_with_issues":
+        return "degraded"
+    elif verdict == "fail":
+        # Should not generate report for failed review
+        print("Review verdict is FAIL — fix issues before generating report", file=sys.stderr)
+        sys.exit(1)
+    return "degraded"  # unreachable but safe
 
 
 def _count_sources() -> int:
@@ -158,6 +203,10 @@ def main() -> None:
 
     p_clean = sub.add_parser("clean", help="Remove .workdir")
     p_clean.set_defaults(func=cmd_clean)
+
+    p_reset = sub.add_parser("reset", help="Reset pipeline to a given phase")
+    p_reset.add_argument("--phase", required=True, help="Phase to reset to (scope, search, analysis, review)")
+    p_reset.set_defaults(func=cmd_reset)
 
     args = parser.parse_args()
     try:
