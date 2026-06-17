@@ -922,7 +922,7 @@ class TestCheckPrecisionInflation:
         )
         _write_json(
             tmp_path / "collected.json",
-            [{"url": "https://a.com", "snippet": "Global market $128 billion", "fetched_content": "The global AI coding market reached $128 billion in 2026."}],
+            [{"url": "https://a.com", "snippet": "Global market $128 billion", "fetched_content": "According to recent reports the global AI coding market reached $128 billion dollars in twenty twenty six according to recent reports the global AI coding market continues to expand rapidly this represents substantial growth year over year as more companies adopt AI"}],
         )
         result = check_precision_inflation(tmp_path)
         assert result.passed
@@ -945,7 +945,7 @@ class TestCheckPrecisionInflation:
         )
         _write_json(
             tmp_path / "collected.json",
-            [{"url": "https://a.com", "snippet": "About AI tools", "fetched_content": "Some qualitative discussion about tools."}],
+            [{"url": "https://a.com", "snippet": "About AI tools", "fetched_content": "This report covers various aspects and metrics of artificial intelligence tools and their adoption across different industries the analysis focuses on qualitative discussion and general trends rather than specific numerical benchmarks this report covers various aspects and metrics of artificial intelligence tools"}],
         )
         result = check_precision_inflation(tmp_path)
         assert not result.passed
@@ -971,6 +971,80 @@ class TestCheckPrecisionInflation:
         result = check_precision_inflation(tmp_path)
         assert not result.passed
         assert result.level == "WARN"
+
+    def test_third_party_short_source_skips_number_check(self, tmp_path):
+        """third_party_estimate with precise number, empty/short fetched_content → WARN about short source, not 'not found'."""
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "Achieves 98% accuracy",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "third_party_estimate",
+                        "precision": "range",
+                    }],
+                }],
+            },
+        )
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "snippet": "", "fetched_content": ""}],
+        )
+        result = check_precision_inflation(tmp_path)
+        assert not result.passed
+        assert result.level == "WARN"
+        assert "source text too short" in result.message
+        assert "not found in source" not in result.message
+
+    def test_third_party_sufficient_source_not_found_warns(self, tmp_path):
+        """third_party_estimate with precise number, sufficient source but number absent → existing WARN."""
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "Achieves 98% accuracy",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "third_party_estimate",
+                        "precision": "range",
+                    }],
+                }],
+            },
+        )
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "snippet": "", "fetched_content": "A" * 250}],
+        )
+        result = check_precision_inflation(tmp_path)
+        assert not result.passed
+        assert result.level == "WARN"
+        assert "not found in source" in result.message
+
+    def test_third_party_sufficient_source_found_passes(self, tmp_path):
+        """third_party_estimate with precise number, sufficient source and number present → PASS."""
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "Achieves 98% accuracy",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "third_party_estimate",
+                        "precision": "range",
+                    }],
+                }],
+            },
+        )
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "snippet": "", "fetched_content": "A" * 200 + " 98% accuracy reported"}],
+        )
+        result = check_precision_inflation(tmp_path)
+        assert result.passed
 
 
 class TestCheckClaimMetadata:

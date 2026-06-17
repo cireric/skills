@@ -80,20 +80,21 @@ def check_url_traceability(workdir: Path) -> CheckResult:
     except ArtifactError as e:
         return CheckResult("url_traceability", "BLOCKER", False, str(e))
     collected_urls = {normalize_url(item["url"]) for item in collected if "url" in item}
-    untraceable = []
+    untraceable: list[str] = []
     for section in analysis.get("sections", []):
-        for claim in section.get("claims", []):
+        sec_id = section.get("id", "?")
+        for ci, claim in enumerate(section.get("claims", [])):
             for url in claim.get("source_urls", []):
                 norm = normalize_url(url)
                 if norm not in collected_urls:
-                    untraceable.append(norm)
+                    untraceable.append(f"sections.{sec_id}.claims[{ci}]: {url}")
     if untraceable:
-        return CheckResult(
-            "url_traceability",
-            "BLOCKER",
-            False,
-            f"{len(untraceable)} claim URLs not found in collected.json",
-        )
+        count = len(untraceable)
+        if count <= 5:
+            detail = "; ".join(untraceable)
+        else:
+            detail = f"{count} claim URLs not found in collected.json (showing first 5): " + "; ".join(untraceable[:5])
+        return CheckResult("url_traceability", "BLOCKER", False, detail)
     return CheckResult("url_traceability", "BLOCKER", True)
 
 
@@ -144,20 +145,6 @@ def check_section_coverage(workdir: Path, goal_type: str) -> CheckResult:
     return CheckResult("section_coverage", "BLOCKER", True)
 
 
-def _validate_section_claims(sections: list) -> str | None:
-    for i, sec in enumerate(sections):
-        for field in ("id", "title", "content"):
-            if field not in sec:
-                return f"sections[{i}] missing '{field}'"
-        for j, claim in enumerate(sec.get("claims", [])):
-            for field in ("text", "source_urls"):
-                if field not in claim:
-                    return f"sections[{i}].claims[{j}] missing '{field}'"
-            if not claim.get("source_urls"):
-                return f"sections[{i}].claims[{j}].source_urls is empty"
-            if "metric_type" in claim and claim["metric_type"] not in _VALID_METRIC_TYPES:
-                return f"sections[{i}].claims[{j}] has invalid metric_type '{claim['metric_type']}'"
-    return None
 
 
 def check_analysis_schema(workdir: Path) -> CheckResult:
@@ -165,18 +152,12 @@ def check_analysis_schema(workdir: Path) -> CheckResult:
         analysis = read_json(workdir / "analysis.json")
     except ArtifactError as e:
         return CheckResult("analysis_schema", "BLOCKER", False, str(e))
-    for key, label in (("topic", "str"), ("goal_type", "str")):
-        if key not in analysis or not isinstance(analysis[key], str):
-            return CheckResult("analysis_schema", "BLOCKER", False, f"Missing '{key}' ({label})")
-    sections = analysis.get("sections", [])
-    if not sections:
-        return CheckResult(
-            "analysis_schema", "BLOCKER", False, "Missing 'sections' (non-empty list)"
-        )
-    err = _validate_section_claims(sections)
-    if err:
-        return CheckResult("analysis_schema", "BLOCKER", False, err)
-    for section in sections:
+    from .lib.schemas import validate_analysis
+    schema_errors = validate_analysis(analysis)
+    if schema_errors:
+        detail = "; ".join(f"{e.field}: {e.message}" for e in schema_errors)
+        return CheckResult("analysis_schema", "BLOCKER", False, detail)
+    for section in analysis.get("sections", []):
         content = section.get("content", "")
         if content.startswith("## "):
             return CheckResult(
@@ -299,14 +280,22 @@ def check_precision_inflation(workdir: Path, collected: list[dict] | None = None
                         source_texts.append(
                             (item.get("fetched_content", "") + " " + item.get("snippet", "")).lower()
                         )
-                numbers_in_source = any(
-                    _number_found_in_source(text, src) for src in source_texts
-                )
-                if not numbers_in_source:
+                any_sufficient = any(len(src) >= 200 for src in source_texts)
+                if not any_sufficient:
                     warnings.append(
                         f"sections.{sec_id}.claims[{ci}]: evidence_type='third_party_estimate' "
-                        f"but text contains precise number not found in source — use precision='range' or rephrase qualitatively"
+                        f"with precise number but source text too short for verification — "
+                        f"consider using precision='range'"
                     )
+                else:
+                    numbers_in_source = any(
+                        _number_found_in_source(text, src) for src in source_texts
+                    )
+                    if not numbers_in_source:
+                        warnings.append(
+                            f"sections.{sec_id}.claims[{ci}]: evidence_type='third_party_estimate' "
+                            f"but text contains precise number not found in source — use precision='range' or rephrase qualitatively"
+                        )
         # Data variance check: same metric_type, exact precision, conflicting values
         by_metric: dict[str, list[dict]] = {}
         for claim in section.get("claims", []):
