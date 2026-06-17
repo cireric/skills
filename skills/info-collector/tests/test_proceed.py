@@ -7,6 +7,7 @@ from scripts.lib.exceptions import ArtifactError
 from scripts.proceed import (
     _check_scope_schema,
     _check_search_gate,
+    _sanitize_sections,
     detect_current_phase,
     get_gateway_results,
     proceeds,
@@ -489,6 +490,80 @@ class TestTierCoverage:
         from scripts.proceed import _check_search_gate
         blockers, warnings = _check_search_gate(tmp_path)
         assert any("tier_coverage" in w for w in warnings)
+
+
+class TestSanitizeSections:
+    """_sanitize_sections cleans subagent output before schema validation."""
+
+    def test_section_id_mapped_to_id(self):
+        raw = {"topic": "T", "goal_type": "exploratory", "sections": [{"section_id": "s1", "title": "S1", "content": "C"}]}
+        result = _sanitize_sections(raw)
+        assert "section_id" not in result["sections"][0]
+        assert result["sections"][0]["id"] == "s1"
+
+    def test_sources_mapped_to_source_urls_in_claims(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [{"id": "s1", "title": "S1", "content": "C", "claims": [{"text": "claim1", "sources": ["https://a.com"]}]}],
+        }
+        result = _sanitize_sections(raw)
+        claim = result["sections"][0]["claims"][0]
+        assert "sources" not in claim
+        assert claim["source_urls"] == ["https://a.com"]
+
+    def test_non_schema_fields_removed_from_section(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [{"id": "s1", "title": "S1", "content": "C", "word_count": 500, "language": "en"}],
+        }
+        result = _sanitize_sections(raw)
+        assert "word_count" not in result["sections"][0]
+        assert "language" not in result["sections"][0]
+
+    def test_non_schema_fields_removed_from_claim(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [{"id": "s1", "title": "S1", "content": "C", "claims": [{"text": "c1", "source_urls": ["https://a.com"], "relevance_score": 0.9}]}],
+        }
+        result = _sanitize_sections(raw)
+        assert "relevance_score" not in result["sections"][0]["claims"][0]
+
+    def test_missing_claims_defaults_to_empty_list(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [{"id": "s1", "title": "S1", "content": "C"}],
+        }
+        result = _sanitize_sections(raw)
+        assert result["sections"][0]["claims"] == []
+
+    def test_valid_input_passes_through_unchanged(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [
+                {
+                    "id": "s1", "title": "S1", "content": "C",
+                    "claims": [{"text": "c1", "source_urls": ["https://a.com"], "verified": True}],
+                },
+            ],
+        }
+        result = _sanitize_sections(raw)
+        assert result == raw
+
+    def test_input_not_mutated(self):
+        original = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [{"section_id": "s1", "title": "S1", "content": "C", "word_count": 500}],
+        }
+        _sanitize_sections(original)
+        assert "section_id" in original["sections"][0]
+        assert "word_count" in original["sections"][0]
+
+    def test_top_level_keys_preserved(self):
+        raw = {"topic": "T", "goal_type": "exploratory", "custom_key": "keep", "sections": []}
+        result = _sanitize_sections(raw)
+        assert result["topic"] == "T"
+        assert result["goal_type"] == "exploratory"
+        assert result["custom_key"] == "keep"
 
 
 class TestProceedArtifactErrorHandling:

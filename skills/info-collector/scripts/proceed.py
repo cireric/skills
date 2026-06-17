@@ -13,7 +13,7 @@ from .gateway import CheckResult
 from .gateway import run_all as run_gateway
 from .lib.source_router import get_default_min_sources, get_route, recommend_sources
 from .lib.exceptions import ArtifactError
-from .lib.utils import ensure_dir, normalize_url, read_json, write_json
+from .lib.utils import ensure_dir, read_json, write_json
 
 
 from .lib.constants import _CHINESE_STOP_WORDS, _ENGLISH_STOP_WORDS
@@ -61,6 +61,47 @@ def _tokenize_direction(direction: str) -> list[str]:
     return [t for t in tokens if not _is_stop_word(t)]
 
 
+_SECTION_KEYS = frozenset({"id", "title", "content", "claims"})
+_CLAIM_KEYS = frozenset({
+    "text", "source_urls", "evidence_type", "confidence",
+    "precision", "metric_type", "source_metadata", "verified",
+})
+
+
+def _sanitize_sections(analysis: dict) -> dict:
+    """Clean subagent output before schema validation."""
+    result = dict(analysis)
+    sections = result.get("sections")
+    if not isinstance(sections, list):
+        return result
+
+    cleaned_sections = []
+    for section in sections:
+        if not isinstance(section, dict):
+            cleaned_sections.append(section)
+            continue
+        sec = dict(section)
+        if "section_id" in sec and "id" not in sec:
+            sec["id"] = sec.pop("section_id")
+        if "claims" not in sec:
+            sec["claims"] = []
+        claims = sec.get("claims")
+        if isinstance(claims, list):
+            cleaned_claims = []
+            for claim in claims:
+                if not isinstance(claim, dict):
+                    cleaned_claims.append(claim)
+                    continue
+                cl = dict(claim)
+                if "sources" in cl and "source_urls" not in cl:
+                    cl["source_urls"] = cl.pop("sources")
+                cleaned_claims.append({k: v for k, v in cl.items() if k in _CLAIM_KEYS})
+            sec["claims"] = cleaned_claims
+        cleaned_sections.append({k: v for k, v in sec.items() if k in _SECTION_KEYS})
+    result["sections"] = cleaned_sections
+    return result
+
+
 def detect_current_phase(workdir: Path) -> str:
     """Return current phase string based on which artifacts exist.
 
@@ -96,39 +137,12 @@ _VALID_TRANSITIONS = {
 
 
 def _check_scope_schema(workdir: Path) -> list[str]:
-    errors = []
     try:
         scope = read_json(workdir / "scope.json")
     except ArtifactError as e:
         return [f"Cannot read scope.json: {e}"]
-    required = ["topic", "goal_type", "depth", "audience", "scope_description", "search_directions"]
-    for field in required:
-        if field not in scope:
-            errors.append(f"scope.json missing required field: {field}")
-    if scope.get("goal_type") not in (
-        "exploratory",
-        "panoramic_understanding",
-        "tech_selection",
-        "feasibility_assessment",
-        "competitive_comparison",
-        "academic_research",
-        "fact_check",
-        "background_check",
-        "market_analysis",
-        "other",
-    ):
-        errors.append(f"Invalid goal_type: {scope.get('goal_type')}")
-    if scope.get("depth") not in ("quick", "standard", "deep"):
-        errors.append(f"Invalid depth: {scope.get('depth')}")
-    if scope.get("audience") not in ("CTO", "engineer", "researcher", "general"):
-        errors.append(f"Invalid audience: {scope.get('audience')} (must be CTO, engineer, researcher, or general)")
-    if not scope.get("search_directions"):
-        errors.append("scope.json search_directions must be a non-empty list")
-    if "report_language" in scope:
-        rl = scope["report_language"]
-        if not isinstance(rl, str) or not rl:
-            errors.append("report_language must be a non-empty string if present")
-    return errors
+    from .lib.schemas import validate_scope
+    return [f"scope.json {e.field}: {e.message}" for e in validate_scope(scope)]
 
 
 def _has_cjk_tokens(directions: list[str]) -> bool:
@@ -150,6 +164,11 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
         return [f"Cannot read collected.json: {e}"], []
     if not collected or len(collected) < 1:
         blockers.append("collected.json must have at least 1 entry")
+    else:
+        from .lib.schemas import validate_collected
+        schema_errors = validate_collected(collected)
+        if schema_errors:
+            blockers.extend(f"collected.json {e.field}: {e.message}" for e in schema_errors)
 
     goal_type = _get_goal_type(workdir)
     min_src = get_default_min_sources(goal_type, config)
@@ -173,7 +192,39 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
     if needed:
         covered = set()
         direction_counts: dict[str, int] = {d: 0 for d in needed}
+
+        # First pass: explicit covered_directions from collected entries (ADR 0017)
         for entry in collected:
+            cd = entry.get("covered_directions")
+            if cd is None:
+                continue
+            if not isinstance(cd, list):
+                warnings.append(
+                    f"covered_directions WARN: entry '{entry.get('title', '')}' "
+                    f"has non-list covered_directions, ignoring"
+                )
+                continue
+            if len(cd) > 3:
+                warnings.append(
+                    f"covered_directions WARN: entry '{entry.get('title', '')}' "
+                    f"has {len(cd)} directions (max 3), ignoring"
+                )
+                continue
+            invalid = [d for d in cd if d not in needed]
+            if invalid:
+                warnings.append(
+                    f"covered_directions WARN: entry '{entry.get('title', '')}' "
+                    f"has invalid directions: {invalid}, ignoring"
+                )
+                continue
+            for d in cd:
+                covered.add(d)
+                direction_counts[d] += 1
+
+        # Second pass: token matching for entries without covered_directions
+        for entry in collected:
+            if entry.get("covered_directions") is not None:
+                continue
             combined_text = (entry.get("title", "") + " " + entry.get("snippet", "")).lower()
             for direction in needed:
                 tokens = _tokenize_direction(direction)
@@ -216,23 +267,6 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
                         )
     return blockers, warnings
 
-
-def _check_url_traceability(analysis: dict, collected: list[dict]) -> list[str]:
-    """Check that all claim source_urls exist in collected.json. Returns error list."""
-    collected_urls = {normalize_url(item["url"]) for item in collected if "url" in item}
-    untraceable: list[str] = []
-    for section in analysis.get("sections", []):
-        sec_id = section.get("id", "?")
-        for ci, claim in enumerate(section.get("claims", [])):
-            for url in claim.get("source_urls", []):
-                if normalize_url(url) not in collected_urls:
-                    untraceable.append(
-                        f"sections.{sec_id}.claims[{ci}]: source_url not in collected.json: {url}"
-                    )
-    if untraceable:
-        prefix = f"url_traceability BLOCKER: {len(untraceable)} claim URLs not in collected.json"
-        return [prefix] + [f"  {u}" for u in untraceable[:10]]
-    return []
 
 
 def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
@@ -312,16 +346,20 @@ def proceeds(
     elif from_phase == "analysis":
         try:
             analysis = read_json(workdir / "analysis.json")
-            collected = read_json(workdir / "collected.json") or []
         except ArtifactError as e:
-            errors.append(f"Cannot read artifacts: {e}")
+            errors.append(f"Cannot read analysis.json: {e}")
         else:
-            if "topic" not in analysis or "goal_type" not in analysis:
-                errors.append("analysis.json missing topic or goal_type")
-            if not analysis.get("sections"):
-                errors.append("analysis.json sections is empty")
-            url_errors = _check_url_traceability(analysis, collected)
-            errors.extend(url_errors)
+            analysis = _sanitize_sections(analysis)
+            write_json(analysis, workdir / "analysis.json")
+            from .lib.schemas import validate_analysis
+            schema_errors = validate_analysis(analysis)
+            if schema_errors:
+                errors.extend(f"analysis.json {e.field}: {e.message}" for e in schema_errors)
+            else:
+                url_result = run_gateway(workdir, _get_goal_type(workdir))
+                url_check = next((r for r in url_result if r.name == "url_traceability"), None)
+                if url_check and not url_check.passed:
+                    errors.append(f"[BLOCKER] url_traceability: {url_check.message}")
 
     elif from_phase == "review":
         gateway_results = run_gateway(workdir, _get_goal_type(workdir))
