@@ -8,17 +8,12 @@ import sys
 from pathlib import Path
 from typing import cast
 
-import jieba
-
 from .cli import _find_project_root
 from .gateway import CheckResult
 from .gateway import run_all as run_gateway
 from .lib.source_router import get_default_min_sources, get_route, recommend_sources
 from .lib.exceptions import ArtifactError
-from .lib.utils import ensure_dir, read_json, write_json
-
-
-jieba.setLogLevel(jieba.logging.INFO)
+from .lib.utils import ensure_dir, normalize_url, read_json, write_json
 
 
 from .lib.constants import _CHINESE_STOP_WORDS, _ENGLISH_STOP_WORDS
@@ -39,23 +34,43 @@ def _is_stop_word(token: str) -> bool:
     return False
 
 
+_COVERAGE_THRESHOLD = 0.5
+
+
 def _tokenize_direction(direction: str) -> list[str]:
-    """Tokenize a search direction using jieba and filter stop words."""
-    tokens = jieba.lcut(direction.lower())
+    """Tokenize a search direction using simple split + CJK character segmentation, filter stop words."""
+    text = direction.lower()
+    tokens = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if '\u4e00' <= ch <= '\u9fff':
+            j = i + 1
+            while j < len(text) and '\u4e00' <= text[j] <= '\u9fff':
+                j += 1
+            tokens.append(text[i:j])
+            i = j
+        elif ch.isspace() or ch in string.punctuation:
+            i += 1
+        else:
+            j = i + 1
+            while j < len(text) and not text[j].isspace() and text[j] not in string.punctuation and not ('\u4e00' <= text[j] <= '\u9fff'):
+                j += 1
+            tokens.append(text[i:j])
+            i = j
     return [t for t in tokens if not _is_stop_word(t)]
 
 
 def detect_current_phase(workdir: Path) -> str:
     """Return current phase string based on which artifacts exist.
 
-    Returns one of: pre_scope, post_scope, post_search, post_analysis, post_draft, post_review
+    Returns one of: pre_scope, post_scope, post_search, post_analysis, post_review
     """
     if not workdir.exists():
         return "pre_scope"
     scope_present = (workdir / "scope.json").exists()
     collected_present = (workdir / "collected.json").exists()
     analysis_present = (workdir / "analysis.json").exists()
-    draft_present = (workdir / "draft" / "report.md").exists()
     review_present = (workdir / "review_report.md").exists()
 
     if not scope_present:
@@ -64,10 +79,8 @@ def detect_current_phase(workdir: Path) -> str:
         phase = "post_scope"
     elif not analysis_present:
         phase = "post_search"
-    elif not draft_present:
-        phase = "post_analysis"
     elif not review_present:
-        phase = "post_draft"
+        phase = "post_analysis"
     else:
         phase = "post_review"
     return phase
@@ -76,7 +89,7 @@ def detect_current_phase(workdir: Path) -> str:
 _VALID_TRANSITIONS = {
     "scope": "search",
     "search": "analysis",
-    "draft": "review",
+    "analysis": "review",
     "review": "final",
     "final": "cleanup",
 }
@@ -118,6 +131,15 @@ def _check_scope_schema(workdir: Path) -> list[str]:
     return errors
 
 
+def _has_cjk_tokens(directions: list[str]) -> bool:
+    """Return True if any direction contains CJK characters that produce whole-segment tokens."""
+    for d in directions:
+        for ch in d:
+            if '\u4e00' <= ch <= '\u9fff':
+                return True
+    return False
+
+
 def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[str], list[str]]:
     """Returns (blockers, warnings). Blockers fail the gate, warnings are printed."""
     blockers: list[str] = []
@@ -155,7 +177,10 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
             combined_text = (entry.get("title", "") + " " + entry.get("snippet", "")).lower()
             for direction in needed:
                 tokens = _tokenize_direction(direction)
-                if tokens and all(token in combined_text for token in tokens):
+                if not tokens:
+                    continue
+                matched = sum(1 for t in tokens if t in combined_text)
+                if matched / len(tokens) >= _COVERAGE_THRESHOLD:
                     covered.add(direction)
                     direction_counts[direction] += 1
 
@@ -172,10 +197,42 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
 
         missing = needed - covered
         if missing:
-            blockers.append(
-                f"topic_coverage BLOCKER: search directions not covered: {', '.join(missing)}"
-            )
+            cjk_heavy = _has_cjk_tokens(list(needed))
+            if cjk_heavy:
+                warnings.append(
+                    f"topic_coverage WARN (CJK directions): search directions not covered: {', '.join(missing)}"
+                )
+            else:
+                blockers.append(
+                    f"topic_coverage BLOCKER: search directions not covered: {', '.join(missing)}"
+                )
+            for d in missing:
+                tokens = _tokenize_direction(d)
+                if tokens:
+                    suggestions = [t for t in tokens if not _is_stop_word(t)]
+                    if suggestions:
+                        warnings.append(
+                            f"  Suggestion: try searching for '{d}' with keywords: {', '.join(suggestions[:5])}"
+                        )
     return blockers, warnings
+
+
+def _check_url_traceability(analysis: dict, collected: list[dict]) -> list[str]:
+    """Check that all claim source_urls exist in collected.json. Returns error list."""
+    collected_urls = {normalize_url(item["url"]) for item in collected if "url" in item}
+    untraceable: list[str] = []
+    for section in analysis.get("sections", []):
+        sec_id = section.get("id", "?")
+        for ci, claim in enumerate(section.get("claims", [])):
+            for url in claim.get("source_urls", []):
+                if normalize_url(url) not in collected_urls:
+                    untraceable.append(
+                        f"sections.{sec_id}.claims[{ci}]: source_url not in collected.json: {url}"
+                    )
+    if untraceable:
+        prefix = f"url_traceability BLOCKER: {len(untraceable)} claim URLs not in collected.json"
+        return [prefix] + [f"  {u}" for u in untraceable[:10]]
+    return []
 
 
 def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
@@ -252,18 +309,19 @@ def proceeds(
         for w in search_warnings:
             print(f"  [WARN] {w}", file=sys.stderr)
 
-    elif from_phase == "draft":
+    elif from_phase == "analysis":
         try:
             analysis = read_json(workdir / "analysis.json")
-        except Exception as e:
-            errors.append(f"Cannot read analysis.json: {e}")
+            collected = read_json(workdir / "collected.json") or []
+        except ArtifactError as e:
+            errors.append(f"Cannot read artifacts: {e}")
         else:
             if "topic" not in analysis or "goal_type" not in analysis:
                 errors.append("analysis.json missing topic or goal_type")
             if not analysis.get("sections"):
                 errors.append("analysis.json sections is empty")
-        if not (workdir / "draft" / "report.md").exists():
-            errors.append("draft/report.md does not exist")
+            url_errors = _check_url_traceability(analysis, collected)
+            errors.extend(url_errors)
 
     elif from_phase == "review":
         gateway_results = run_gateway(workdir, _get_goal_type(workdir))

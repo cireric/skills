@@ -32,6 +32,9 @@ _LABELS: dict[tuple[str, str], str] = {
 }
 
 
+_EXPLORATORY_GOAL_TYPES = frozenset({"exploratory", "panoramic_understanding", "background_check", "other"})
+
+
 def _label(key: str, lang: str) -> str:
     return _LABELS.get((key, lang), _LABELS.get((key, "en"), key))
 
@@ -147,6 +150,8 @@ def sections_to_markdown(analysis: dict, collected: list[dict] | None = None, la
     parts = []
     collected = collected or []
     ref_map = _build_reference_map(analysis, collected)
+    goal_type = analysis.get("goal_type", "")
+    compact = goal_type in _EXPLORATORY_GOAL_TYPES
     for sec in analysis.get("sections", []):
         title = sec.get("title", sec.get("id", ""))
         parts.append(f"\n## {title}\n")
@@ -155,21 +160,22 @@ def sections_to_markdown(analysis: dict, collected: list[dict] | None = None, la
         if content.startswith(heading):
             content = content[len(heading) :].lstrip("\n")
         parts.append(content)
-        claims = sec.get("claims", [])
-        if claims:
-            parts.append(f"\n**{_label('sources', lang)}:**\n")
-            for claim in claims:
-                nums = []
-                for url in claim.get("source_urls", []):
-                    norm = normalize_url(url)
-                    num = ref_map.get(norm)
-                    if num is not None:
-                        nums.append(f"[{num}]")
-                nums_str = "".join(nums)
-                parts.append(f"- {claim.get('text', '')} {nums_str}")
-            test_conditions = _render_test_conditions(claims, ref_map if ref_map else None, lang=lang)
-            if test_conditions:
-                parts.append(test_conditions)
+        if not compact:
+            claims = sec.get("claims", [])
+            if claims:
+                parts.append(f"\n**{_label('sources', lang)}:**\n")
+                for claim in claims:
+                    nums = []
+                    for url in claim.get("source_urls", []):
+                        norm = normalize_url(url)
+                        num = ref_map.get(norm)
+                        if num is not None:
+                            nums.append(f"[{num}]")
+                    nums_str = "".join(nums)
+                    parts.append(f"- {claim.get('text', '')} {nums_str}")
+                test_conditions = _render_test_conditions(claims, ref_map if ref_map else None, lang=lang)
+                if test_conditions:
+                    parts.append(test_conditions)
     parts.append(_render_references(ref_map, collected, lang=lang))
     return "\n".join(parts)
 

@@ -23,31 +23,31 @@ All relative paths in this skill are relative to the **project root** (where `sc
 | Reference                                 | Actual location                                                                    |
 | ----------------------------------------- | ---------------------------------------------------------------------------------- |
 | `<project_root>/.workdir/`                | `<cwd>/.workdir/` — e.g. `D:\Project\.workdir\`                                    |
-| `<project_root>/<config.json:output_dir>` | `<cwd>/<output_dir>` — configured in `.opencode/skills/info-collector/config.json` |
+| `<project_root>/<config.json:output_dir>` | `<cwd>/<output_dir>` — configured in `skills/info-collector/config.json`           |
 
 ## Setup Wizard
 
-When config.json does not exist (first run), guide the user through setup:
+When `skills/info-collector/config.json` does not exist (first run), guide the user through setup:
 
 1. **output_dir**: Ask where reports should be saved. Accept relative (resolved against project root) or absolute paths. Default: `./reports/`
 2. **default_report_language**: Ask preferred report language (e.g., zh, en). This becomes the default for every research unless overridden in Phase 1. Default: `zh`
 3. **default_depth**: Ask typical research depth (quick/standard/deep). Default: `standard`
 4. **Source customization**: Show the 4-tier source list from config.json. Ask if user wants to add or remove sources per tier (e.g., add Dev.to to Tier 2, remove Medium from Tier 2)
 
-After collecting answers, write config.json and confirm: "配置已写入 config.json"
+After collecting answers, write `skills/info-collector/config.json` and confirm: "配置已写入 config.json"
 
-**Re-running the wizard**: User can request setup wizard at any time by saying "重新配置" or "run setup wizard". This overwrites the existing config.json.
+**Re-running the wizard**: User can request setup wizard at any time by saying "重新配置" or "run setup wizard". This overwrites the existing `skills/info-collector/config.json`.
 
 ## Phase 1: Scope
 
 1. **Interview** the user to determine:
-   - Read `config.json` from `.opencode/skills/info-collector/config.json` and verify `output_dir` is set; if missing, warn the user and ask for an output directory path
+   - Read `config.json` from `skills/info-collector/config.json` and verify `output_dir` is set; if missing, warn the user and ask for an output directory path
    - `topic` — what to research
    - `goal_type` — which of the 9 types (or "其他" for custom)
    - `depth` — quick | standard | deep
    - `audience` — CTO | engineer | researcher | general (influences framing and language)
    - `scope_description` — natural language summary
-   - `search_directions` — 1+ specific directions to search
+   - `search_directions` — 1+ specific directions to search. **Prefer English keywords** (e.g., "agentic coding frameworks" not "智能体编程框架") because CJK tokens match poorly against English source snippets. Chinese directions are allowed but may trigger topic_coverage WARN instead of BLOCKER due to tokenization limitations.
    - `report_language` — (optional) override `default_report_language` from config for this report (e.g., "en", "zh")
 
 2. Write `scope.json` to `<project_root>/.workdir/scope.json`.
@@ -64,6 +64,8 @@ After collecting answers, write config.json and confirm: "配置已写入 config
    Aim for ~3 search rounds (soft limit).
 
 **Search language rule**: Search English-language sources using English queries even if the topic is in Chinese. Translate search keywords to English for `site:` queries on English domains (arxiv.org, github.com, stackoverflow.com, etc.). Use Chinese queries only for Chinese domains (cnki.net, zhihu.com, baidu.com, etc.). This ensures high-quality results from international sources regardless of topic language.
+
+**Tier 4 search strategy**: Tier 4 sources (forums, personal pages, unverified) are not pre-configured in config.json. When deep research requires Tier 4 coverage, search broadly on Reddit (`site:reddit.com`), Hacker News (`site:news.ycombinator.com`), Dev.to (`site:dev.to`), and personal blogs. All Tier 4 findings must use strong qualifier language in the report ("an unverified source claims", "according to a forum post"). Do NOT present Tier 4 findings with the same authority as Tier 1 or Tier 2.
 
 3. **Collect**: Add each result to `<project_root>/.workdir/collected.json`:
 
@@ -99,6 +101,22 @@ For **each section**, delegate an independent agent call to write the `content` 
 
 1. **One section per agent call** — never write all sections in a single call. This prevents token-limit compression and ensures each section gets full output capacity.
 2. **Write content FIRST, extract claims AFTER** — within each call, first write the complete Markdown narrative (tables, comparisons, detailed parameters, architecture breakdowns), then extract structured claims from what you wrote.
+3. **Embed allowed URL list in every subagent prompt** — extract all URLs from `collected.json` and include them in the prompt as the **only** valid `source_urls`. Any `source_url` not in this list will be caught by the `analysis→review` gate's url_traceability check and block progression. Format:
+
+   ```
+   ## Allowed source URLs (use ONLY these in source_urls)
+   - https://example.com/article1
+   - https://example.com/article2
+   ...
+   ```
+
+4. **Specify output path with `.workdir/` prefix in every subagent prompt** — subagents must write their output to `<project_root>/.workdir/`, NOT the project root. Include this instruction explicitly:
+
+   ```
+   ## Output path
+   Write your section JSON to: <project_root>/.workdir/analysis_section_<id>.json
+   Do NOT write to the project root.
+   ```
 3. **Content must include**:
    - **Structured tables** for any multi-dimensional comparison (framework features, benchmark scores, protocol specs, pricing, etc.). Tables are the primary way engineers extract information — prefer tables over paragraphs for comparisons.
    - **Specific numbers with context** — not "scores around 70%" but "Claude Opus 4.5: 80.9% on Verified, ~45-48% on Pro, ~33pt gap"
@@ -115,7 +133,7 @@ For **each section**, delegate an independent agent call to write the `content` 
 
 #### Step 3: Assemble analysis.json
 
-Merge all sections into a single analysis.json:
+Merge all sections into a single analysis.json. **This step is JSON merge only — never rewrite or rephrase section content.** Each section's `content` and `claims` fields are taken verbatim from the subagent outputs. If content needs improvement, go back to Step 2 and re-delegate that section.
 
 ```json
 {
@@ -147,6 +165,34 @@ Merge all sections into a single analysis.json:
 ```
 
 Every claim MUST have at least one source_url linking to a URL in collected.json.
+
+**Content 必须保证来源可追溯：**
+
+- **每项量化声明（benchmark 数字、百分比等）必须附带来源标识**：内联 URL、引用编号 `[1]` 映射到附录、或直接以链接形式给出
+- **Benchmark 数据必须附测试环境摘要**：至少包含硬件、OS、运行时版本、测试日期
+- 附录或每个来源名必须在报告中有对应的完整 URL 可点击
+
+**Goal-type 差异化追溯要求：**
+
+| goal_type                                                                   | 最低追溯要求                                                   |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `tech_selection`, `competitive_comparison`, `feasibility_assessment`        | 每项 benchmark 数据标注来源 URL + 测试环境（CPU/OS/版本/日期） |
+| `academic_research`                                                         | 正式引用格式（如 `[1]` 附录映射）                              |
+| `exploratory`, `market_analysis`, `background_check`, `fact_check`, `other` | 每个声明至少附带来源 URL 或引用编号                            |
+| `panoramic_understanding`                                                   | 每段主要结论至少一个来源链接                                   |
+
+**Tier-aware source citations in content:**
+
+Different source tiers require different language in body text to accurately reflect their evidentiary weight:
+
+| Source Tier | Citation Language Rule | Example |
+|-------------|----------------------|---------|
+| Tier 1 (official docs, standards body) | Cite as authoritative | "According to OpenAI's official documentation..." |
+| Tier 2 (industry reports, established media) | Cite with source attribution | "A 2025 Gartner report estimates..." |
+| Tier 3 (blogs, tutorials, community posts) | Use qualifier: "according to a blog post", "a community analysis suggests" | "A community benchmark on Reddit suggests..." |
+| Tier 4 (forums, personal pages, unverified) | Use strong qualifier: "an unverified source claims", "according to a forum post" | "An unverified forum post claims..." |
+
+Never present Tier 3 or Tier 4 findings with the same authority as Tier 1 or Tier 2. The citations in body text must let readers assess evidentiary weight at a glance.
 
 **Precision rules for claims:**
 
@@ -218,73 +264,34 @@ This section must use explicit "不推荐" or "not recommended" language so read
 - ❌ Pronouns without antecedents — "它支持并行处理" → what is "它"? Name it explicitly every time
 - ❌ Separating sources from claims — source URLs must be adjacent to their claims, not collected at the end
 
-### 3b: Generate draft
+### Gate: proceed --from analysis --to review
 
-Write a draft report to `<project_root>/.workdir/draft/report.md`.
+Run: `python scripts/cli.py proceed --from analysis --to review`
 
-**In the new flow, the draft is a rendering of analysis.json — not a rewrite.** Since 3a already produces full Markdown content in each section, the draft should:
-
-1. Use analysis.json's `content` fields as the report body (they are already engineer-grade Markdown)
-2. Add inline source references `[N]` to quantitative claims within the narrative, using the reference map from claims.source_urls
-3. Verify all claims from analysis.json are represented in the draft
-
-**Draft 必须保证来源可追溯：**
-
-- **每项量化声明（benchmark 数字、百分比等）必须附带来源标识**：可以是内联 URL、引用编号 `[1]` 映射到附录、或直接以链接形式给出
-- **Benchmark 数据必须附测试环境摘要**：至少包含硬件、OS、运行时版本、测试日期
-- 附录或每个来源名必须在报告中有对应的完整 URL 可点击
-
-**Goal-type 差异化要求：**
-
-| goal_type                                                                   | 最低追溯要求                                                   |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `tech_selection`, `competitive_comparison`, `feasibility_assessment`        | 每项 benchmark 数据标注来源 URL + 测试环境（CPU/OS/版本/日期） |
-| `academic_research`                                                         | 正式引用格式（如 `[1]` 附录映射）                              |
-| `exploratory`, `market_analysis`, `background_check`, `fact_check`, `other` | 每个声明至少附带来源 URL 或引用编号                            |
-| `panoramic_understanding`                                                   | 每段主要结论至少一个来源链接                                   |
-
-**Tier-aware source citations:**
-
-Different source tiers require different language in body text to accurately reflect their evidentiary weight:
-
-| Source Tier | Citation Language Rule | Example |
-|-------------|----------------------|---------|
-| Tier 1 (official docs, standards body) | Cite as authoritative | "According to OpenAI's official documentation..." |
-| Tier 2 (industry reports, established media) | Cite with source attribution | "A 2025 Gartner report estimates..." |
-| Tier 3 (blogs, tutorials, community posts) | Use qualifier: "according to a blog post", "a community analysis suggests" | "A community benchmark on Reddit suggests..." |
-| Tier 4 (forums, personal pages, unverified) | Use strong qualifier: "an unverified source claims", "according to a forum post" | "An unverified forum post claims..." |
-
-Never present Tier 3 or Tier 4 findings with the same authority as Tier 1 or Tier 2. This rule applies to both the draft and final report — the citations in body text must let readers assess evidentiary weight at a glance.
-
-**Draft positioning**: The draft is a review-readable rendering of analysis.json. Review fixes should target analysis.json (not the draft file). The final report is rendered by reporter.py from the reviewed analysis.json, so all corrections must be reflected in analysis.json to appear in the final output.
-
-### Gate: proceed --from draft --to review
-
-Run: `python scripts/cli.py proceed --from draft --to review`
-
-- Validates analysis.json schema and draft/report.md existence.
+- Validates analysis.json has topic, goal_type, non-empty sections, and url_traceability (all claim source_urls exist in collected.json).
 - **YOU MUST ASK THE USER**: "启动独立审查？"
 
-### 3c: Review
+### 3b: Review
 
 If user says **yes**:
 
 1. Read `references/REVIEW_PROMPT.md` for the review prompt
 2. Launch a subagent with that prompt
 3. Subagent reads scope.json, collected.json, analysis.json
-4. Subagent writes `<project_root>/.workdir/review_report.md`
-5. Fix any issues found
+4. Subagent writes `<project_root>/.workdir/review_report.md` — **include the explicit `.workdir/` output path in the subagent prompt** to prevent writing to project root
+5. Fix any issues found in analysis.json
+6. **After fixing analysis.json, you MUST re-run the gate**: `python scripts/cli.py proceed --from analysis --to review` — this re-runs the validation checks on the updated analysis.json. Do NOT skip this step; fixes to analysis.json can introduce new violations (e.g., broken url_traceability, schema errors) that must be caught before proceeding.
 
 If user says **no** → quality will be set to `unreviewed` at finalization.
 
-### 3d: User confirmation
+### 3c: User confirmation + Final report
 
 Show the review report (or degradation notice) to user and ask:
 
 - User says **"可以了"** → Run: `python scripts/cli.py proceed --from review --to final`
 
-  This runs gateway.py with 10 checks inside:
-  - artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata, content_concreteness, methodology_depth
+  This runs gateway.py with 15 checks inside:
+  - artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata, content_concreteness, methodology_depth, recommendation_structure, source_tier_balance, claim_dedup
   - BLOCKER fails = stop and fix
   - WARN = noted but does not block
 
@@ -309,7 +316,7 @@ Show the review report (or degradation notice) to user and ask:
 
 - User says **"XX 方面不够，再查查"** → Return to Phase 2:
   - Incremental search (do NOT reset scope.json)
-  - Re-run Phase 3 (3a -> 3b -> gate -> 3c -> 3d)
+  - Re-run Phase 3 (3a -> gate -> 3b -> 3c)
   - Version auto-increments
 
 ## Phase 4: Cleanup

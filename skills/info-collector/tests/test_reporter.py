@@ -430,6 +430,46 @@ class TestSectionsToMarkdown:
         assert "## Different Title" in md
         assert "Some content here." in md
 
+    def test_panoramic_understanding_no_source_list(self):
+        """panoramic_understanding goal_type skips per-section source lists."""
+        analysis = {
+            "topic": "T",
+            "goal_type": "panoramic_understanding",
+            "sections": [
+                {
+                    "id": "overview",
+                    "title": "Overview",
+                    "content": "Some content here.",
+                    "claims": [{"text": "A claim.", "source_urls": ["https://example.com"]}],
+                }
+            ],
+        }
+        md = sections_to_markdown(analysis)
+        assert "## Overview" in md
+        assert "Some content here." in md
+        assert "**Sources:**" not in md
+        assert "**数据来源:**" not in md
+        assert "A claim." not in md
+        assert "## References" in md
+
+    def test_tech_selection_still_has_source_list(self):
+        """tech_selection goal_type still renders per-section source lists."""
+        analysis = {
+            "topic": "T",
+            "goal_type": "tech_selection",
+            "sections": [
+                {
+                    "id": "overview",
+                    "title": "Overview",
+                    "content": "Some content here.",
+                    "claims": [{"text": "A claim.", "source_urls": ["https://example.com"]}],
+                }
+            ],
+        }
+        md = sections_to_markdown(analysis)
+        assert "**Sources:**" in md
+        assert "A claim." in md
+
 
 class TestGenerateReport:
     def test_full_report(self, tmp_path):

@@ -2,7 +2,7 @@
 
 ## Overview
 
-5 gates at phase transitions. Every `proceed` command runs its checks and exits with status 0 (pass) or 1 (fail + fix instructions).
+4 gates at phase transitions. Every `proceed` command runs its checks and exits with status 0 (pass) or 1 (fail + fix instructions).
 
 ## Gate 1: `proceed --from scope --to search`
 
@@ -13,20 +13,22 @@
 ## Gate 2: `proceed --from search --to analysis`
 
 - Validates collected.json exists with >= 1 source
-- **topic_coverage (BLOCKER)**: search_directions in scope.json must be covered by collected entries
+- **topic_coverage (BLOCKER)**: search_directions in scope.json must be covered by collected entries. Downgraded to WARN when directions contain CJK characters (tokenization limitations).
 - **min_sources (WARN)**: >= 2 unique sources (configurable per goal_type)
+- **tier_coverage (WARN)**: route tiers should have at least one source each
+- **per_direction_min_sources (WARN)**: each direction should have >= depth-based minimum sources
 
-## Gate 3: `proceed --from draft --to review`
+## Gate 3: `proceed --from analysis --to review`
 
-- Validates analysis.json schema (topic, goal_type, sections[].id/title/content/claims[].text/source_urls)
-- Validates draft/report.md exists non-empty
+- Validates analysis.json has topic, goal_type, and non-empty sections
+- **url_traceability (BLOCKER)**: all claim source_urls must exist in collected.json
 - **Agent MUST ask user**: "启动独立审查？"
 
 ## Gate 4: `proceed --from review --to final`
 
-- Invokes gateway.py with 14 checks
+- Invokes gateway.py with 15 checks
 - Always runs, even if user skipped subagent review
-- 14 checks: artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata, content_concreteness (verifies claims cite specific data/figures rather than vague generalities), methodology_depth (validates that research methodology and limitations are documented), source_tier_balance (WARN if Tier 1+2 ratio < 30% for quantitative goal types), recommendation_structure (WARN if tech_selection/competitive_comparison recommendation lacks table or "不推荐")
+- 15 checks: artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata (applies to all goal_types), claim_verified (includes verified ratio < 60% WARN), source_metadata, content_concreteness, methodology_depth, recommendation_structure, source_tier_balance, claim_dedup (WARN if same claim text appears in multiple sections)
 
 ## Gate 5: `proceed --from final --to cleanup`
 

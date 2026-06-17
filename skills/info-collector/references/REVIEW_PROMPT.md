@@ -10,8 +10,8 @@ Read these files from the skill's .workdir/:
 
 1. **Claim → Source traceability**: Every claim's source_urls should match the
     content in collected.json. Are the URLs real? Do they support the claim?
-    **Also check**: Does the draft report *text* actually include the source URL
-    or a clickable reference for the claim, not just the analysis.json metadata?
+    **Also check**: Does the section content in analysis.json actually include source URLs
+    or inline references adjacent to claims, not just the structured source_urls metadata?
 1.5. **Claim verification**: For EVERY claim in analysis.json:
     - Read the claim's source_urls
     - Find the corresponding entries in collected.json
@@ -32,8 +32,8 @@ Read these files from the skill's .workdir/:
    - Does every quantified claim have a clearly stated source and test conditions?
 6. **Source metadata**: For numerical/benchmark claims, does the claim or its
     context specify the test conditions (hardware, methodology, date)?
-    **Critical**: Verify these conditions appear in the *draft report text*, not
-    just in analysis.json.
+    **Critical**: Verify these conditions appear in the *section content text*, not
+    just in the source_metadata field of the claim.
 7. **Audience alignment**: Check scope.json for the `audience` field.
    - If `audience: CTO` → frame should focus on strategic implications, risk, cost
    - If `audience: engineer` → frame should focus on technical specifics, benchmarks
@@ -42,7 +42,7 @@ Read these files from the skill's .workdir/:
 
 ## Output format
 
-Write your review to .workdir/review_report.md with this structure:
+Write your review to .workdir/review_report.md (NOT the project root) with this structure:
 
 ```markdown
 # Review Report

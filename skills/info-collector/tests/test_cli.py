@@ -208,6 +208,74 @@ class TestCmdReport:
                 )
                 mock_exit.assert_called_with(1)
 
+    def test_report_cjk_topic_filename(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        _write_json(
+            workdir / "scope.json",
+            {
+                "topic": "智能体编程趋势",
+                "goal_type": "tech_selection",
+                "depth": "standard",
+                "audience": "engineer",
+                "scope_description": "Test",
+                "search_directions": ["AI"],
+            },
+        )
+        _write_json(
+            workdir / "collected.json",
+            [{"url": "https://a.com", "title": "AI", "snippet": "About AI"}],
+        )
+        _write_json(
+            workdir / "analysis.json",
+            {
+                "topic": "智能体编程趋势",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "C",
+                        "claims": [{"text": "T", "source_urls": ["https://a.com"]}],
+                    },
+                    {
+                        "id": "comparison",
+                        "title": "Cmp",
+                        "content": "C",
+                        "claims": [{"text": "T", "source_urls": ["https://a.com"]}],
+                    },
+                    {
+                        "id": "recommendation",
+                        "title": "Rec",
+                        "content": "C",
+                        "claims": [{"text": "T", "source_urls": ["https://a.com"]}],
+                    },
+                    {
+                        "id": "methodology",
+                        "title": "Method",
+                        "content": "M",
+                        "claims": [],
+                    },
+                ],
+            },
+        )
+        output_dir = tmp_path / "reports"
+        with patch("scripts.cli.WORKDIR", workdir), patch("sys.exit"):
+            cmd_report(
+                _make_namespace(
+                    quality="passed",
+                    search_rounds=1,
+                    source_count=1,
+                    version=1,
+                    parent=None,
+                    output=str(output_dir),
+                )
+            )
+        report_files = list(output_dir.glob("*.md"))
+        assert len(report_files) >= 1
+        filename = report_files[0].name
+        assert any('\u4e00' <= c <= '\u9fff' for c in filename)
+
 
 class TestCmdSource:
     def test_source_recommendation(self, capsys):

@@ -83,7 +83,7 @@ def cmd_report(args: argparse.Namespace) -> None:
     output_path = Path(args.output) if args.output else _find_project_root() / default_output
     output_path.mkdir(parents=True, exist_ok=True)
     topic = _read_topic(scope_path)
-    safe_topic = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in topic.lower())
+    safe_topic = "".join(c if c.isalnum() or c in ("-", "_") or '\u4e00' <= c <= '\u9fff' else "_" for c in topic.lower())
     filename = output_path / f"{safe_topic}_v{args.version or 1}.md"
     filename.write_text(report, encoding="utf-8")
     print(f"Report saved: {filename}")

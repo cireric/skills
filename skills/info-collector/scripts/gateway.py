@@ -211,9 +211,7 @@ def check_quality_heuristics(workdir: Path) -> CheckResult:
 
 
 def check_claim_metadata(workdir: Path, goal_type: str) -> CheckResult:
-    """WARN if >50% of claims in quantitative goal_types lack evidence_type/confidence/precision."""
-    if goal_type not in _QUANTITATIVE_GOAL_TYPES:
-        return CheckResult("claim_metadata", "WARN", True, "Skipped (non-quantitative goal type)")
+    """WARN if >50% of claims lack evidence_type/confidence/precision."""
     try:
         analysis = read_json(workdir / "analysis.json")
     except ArtifactError:
@@ -249,13 +247,37 @@ _PRECISE_NUMBER_PATTERN = re.compile(
 )
 
 
-def check_precision_inflation(workdir: Path) -> CheckResult:
+def _number_found_in_source(claim_text: str, source_text: str) -> bool:
+    """Check if any precise number in claim_text also appears in source_text."""
+    for match in _PRECISE_NUMBER_PATTERN.finditer(claim_text):
+        num_str = match.group(1).replace(",", "")
+        try:
+            num = float(num_str)
+        except ValueError:
+            continue
+        if num_str in source_text or f"{num:.0f}" in source_text or str(int(num)) in source_text:
+            return True
+    return False
+
+
+def check_precision_inflation(workdir: Path, collected: list[dict] | None = None) -> CheckResult:
     """BLOCKER if claim has precision='exact' but evidence_type forbids it.
-    WARN if evidence_type='third_party_estimate' and claim text contains precise-looking numbers."""
+    WARN if evidence_type='third_party_estimate' and claim text contains precise-looking numbers
+    that are NOT found in the source's fetched_content."""
     try:
         analysis = read_json(workdir / "analysis.json")
     except ArtifactError:
         return CheckResult("precision_inflation", "BLOCKER", True, "Cannot read analysis.json")
+    if collected is None:
+        try:
+            collected = read_json(workdir / "collected.json") or []
+        except ArtifactError:
+            collected = []
+    collected_by_url: dict[str, dict] = {}
+    for item in collected:
+        url = item.get("url", "")
+        if url:
+            collected_by_url[normalize_url(url)] = item
     blockers = []
     warnings = []
     for section in analysis.get("sections", []):
@@ -264,18 +286,27 @@ def check_precision_inflation(workdir: Path) -> CheckResult:
             text = claim.get("text", "")
             ev = claim.get("evidence_type")
             prec = claim.get("precision")
-            # BLOCKER: exact precision + inappropriate evidence type
             if prec == "exact" and ev in ("third_party_estimate", "qualitative_trend", "expert_opinion"):
                 blockers.append(
                     f"sections.{sec_id}.claims[{ci}]: precision='exact' with "
                     f"evidence_type='{ev}' — use precision='range' or 'qualitative'"
                 )
-            # WARN: third_party_estimate with precise-looking numbers even without annotation
             if ev == "third_party_estimate" and _PRECISE_NUMBER_PATTERN.search(text):
-                warnings.append(
-                    f"sections.{sec_id}.claims[{ci}]: evidence_type='third_party_estimate' "
-                    f"but text contains precise number — use precision='range' or rephrase qualitatively"
+                source_texts = []
+                for url in claim.get("source_urls", []):
+                    item = collected_by_url.get(normalize_url(url))
+                    if item:
+                        source_texts.append(
+                            (item.get("fetched_content", "") + " " + item.get("snippet", "")).lower()
+                        )
+                numbers_in_source = any(
+                    _number_found_in_source(text, src) for src in source_texts
                 )
+                if not numbers_in_source:
+                    warnings.append(
+                        f"sections.{sec_id}.claims[{ci}]: evidence_type='third_party_estimate' "
+                        f"but text contains precise number not found in source — use precision='range' or rephrase qualitatively"
+                    )
         # Data variance check: same metric_type, exact precision, conflicting values
         by_metric: dict[str, list[dict]] = {}
         for claim in section.get("claims", []):
@@ -313,10 +344,10 @@ def check_precision_inflation(workdir: Path) -> CheckResult:
 
 
 def check_claim_verified(workdir: Path) -> CheckResult:
-    """BLOCKER if any claim in analysis.json has verified=False or missing verified field.
-
-    This check only runs during the review->final gate (review_report.md exists).
-    """
+    """BLOCKER if any claim has verified=False.
+    WARN if any claim has verified='unverifiable' (cannot be confirmed but not disproven).
+    WARN if claim_verified ratio < 60% (auto-degrade signal).
+    Skipped if review has not been done yet."""
     review_report = workdir / "review_report.md"
     if not review_report.exists():
         return CheckResult("claim_verified", "BLOCKER", True, "Skipped (review not yet done)")
@@ -324,11 +355,17 @@ def check_claim_verified(workdir: Path) -> CheckResult:
         analysis = read_json(workdir / "analysis.json")
     except ArtifactError as e:
         return CheckResult("claim_verified", "BLOCKER", False, str(e))
+    warnings = []
+    total_claims = 0
+    verified_count = 0
     for section in analysis.get("sections", []):
         sec_id = section.get("id", "?")
         for claim in section.get("claims", []):
+            total_claims += 1
             verified = claim.get("verified")
-            if verified is not True:
+            if verified is True:
+                verified_count += 1
+            if verified is False:
                 text = claim.get("text", "")[:50]
                 return CheckResult(
                     "claim_verified",
@@ -336,6 +373,16 @@ def check_claim_verified(workdir: Path) -> CheckResult:
                     False,
                     f"Claim in section '{sec_id}' not verified: {text}",
                 )
+            if verified == "unverifiable":
+                text = claim.get("text", "")[:50]
+                warnings.append(f"Claim in section '{sec_id}' unverifiable: {text}")
+    if total_claims > 0 and verified_count / total_claims < 0.6:
+        warnings.append(
+            f"claim_verified ratio: {verified_count}/{total_claims} "
+            f"({verified_count / total_claims:.0%}) < 60% — quality should be 'degraded'"
+        )
+    if warnings:
+        return CheckResult("claim_verified", "WARN", True, "; ".join(warnings))
     return CheckResult("claim_verified", "BLOCKER", True)
 
 
@@ -627,14 +674,46 @@ def check_source_tier_balance(workdir: Path, goal_type: str) -> CheckResult:
     return CheckResult("source_tier_balance", "WARN", True)
 
 
+def check_claim_dedup(workdir: Path) -> CheckResult:
+    """WARN if the same claim text appears in multiple sections."""
+    try:
+        analysis = read_json(workdir / "analysis.json")
+    except ArtifactError:
+        return CheckResult("claim_dedup", "WARN", True, "Cannot read analysis.json")
+    claim_sections: dict[str, list[str]] = {}
+    for section in analysis.get("sections", []):
+        sec_id = section.get("id", "?")
+        for claim in section.get("claims", []):
+            text = claim.get("text", "").strip()
+            if text:
+                claim_sections.setdefault(text, []).append(sec_id)
+    duplicates = {text: secs for text, secs in claim_sections.items() if len(secs) > 1}
+    if duplicates:
+        issues = []
+        for text, secs in list(duplicates.items())[:5]:
+            issues.append(f"Claim '{text[:40]}...' appears in sections: {', '.join(secs)}")
+        return CheckResult(
+            "claim_dedup",
+            "WARN",
+            False,
+            f"{len(duplicates)} duplicate claims across sections: " + "; ".join(issues),
+        )
+    return CheckResult("claim_dedup", "WARN", True)
+
+
 def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
+    collected: list[dict] | None = None
+    try:
+        collected = read_json(workdir / "collected.json") or []
+    except ArtifactError:
+        pass
     return [
         check_artifact_exists(workdir),
         check_url_traceability(workdir),
         check_section_coverage(workdir, goal_type),
         check_analysis_schema(workdir),
         check_quality_heuristics(workdir),
-        check_precision_inflation(workdir),
+        check_precision_inflation(workdir, collected),
         check_metric_type_homogeneity(workdir),
         check_claim_metadata(workdir, goal_type),
         check_claim_verified(workdir),
@@ -643,4 +722,5 @@ def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
         check_methodology_depth(workdir, goal_type),
         check_recommendation_structure(workdir, goal_type),
         check_source_tier_balance(workdir, goal_type),
+        check_claim_dedup(workdir),
     ]

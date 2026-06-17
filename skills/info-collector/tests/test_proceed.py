@@ -52,20 +52,10 @@ class TestDetectCurrentPhase:
         _write_json(tmp_path / "analysis.json", {"topic": "T", "goal_type": "t", "sections": []})
         assert detect_current_phase(tmp_path) == "post_analysis"
 
-    def test_post_draft(self, tmp_path):
-        _make_scope(tmp_path)
-        _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
-        _write_json(tmp_path / "analysis.json", {"topic": "T", "goal_type": "t", "sections": []})
-        (tmp_path / "draft").mkdir()
-        (tmp_path / "draft" / "report.md").write_text("# Draft")
-        assert detect_current_phase(tmp_path) == "post_draft"
-
     def test_post_review(self, tmp_path):
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
         _write_json(tmp_path / "analysis.json", {"topic": "T", "goal_type": "t", "sections": []})
-        (tmp_path / "draft").mkdir()
-        (tmp_path / "draft" / "report.md").write_text("# Draft")
         _write_json(tmp_path / "review_report.md", {})
         assert detect_current_phase(tmp_path) == "post_review"
 
@@ -138,6 +128,20 @@ class TestProceeds:
         )
         ok, errors = proceeds(tmp_path, "search", "analysis")
         assert not ok
+        assert any("topic_coverage BLOCKER" in e for e in errors)
+
+    def test_search_gate_topic_coverage_cjk_downgraded_to_warn(self, tmp_path):
+        _make_scope(tmp_path, search_directions=["智能体编程框架"])
+        _write_json(
+            tmp_path / "collected.json",
+            [
+                {"url": "https://x.com", "title": "Unrelated", "snippet": "Something else"},
+            ],
+        )
+        from scripts.proceed import _check_search_gate
+        blockers, warnings = _check_search_gate(tmp_path)
+        assert not any("topic_coverage" in b for b in blockers)
+        assert any("topic_coverage" in w and "CJK" in w for w in warnings)
 
     def test_search_gate_no_false_positive_substring(self, tmp_path):
         _make_scope(tmp_path, search_directions=["artificial intelligence"])
@@ -162,7 +166,7 @@ class TestProceeds:
         ok, errors = proceeds(tmp_path, "search", "analysis")
         assert ok, errors
 
-    def test_draft_gate_passes(self, tmp_path):
+    def test_analysis_to_review_gate_passes(self, tmp_path):
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://a.com"}])
         _write_json(
@@ -170,15 +174,20 @@ class TestProceeds:
             {
                 "topic": "T",
                 "goal_type": "tech_selection",
-                "sections": [{"id": "overview", "title": "O", "content": "C"}],
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "C",
+                        "claims": [{"text": "C1", "source_urls": ["https://a.com"]}],
+                    }
+                ],
             },
         )
-        (tmp_path / "draft").mkdir()
-        (tmp_path / "draft" / "report.md").write_text("# Draft")
-        ok, errors = proceeds(tmp_path, "draft", "review")
+        ok, errors = proceeds(tmp_path, "analysis", "review")
         assert ok, errors
 
-    def test_draft_gate_missing_draft(self, tmp_path):
+    def test_analysis_to_review_gate_blocks_untraceable_urls(self, tmp_path):
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://a.com"}])
         _write_json(
@@ -186,10 +195,28 @@ class TestProceeds:
             {
                 "topic": "T",
                 "goal_type": "tech_selection",
-                "sections": [{"id": "overview", "title": "O", "content": "C"}],
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "C",
+                        "claims": [{"text": "C1", "source_urls": ["https://fabricated.com"]}],
+                    }
+                ],
             },
         )
-        ok, errors = proceeds(tmp_path, "draft", "review")
+        ok, errors = proceeds(tmp_path, "analysis", "review")
+        assert not ok
+        assert any("url_traceability" in e for e in errors)
+
+    def test_analysis_to_review_gate_blocks_empty_sections(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://a.com"}])
+        _write_json(
+            tmp_path / "analysis.json",
+            {"topic": "T", "goal_type": "tech_selection", "sections": []},
+        )
+        ok, errors = proceeds(tmp_path, "analysis", "review")
         assert not ok
 
     def test_invalid_transition(self, tmp_path):
@@ -234,8 +261,6 @@ class TestProceeds:
                 ],
             },
         )
-        (tmp_path / "draft").mkdir()
-        (tmp_path / "draft" / "report.md").write_text("# Draft")
         _write_json(tmp_path / "review_report.md", {})
         ok, errors = proceeds(tmp_path, "review", "final")
         assert ok, errors
@@ -378,7 +403,7 @@ class TestGetGatewayResults:
         assert section_coverage.passed is True
 
     def test_search_gate_chinese_topic_coverage(self, tmp_path):
-        """Chinese search directions should match via jieba tokenization."""
+        """Chinese search directions should match via threshold-based tokenization."""
         _make_scope(tmp_path, search_directions=["主流agentic coding框架对比"])
         _write_json(
             tmp_path / "collected.json",
@@ -389,8 +414,20 @@ class TestGetGatewayResults:
         ok, errors = proceeds(tmp_path, "search", "analysis")
         assert ok, errors
 
+    def test_search_gate_chinese_topic_coverage_partial(self, tmp_path):
+        """Partial token match above threshold should cover the direction."""
+        _make_scope(tmp_path, search_directions=["MCP协议生态与服务器数量"])
+        _write_json(
+            tmp_path / "collected.json",
+            [
+                {"url": "https://a.com", "title": "MCP 17-month anniversary 97M downloads", "snippet": "Fastest protocol adoption"},
+            ],
+        )
+        ok, errors = proceeds(tmp_path, "search", "analysis")
+        assert ok, errors
+
     def test_search_gate_chinese_topic_coverage_missing(self, tmp_path):
-        """Chinese search directions should fail when tokens are missing."""
+        """Chinese search directions should fail when too few tokens match."""
         _make_scope(tmp_path, search_directions=["主流agentic coding框架对比"])
         _write_json(
             tmp_path / "collected.json",
@@ -399,8 +436,23 @@ class TestGetGatewayResults:
             ],
         )
         ok, errors = proceeds(tmp_path, "search", "analysis")
-        assert not ok
-        assert "主流agentic coding框架对比" in errors[0]
+        assert ok  # CJK-heavy directions downgrade topic_coverage to WARN
+        from scripts.proceed import _check_search_gate
+        blockers, warnings = _check_search_gate(tmp_path)
+        assert not blockers
+        assert any("topic_coverage" in w and "CJK" in w for w in warnings)
+
+    def test_search_gate_threshold_partial_coverage(self, tmp_path):
+        """Direction with multiple tokens should pass when >=50% tokens match."""
+        _make_scope(tmp_path, search_directions=["AI coding tools benchmarks pricing"])
+        _write_json(
+            tmp_path / "collected.json",
+            [
+                {"url": "https://a.com", "title": "AI Coding Tools 2026", "snippet": "Benchmarks comparison"},
+            ],
+        )
+        ok, errors = proceeds(tmp_path, "search", "analysis")
+        assert ok, errors
 
 
 class TestTierCoverage:

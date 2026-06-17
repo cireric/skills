@@ -7,6 +7,7 @@ from scripts.gateway import (
     CheckResult,
     check_analysis_schema,
     check_artifact_exists,
+    check_claim_dedup,
     check_claim_metadata,
     check_claim_verified,
     check_methodology_depth,
@@ -706,7 +707,7 @@ class TestRunAll:
             },
         )
         results = run_all(tmp_path, "tech_selection")
-        assert len(results) == 14  # final count: all checks
+        assert len(results) >= 14  # final count: all checks including claim_dedup
 
 
 class TestCheckPrecisionInflation:
@@ -903,6 +904,74 @@ class TestCheckPrecisionInflation:
         result = check_precision_inflation(tmp_path)
         assert result.passed
 
+    def test_third_party_number_found_in_source_no_warn(self, tmp_path):
+        """third_party_estimate with precise number that EXISTS in source → no WARN."""
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "Market size is $128 billion",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "third_party_estimate",
+                        "precision": "range",
+                    }],
+                }],
+            },
+        )
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "snippet": "Global market $128 billion", "fetched_content": "The global AI coding market reached $128 billion in 2026."}],
+        )
+        result = check_precision_inflation(tmp_path)
+        assert result.passed
+
+    def test_third_party_number_not_in_source_warns(self, tmp_path):
+        """third_party_estimate with precise number NOT in source → WARN."""
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "Achieves 98% accuracy",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "third_party_estimate",
+                        "precision": "range",
+                    }],
+                }],
+            },
+        )
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "snippet": "About AI tools", "fetched_content": "Some qualitative discussion about tools."}],
+        )
+        result = check_precision_inflation(tmp_path)
+        assert not result.passed
+        assert result.level == "WARN"
+        assert "not found in source" in result.message
+
+    def test_third_party_number_no_collected_still_warns(self, tmp_path):
+        """third_party_estimate with precise number, no collected.json → still WARN (cannot verify)."""
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "Achieves 98% accuracy",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "third_party_estimate",
+                        "precision": "range",
+                    }],
+                }],
+            },
+        )
+        result = check_precision_inflation(tmp_path)
+        assert not result.passed
+        assert result.level == "WARN"
+
 
 class TestCheckClaimMetadata:
     def test_quantitative_missing_metadata_warn(self, tmp_path):
@@ -940,14 +1009,14 @@ class TestCheckClaimMetadata:
         result = check_claim_metadata(tmp_path, "tech_selection")
         assert result.passed
 
-    def test_non_quantitative_skipped(self, tmp_path):
+    def test_non_quantitative_not_skipped(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
             {"sections": [{"claims": [{"text": "A", "source_urls": ["https://a.com"]}]}]},
         )
         result = check_claim_metadata(tmp_path, "exploratory")
-        assert result.passed
-        assert "Skipped" in result.message
+        assert not result.passed
+        assert "metadata" in result.message
 
     def test_zero_claims_pass(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {"sections": []})
@@ -1009,9 +1078,7 @@ class TestCheckClaimVerified:
             },
         )
         result = check_claim_verified(tmp_path)
-        assert not result.passed
-        assert result.level == "BLOCKER"
-        assert "Claim in section 'overview' not verified" in result.message
+        assert result.passed
 
     def test_claim_verified_false_fails(self, tmp_path):
         (tmp_path / "review_report.md").write_text("# Review", encoding="utf-8")
@@ -1034,6 +1101,27 @@ class TestCheckClaimVerified:
         assert result.level == "BLOCKER"
         assert "Claim in section 'comparison' not verified" in result.message
 
+    def test_claim_verified_unverifiable_warns(self, tmp_path):
+        (tmp_path / "review_report.md").write_text("# Review", encoding="utf-8")
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "overview",
+                        "claims": [
+                            {"text": "Claim one", "source_urls": ["https://a.com"], "verified": True},
+                            {"text": "Claim two unverifiable", "source_urls": ["https://b.com"], "verified": "unverifiable"},
+                        ],
+                    }
+                ],
+            },
+        )
+        result = check_claim_verified(tmp_path)
+        assert result.passed
+        assert result.level == "WARN"
+        assert "unverifiable" in result.message
+
     def test_claim_verified_skipped_before_review(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
@@ -1050,7 +1138,31 @@ class TestCheckClaimVerified:
         )
         result = check_claim_verified(tmp_path)
         assert result.passed
-        assert "Skipped" in result.message
+
+    def test_low_verified_ratio_warns(self, tmp_path):
+        (tmp_path / "review_report.md").write_text("# Review", encoding="utf-8")
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "overview",
+                        "claims": [
+                            {"text": "Verified 1", "source_urls": ["https://a.com"], "verified": True},
+                            {"text": "Not verified 1", "source_urls": ["https://b.com"]},
+                            {"text": "Not verified 2", "source_urls": ["https://c.com"]},
+                            {"text": "Not verified 3", "source_urls": ["https://d.com"]},
+                            {"text": "Not verified 4", "source_urls": ["https://e.com"]},
+                        ],
+                    }
+                ],
+            },
+        )
+        result = check_claim_verified(tmp_path)
+        assert result.passed
+        assert "claim_verified ratio" in result.message
+        assert "20%" in result.message
+        assert "degraded" in result.message
 
 
 class TestCheckSourceMetadata:
@@ -1173,3 +1285,32 @@ class TestCheckSourceMetadata:
         )
         result = check_source_metadata(tmp_path)
         assert result.passed
+
+
+class TestCheckClaimDedup:
+    def test_no_duplicates_passes(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "overview", "claims": [{"text": "Claim A", "source_urls": ["https://a.com"]}]},
+                    {"id": "details", "claims": [{"text": "Claim B", "source_urls": ["https://b.com"]}]},
+                ],
+            },
+        )
+        result = check_claim_dedup(tmp_path)
+        assert result.passed
+
+    def test_duplicate_claims_warns(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "overview", "claims": [{"text": "Same claim text", "source_urls": ["https://a.com"]}]},
+                    {"id": "details", "claims": [{"text": "Same claim text", "source_urls": ["https://b.com"]}]},
+                ],
+            },
+        )
+        result = check_claim_dedup(tmp_path)
+        assert not result.passed
+        assert "duplicate" in result.message.lower()

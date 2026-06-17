@@ -17,8 +17,7 @@ The research pipeline has ordered phases. Each phase transition triggers a **gat
 - **scope** — Define research scope: topic, goal_type, depth, audience, search_directions, report_language. Produces `scope.json`.
 - **search** — Search and collect web sources. Produces `collected.json`.
 - **analysis** — Synthesize findings into claims with metadata. Produces `analysis.json`.
-- **draft** — Render analysis.json as readable Markdown for review. Produces `draft/report.md`.
-- **review** — Optional independent subagent review of draft + analysis.json. Produces `review_report.md`.
+- **review** — Optional independent subagent review of analysis.json. Produces `review_report.md`.
 - **final** — Generate final report from analysis.json via reporter.py.
 - **cleanup** — Remove intermediate workdir files.
 
@@ -27,9 +26,9 @@ The research pipeline has ordered phases. Each phase transition triggers a **gat
 Quality checks at phase transitions. Each gate returns BLOCKER (must fix) or WARN (noted but not blocking).
 
 - **scope→search**: validates scope.json schema (required fields + enum values)
-- **search→analysis**: topic_coverage (BLOCKER, token-level matching via jieba) + tier_coverage (WARN) + per_direction_min_sources (WARN, driven by depth) + min_sources (WARN)
-- **draft→review**: analysis.json schema + draft existence
-- **review→final**: 10 gateway checks (artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata)
+- **search→analysis**: topic_coverage (BLOCKER, token-level matching) + tier_coverage (WARN) + per_direction_min_sources (WARN, driven by depth) + min_sources (WARN)
+- **analysis→review**: analysis.json schema + url_traceability (BLOCKER)
+- **review→final**: 15 gateway checks (artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata, claim_verified, source_metadata, content_concreteness, methodology_depth, recommendation_structure, source_tier_balance, claim_dedup)
 - **final→cleanup**: no structural checks
 
 ### goal_type
@@ -97,10 +96,6 @@ Precision rules: `precision: exact` requires `evidence_type: official_data` or `
 
 The testing environment behind benchmark claims. Rendered as a structured table in the report. Includes hardware, OS, runtime version, and test date. Stored in claim's source_metadata, validated by gateway, rendered by reporter.py.
 
-### Draft
-
-A readable Markdown rendering of analysis.json, produced for review purposes. The draft is NOT the final report. Review fixes target analysis.json (not draft). The final report is rendered by reporter.py from the reviewed analysis.json. AI writes full Markdown narrative (tables, emphasis, transitions) in analysis.json's sections[].content field.
-
 ### Methodology section
 
 A required section (id="methodology") for quantitative goal_types. Written by AI in analysis.json sections. Content describes: data sources and their test conditions, limitations of cross-source comparisons, date range of data collection.
@@ -134,6 +129,5 @@ search→analysis gate check (WARN level) that verifies collected.json contains 
 - **scope.json** — Phase 1 output: topic, goal_type, depth, audience, report_language, scope_description, search_directions
 - **collected.json** — Phase 2 output: array of {url, title, snippet, source_tier, fetched_content}
 - **analysis.json** — Phase 3a output: topic, goal_type, audience, sections (each with id, title, content, claims)
-- **draft/report.md** — Phase 3b output: readable rendering of analysis.json
-- **review_report.md** — Phase 3c output: subagent review findings
-- **config.json** — Skill configuration: sources (4 tiers), routes (10 goal_types), output_dir, default_report_language, default_depth, goal_type_defaults
+- **review_report.md** — Phase 3b output: subagent review findings
+- **config.json** — Skill configuration: sources (4 tiers), routes (10 goal_types), output_dir, default_report_language, default_report_language, default_depth, goal_type_defaults
