@@ -2,29 +2,23 @@
 
 按任务复杂度选择规划方式，避免过度仪式或欠规划。
 
+核心理念：**需求对齐是 agentic coding 最关键的阶段**。跳过对齐直接实施 = agent 用自己的理解代替你的意图，产出偏离需求。
+
 ## 决策树
 
 ```
 需求/想法
     ↓
-是否有多个决策点或歧义？
+是否有决策点或歧义？
     ├── 否 → 直接做（简单任务）
     └── 是 → /grill-with-docs（对齐决策，更新 CONTEXT.md + ADR）
                 ↓
-            /to-prd（产出规格文档）
+            需求已对齐，选择实施方式：
+                ├── 简单（1 模块，≤1 决策点）→ 直接实施
+                ├── 中等（1-2 模块，2-3 决策点）→ 按序实施，逐模块验证
+                └── 复杂（3+ 模块，4+ 决策点）→ 拆分垂直切片，逐片实施
                 ↓
-            涉及几个模块？有几个决策点？
-                ├── 单模块，≤3 决策点（中等） → /hyperplan → /start-work
-                └── 多模块，>3 决策点（复杂） → /to-issues 垂直切片
-                                                    → 每片按需: /hyperplan → /start-work
-                                                    ↓
-                                                验证回路（测试 → 对齐 → commit）
-                                                    ↓
-                                                实施后 skill（按需）：
-                                                ├── /diagnose — 查 bug
-                                                ├── /improve-codebase-architecture — 架构深化
-                                                ├── /tdd — 补测试
-                                                └── /zoom-out — 理解上下文
+            验证回路（测试 → 对齐 → commit）
 ```
 
 ## 复杂度评估
@@ -46,45 +40,68 @@
 |------|------|--------|--------|------|
 | 修 typo | 1 | 0 | 简单 | 直接做 |
 | 加一个 config 字段 | 1 | 1 | 简单 | 直接做 |
-| reporter.py 加 test conditions 表格 | 1 | 2 | 中等 | hyperplan → start-work |
-| 新增 i18n 标签系统 | 2 | 3 | 中等 | hyperplan → start-work |
-| 10 issue 的 PRD 全量实施 | 5+ | 8+ | 复杂 | to-issues → 逐片执行 |
+| reporter.py 加 test conditions 表格 | 1 | 2 | 中等 | grill → 逐模块实施 |
+| 新增 i18n 标签系统 | 2 | 3 | 中等 | grill → 逐模块实施 |
+| 重构整个 gateway 检查体系 | 5+ | 8+ | 复杂 | grill → 拆分垂直切片 |
 
-## 各阶段规则
+## 阶段 1：需求对齐 — /grill-with-docs
 
-### /grill-with-docs
+这是整个流程中最重要的一步。不可跳过。
 
-- **触发条件**：任务有 ≥2 个决策点或存在歧义
-- **不触发**：改 typo、加字段、修 lint error 等无需对齐决策的任务
-- **副作用**：同步更新 CONTEXT.md（术语）和 ADR（不可逆决策）。后续所有 skill 读到的术语是对齐后的
-- **不可跳过的原因**：术语不对齐 = 后续 skill 各说各话，PRD 和 issues 用词不一致，atlas 更容易幻觉
+### 触发条件
 
-### /to-prd
+- 任务有 ≥1 个决策点或存在歧义
+- 不触发：改 typo、加字段、修 lint error 等无需对齐决策的任务
 
-- **触发条件**：经过 grill 或有足够上下文后，需要把决策固化为规格文档
-- **不触发**：简单任务不需要 PRD
-- **产出**：user stories + implementation decisions + testing decisions + out of scope
-- **关键**：implementation decisions 不写文件路径和行号（会过时），写接口和行为
+### grill-with-docs 做什么
 
-### /to-issues
+1. **拷问需求**：逐一走完决策树的每个分支，agent 提供推荐答案，用户确认或纠正
+2. **术语对齐**：遇到模糊或冲突的术语，当场决议并更新 CONTEXT.md
+3. **架构决策**：遇到不可逆决策，记录 ADR
+4. **代码交叉验证**：用户说"X 是这样工作的"，agent 检查代码是否一致，不一致则暴露
 
-- **触发条件**：复杂任务（多模块、多决策点）
-- **产出**：垂直切片 issues，每个 issue 有 acceptance criteria 和 blocked-by
-- **垂直切片原则**：每个 issue 切穿所有层（schema → API → test），不是按层拆（"先改 schema，再改 API"）
-- **HITL vs AFK**：需要人工确认的 issue 标 HITL，agent 可独立完成的标 AFK
-- **并行安全**：同文件的 issue 用 blocked-by 串行；不同文件的 issue 可并行 delegate
+### 为什么不可跳过
 
-### /hyperplan + /start-work
+- 术语不对齐 → 后续实施用词不一致，agent 产生歧义
+- 决策不对齐 → agent 用自己的理解代替你的意图，产出偏离需求
+- grill 的价值不只是"问清楚"——它还建立术语基础设施（CONTEXT.md）和决策记录（ADR），后续所有实施都依赖它们
 
-- **触发条件**：中等任务，或复杂任务的单个 issue
-- **/hyperplan**：5 个 hostile agent 交叉质疑，lead 综合。产出 .omo/plans/ 下的 plan 文件
-- **/start-work**：atlas 读取 plan → 自动分解 sub-task → 逐条执行 → boulder.json 追踪进度
-- **约束来源**：atlas 的自由度被上一层的产出约束——PRD 约束 issues，issue 的 acceptance criteria 约束 atlas
-- **worktree**：需要隔离时用 `--worktree`，在独立分支工作，完成后 merge 回主分支
+### 产出
 
-### 实施中发现的 skill
+- 对齐后的需求理解（在对话中）
+- 更新的 CONTEXT.md（术语决议）
+- 更新的 ADR（架构决策，按需）
 
-这些 skill 不在决策树的主路径上，而是在实施过程中按需触发：
+## 阶段 2：实施
+
+需求对齐后，按复杂度选择实施方式。**没有固定流程**——根据任务实际情况选择最合适的方法。
+
+### 简单任务
+
+直接实施。改完跑测试，通过即可。
+
+### 中等任务
+
+按序实施，逐模块验证：
+
+1. 确定变更涉及的模块列表和依赖顺序
+2. 逐模块实施，每个模块完成后跑相关测试
+3. 全量测试
+4. 同文件的变更串行执行；不同文件的变更可并行
+
+### 复杂任务
+
+拆分垂直切片，逐片实施：
+
+1. **拆分**：将任务拆成垂直切片——每个切片切穿所有层（schema → logic → test），不是按层拆
+2. **排序**：同文件的切片串行；不同文件的切片可并行
+3. **逐片实施**：每个切片完成后跑测试，验证通过后进入下一片
+4. **发现新决策点**：
+   - 影响范围限于当前切片 → agent 自行决定，记录在 commit message 里
+   - 影响其他切片或改变对齐时的决策 → 停下来，问人
+   - 原则：实施中的新发现只能**收缩**当前切片的范围，不能**扩展**。扩展需要回到对齐阶段
+
+### 实施中按需使用的 skill
 
 | Skill | 触发时机 | 用途 |
 |-------|----------|------|
@@ -94,39 +111,22 @@
 | `/zoom-out` | 不熟悉某段代码的全局角色时 | 跳出细节，看模块在系统中的位置 |
 | `/prototype` | 架构决策前需要验证方案时 | 抛弃式原型，验证后删除或吸收 |
 
-#### /tdd 的两种用法
-
-- **实现手法**（默认）：嵌入 atlas 执行过程，每个 sub-task 走 red-green-refactor。PRD 已定义接口时直接用
-- **前置探索**（按需）：在 start-work 之前单独跑 tdd，用测试描述期望行为来验证接口设计。只在接口不确定、需要用测试"试错"时使用
-
-### 实施中发现的决策点
-
-实施过程中可能发现 PRD / issue 没覆盖的新决策点。处理规则：
-
-1. **影响范围限于当前 issue** → agent 自行决定，记录在 commit message 里
-2. **影响其他 issue 或改变 PRD decision** → 停下来，问人。不擅自修改其他 issue 的 scope
-3. **发现新 issue 值得做** → 记录但不立即开做，当前 issue 完成后再评估优先级
-4. **原则**：实施中的新发现只能**收缩**当前 issue 的范围（发现不需要做某事），不能**扩展**（发现还想做另一件事）。扩展需要回到规划阶段
-
-## 验证回路
+## 阶段 3：验证回路
 
 实现完成后的验证流程：
 
 1. **全量测试**：`pytest` 全绿（零失败，pre-existing 失败单独标注）
-2. **Acceptance criteria 逐条对照**：每个 issue 的 checklist 项在代码中验证
-3. **PRD 对齐检查**：回读 PRD 的 implementation decisions，确认：
-   - 每条 decision 在代码中有对应实现
-   - 代码中的实际实现没有超出 decision 范围（scope creep）
-   - decision 里的细节（如 label 列表、字段名）与代码一致
-4. **对齐失败时**：更新 PRD 使其与实际一致（PRD 是历史决策记录，应反映真实决策结果），不回退代码去迎合 PRD 的过时描述
+2. **需求对齐回查**：回读 grill 阶段的决策，确认：
+   - 每条决策在代码中有对应实现
+   - 代码中的实际实现没有超出决策范围（scope creep）
+3. **对齐失败时**：更新决策记录使其与实际一致（以代码为准），不回退代码去迎合过时决策
 
-### 谁来判定，判定后干嘛
+### 谁来判定
 
 | 验证项 | 判定者 | 通过后 | 失败时 |
 |--------|--------|--------|--------|
-| 全量测试 | 自动（CI / agent 运行） | 进入下一步 | 修复代码，重跑 |
-| Acceptance criteria | agent 逐条验证 + 人工抽查 | 进入下一步 | 修复代码或更新 criteria |
-| PRD 对齐 | 人工审阅 | commit | 更新 PRD（以代码为准） |
+| 全量测试 | 自动 | 进入下一步 | 修复代码，重跑 |
+| 需求对齐 | agent + 人工 | commit | 修复代码或更新决策记录 |
 
 全部通过 → commit（需人工确认）。不自动 commit。
 
@@ -134,24 +134,18 @@
 
 ### 规则：grill-with-docs 不可跳过
 
-- **问题**：跳过 grill 直接写 PRD，术语不对齐导致 issues 之间用词不一致（同一个概念在两个 issue 里叫不同名字），atlas 执行时产生歧义
-- **当时的解法**：grill-with-docs 在对齐决策的同时更新 CONTEXT.md，强制所有后续 skill 使用统一术语
-- **结论**：grill 的价值不只是"问清楚"——它还建立术语基础设施，后续 skill 都依赖它
+- **问题**：跳过对齐直接实施，术语不对齐导致 agent 各说各话，决策不对齐导致产出偏离需求
+- **解法**：grill-with-docs 在对齐决策的同时更新 CONTEXT.md + ADR，建立术语基础设施
+- **结论**：grill 的价值不只是"问清楚"——它还建立术语基础设施，后续所有实施都依赖它
 
-### 规则：每层约束逐级收紧
+### 规则：复杂任务拆分垂直切片
 
-- **问题**：大功能直接扔给 Prometheus+Atlas，atlas 自由度过大，plan 粒度粗，执行时容易"创造性发挥"
-- **当时的解法**：用 to-issues 拆成垂直切片，每个 issue 的 acceptance criteria 约束 atlas 范围
-- **结论**：跳层（跳过 to-issues 直接让 atlas 执行 PRD）= 幻觉风险
+- **问题**：大功能整体实施，agent 自由度过大，容易"创造性发挥"偏离需求
+- **解法**：拆成垂直切片，每个切片切穿所有层，逐片验证
+- **结论**：跳过拆分直接实施 = 脱离对齐约束的风险
 
-### 规则：同文件 issue 串行执行
+### 规则：同文件变更串行执行
 
-- **问题**：#7（reference numbering）和 #8（test conditions）两个 agent 并行改 reporter.py，合并时 test_proceed.py fixture 缺少 methodology section 导致测试失败
-- **当时的解法**：手动修复 test_proceed.py，补上 methodology section
-- **结论**：同文件的 issue 用 blocked-by 串行；不同文件的 issue 可以并行
-
-### 规则：PRD 完成后对齐检查
-
-- **问题**：PRD Module 9 的 _LABELS 列表只写了 3 个 label key（sources/references/test_conditions），实际实现需要 7 个（+claim/conditions/date/source_type，来自 Test Conditions 表格的列头）
-- **当时的解法**：复盘时发现，更新 PRD Module 9 补全 label 列表
-- **结论**：PRD 在实施过程中会被细化，完成后必须回读对齐。以代码为准，PRD 是记录
+- **问题**：两个 agent 并行改同一文件，合并时丢失改动或测试失败
+- **解法**：同文件的变更串行；不同文件的变更可并行
+- **结论**：并行安全靠文件隔离保证

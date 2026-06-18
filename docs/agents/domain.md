@@ -4,22 +4,43 @@ How the engineering skills should consume this repo's domain documentation when 
 
 ## Before exploring, read these
 
-- **`CONTEXT.md`** at the repo root, or
-- **`CONTEXT-MAP.md`** at the repo root if it exists — it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
-- **`docs/adr/`** — read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
+This repo uses a multi-context structure. Start by checking for `CONTEXT-MAP.md` at the repo root:
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The producer skill (`/grill-with-docs`) creates them lazily when terms or decisions actually get resolved.
+1. **If `CONTEXT-MAP.md` exists** — read it to find which contexts exist and where their `CONTEXT.md` files live. Then read the `CONTEXT.md` relevant to the topic you're working on.
+2. **If only a root `CONTEXT.md` exists** — single context, read it directly.
+3. **If neither exists** — proceed silently. Don't flag their absence; don't suggest creating them upfront. The producer skill (`/grill-with-docs`) creates them lazily when terms or decisions actually get resolved.
+
+For ADRs: first determine which skill/context you're working in, then look for `docs/adr/` or `skills/<skill>/docs/adr/` in that context. In multi-context repos, check the root `docs/adr/` for system-wide decisions and the context-specific `docs/adr/` for context-scoped decisions.
 
 ## File structure
 
-Single-context repo:
+Multi-context repo (this repo):
+
+```
+/
+├── CONTEXT-MAP.md                       ← points to each context's CONTEXT.md
+├── docs/
+│   └── adr/                             ← system-wide decisions (if any)
+│   └── agents/                          ← cross-skill configuration
+└── skills/
+    ├── info-collector/
+    │   ├── CONTEXT.md                   ← info-collector domain glossary
+    │   └── docs/adr/                    ← info-collector decisions
+    ├── reading-grill/
+    │   └── (no CONTEXT.md — pure prompt skill)
+    └── book-grill/
+        └── (no CONTEXT.md — pure prompt skill)
+```
+
+Single-context repo (for reference):
 
 ```
 /
 ├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
+├── docs/
+│   └── adr/
+│       ├── 0001-event-sourced-orders.md
+│       └── 0002-postgres-for-write-model.md
 └── src/
 ```
 
