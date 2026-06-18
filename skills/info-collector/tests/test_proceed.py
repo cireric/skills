@@ -8,6 +8,7 @@ from scripts.proceed import (
     _check_scope_schema,
     _check_search_gate,
     _sanitize_sections,
+    _write_phase_state,
     detect_current_phase,
     get_gateway_results,
     proceeds,
@@ -32,6 +33,12 @@ def _make_scope(workdir, goal_type="tech_selection", depth="standard", report_la
     if report_language is not None:
         data["report_language"] = report_language
     _write_json(workdir / "scope.json", data)
+
+
+def _write_scope_and_collected(workdir):
+    scope = {"topic": "t", "goal_type": "exploratory", "depth": "quick", "audience": "engineer", "scope_description": "d", "search_directions": ["d1"]}
+    _write_json(workdir / "scope.json", scope)
+    _write_json(workdir / "collected.json", [{"url": "https://example.com", "title": "x", "snippet": "d1", "source_tier": 4}])
 
 
 class TestDetectCurrentPhase:
@@ -486,10 +493,39 @@ class TestTierCoverage:
         )
         ok, errors = proceeds(tmp_path, "search", "analysis")
         assert ok  # WARN does not block
-        # Should have tier_coverage warning about missing tier 2 and tier 1
+        # Should have tier_coverage warning about missing required tiers 3 and 1
         from scripts.proceed import _check_search_gate
         blockers, warnings = _check_search_gate(tmp_path)
         assert any("tier_coverage" in w for w in warnings)
+
+    def test_optional_tier_missing_is_info_not_warn(self, tmp_path, capsys):
+        """Missing optional tier produces INFO on stderr, not a WARN."""
+        config = {
+            "sources": {
+                "1": {"sources": [{"name": "arXiv", "domain": "arxiv.org"}]},
+                "2": {"sources": [{"name": "GitHub", "domain": "github.com"}]},
+                "3": {"sources": [{"name": "Medium", "domain": "medium.com"}]},
+                "4": {"sources": [{"name": "Reddit", "domain": "reddit.com"}]},
+            },
+            "routes": {
+                "panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]},
+            },
+        }
+        _make_scope(tmp_path, goal_type="panoramic_understanding", search_directions=["AI", "ML"])
+        _write_json(
+            tmp_path / "collected.json",
+            [
+                {"url": "https://a.com", "title": "AI ML", "snippet": "About AI and ML", "source_tier": 4},
+                {"url": "https://b.com", "title": "More AI", "snippet": "About ML too", "source_tier": 3},
+                {"url": "https://c.com", "title": "Deep AI", "snippet": "About AI research", "source_tier": 1},
+            ],
+        )
+        blockers, warnings = _check_search_gate(tmp_path, config)
+        assert not blockers
+        assert not any("tier_coverage" in w for w in warnings)
+        captured = capsys.readouterr()
+        assert "optional tiers" in captured.err
+        assert "[INFO]" in captured.err
 
 
 class TestSanitizeSections:
@@ -564,6 +600,145 @@ class TestSanitizeSections:
         assert result["topic"] == "T"
         assert result["goal_type"] == "exploratory"
         assert result["custom_key"] == "keep"
+
+
+class TestPipelineStateFile:
+    def test_state_file_overrides_artifact_detection(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
+        _write_json(tmp_path / "analysis.json", {"topic": "T", "goal_type": "t", "sections": []})
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        assert detect_current_phase(tmp_path) == "post_review"
+
+    def test_state_file_fallback_to_artifacts(self, tmp_path):
+        _make_scope(tmp_path)
+        assert not (tmp_path / "pipeline_state.json").exists()
+        assert detect_current_phase(tmp_path) == "post_scope"
+
+    def test_state_file_corrupt_falls_back(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
+        (tmp_path / "pipeline_state.json").write_text("{invalid json", encoding="utf-8")
+        assert detect_current_phase(tmp_path) == "post_search"
+
+    def test_write_phase_state(self, tmp_path):
+        _write_phase_state(tmp_path, "post_review")
+        state = json.loads((tmp_path / "pipeline_state.json").read_text(encoding="utf-8"))
+        assert state == {"current_phase": "post_review"}
+
+    def test_proceeds_writes_state(self, tmp_path):
+        _make_scope(tmp_path)
+        ok, errors = proceeds(tmp_path, "scope", "search")
+        assert ok, errors
+        state = json.loads((tmp_path / "pipeline_state.json").read_text(encoding="utf-8"))
+        assert state == {"current_phase": "post_search"}
+
+
+class TestReviewSelfLoop:
+    def test_review_to_review_allowed(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"], "verified": True}],
+                    },
+                    {
+                        "id": "comparison",
+                        "title": "Cmp",
+                        "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
+                        "claims": [{"text": "C2", "source_urls": ["https://example.com"], "verified": True}],
+                    },
+                    {
+                        "id": "recommendation",
+                        "title": "Rec",
+                        "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
+                        "claims": [{"text": "C3", "source_urls": ["https://example.com"], "verified": True}],
+                    },
+                    {
+                        "id": "methodology",
+                        "title": "Methodology",
+                        "content": "M",
+                        "claims": [],
+                    },
+                ],
+            },
+        )
+        _write_json(tmp_path / "review_report.md", {})
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "review")
+        assert ok, errors
+
+    def test_review_to_review_runs_gateway(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {"topic": "T", "goal_type": "tech_selection", "sections": []},
+        )
+        _write_json(tmp_path / "review_report.md", {})
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "review")
+        assert not ok
+
+
+class TestSearchPlanStatus:
+    def test_search_plan_includes_status_field(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        scope = {
+            "topic": "t", "goal_type": "exploratory", "depth": "quick",
+            "audience": "engineer", "scope_description": "d",
+            "search_directions": ["AI trends"],
+        }
+        _write_json(workdir / "scope.json", scope)
+        config = {
+            "sources": {"4": {"sources": [{"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com"}]}},
+            "routes": {"exploratory": {"entry_tier": 4, "path": [4]}},
+        }
+        proceeds(workdir, "scope", "search", config)
+        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
+        for task in plan["tasks"]:
+            assert "status" in task
+            assert task["status"] == "pending"
+            assert "collected_count" in task
+            assert task["collected_count"] == 0
+
+
+class TestIntegrationMediumComplexity:
+    def test_state_file_survives_review_self_loop(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        config = {
+            "sources": {"4": {"sources": [{"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com"}]}},
+            "routes": {"exploratory": {"entry_tier": 4, "path": [4]}},
+        }
+        scope = {"topic": "t", "goal_type": "exploratory", "depth": "quick", "audience": "engineer", "scope_description": "d", "search_directions": ["d1"]}
+        _write_json(workdir / "scope.json", scope)
+        proceeds(workdir, "scope", "search", config)
+        assert detect_current_phase(workdir) == "post_search"
+        collected = [{"url": "https://example.com", "title": "d1 info", "snippet": "d1", "source_tier": 4}]
+        _write_json(workdir / "collected.json", collected)
+        proceeds(workdir, "search", "analysis")
+        assert detect_current_phase(workdir) == "post_analysis"
+        analysis = {"topic": "t", "goal_type": "exploratory", "sections": [
+            {"id": "overview", "title": "Overview", "content": "test", "claims": []},
+            {"id": "findings", "title": "Findings", "content": "test findings", "claims": []}
+        ]}
+        _write_json(workdir / "analysis.json", analysis)
+        proceeds(workdir, "analysis", "review")
+        assert detect_current_phase(workdir) == "post_review"
+        (workdir / "review_report.md").write_text("## Overall Verdict\n**pass_with_issues**\n", encoding="utf-8")
+        _write_phase_state(workdir, "post_review")
+        passed, errors = proceeds(workdir, "review", "review")
+        assert passed
+        passed, errors = proceeds(workdir, "review", "final")
+        assert passed
 
 
 class TestProceedArtifactErrorHandling:
