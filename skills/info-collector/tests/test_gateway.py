@@ -5,6 +5,8 @@ from pathlib import Path
 
 from scripts.gateway import (
     CheckResult,
+    _normalize_numbers,
+    _number_found_in_source,
     check_analysis_schema,
     check_artifact_exists,
     check_claim_dedup,
@@ -746,6 +748,10 @@ class TestCheckPrecisionInflation:
                 }],
             },
         )
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "snippet": "", "fetched_content": "x" * 300}],
+        )
         result = check_precision_inflation(tmp_path)
         assert not result.passed
         assert result.level == "WARN"
@@ -953,7 +959,7 @@ class TestCheckPrecisionInflation:
         assert "not found in source" in result.message
 
     def test_third_party_number_no_collected_still_warns(self, tmp_path):
-        """third_party_estimate with precise number, no collected.json → still WARN (cannot verify)."""
+        """third_party_estimate with precise number, no collected.json → no warning (ADR 0018 auto-fix handles it)."""
         _write_json(
             tmp_path / "analysis.json",
             {
@@ -969,11 +975,10 @@ class TestCheckPrecisionInflation:
             },
         )
         result = check_precision_inflation(tmp_path)
-        assert not result.passed
-        assert result.level == "WARN"
+        assert result.passed
 
     def test_third_party_short_source_skips_number_check(self, tmp_path):
-        """third_party_estimate with precise number, empty/short fetched_content → WARN about short source, not 'not found'."""
+        """third_party_estimate with precise number, empty/short fetched_content → no warning (ADR 0018 auto-fix handles it)."""
         _write_json(
             tmp_path / "analysis.json",
             {
@@ -993,9 +998,8 @@ class TestCheckPrecisionInflation:
             [{"url": "https://a.com", "snippet": "", "fetched_content": ""}],
         )
         result = check_precision_inflation(tmp_path)
-        assert not result.passed
-        assert result.level == "WARN"
-        assert "source text too short" in result.message
+        assert result.passed
+        assert "too short" not in result.message
         assert "not found in source" not in result.message
 
     def test_third_party_sufficient_source_not_found_warns(self, tmp_path):
@@ -1388,3 +1392,20 @@ class TestCheckClaimDedup:
         result = check_claim_dedup(tmp_path)
         assert not result.passed
         assert "duplicate" in result.message.lower()
+
+
+class TestNumberNormalization:
+    def test_dollar_amount_in_source(self):
+        assert _number_found_in_source("revenue was $9.8 billion", "market estimated at $9.8B")
+
+    def test_billion_suffix_in_source(self):
+        assert _number_found_in_source("revenue was 9.8 billion", "market reached $9.8B in 2026")
+
+    def test_percentage_range_in_source(self):
+        assert _number_found_in_source("failure rate is 45-70%", "between 45% and 70% of code fails")
+
+    def test_comma_number_in_source(self):
+        assert _number_found_in_source("surveyed 10,847 developers", "survey of 10847 developers")
+
+    def test_no_false_match(self):
+        assert not _number_found_in_source("response time 45ms", "latency was 450ms average")
