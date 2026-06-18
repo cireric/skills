@@ -20,6 +20,14 @@ Structured research pipeline that collects, organizes, and synthesizes informati
 
 All relative paths are relative to the **project root** (where `scripts/cli.py` is run from):
 
+**CLI invocation**: Set `PYTHONPATH` to the skill directory and run from within it:
+```
+# From skills/info-collector/
+PYTHONPATH=. python -m scripts.cli <command>
+# On Windows PowerShell:
+$env:PYTHONPATH = "D:\...\skills\info-collector"; python -m scripts.cli <command>
+```
+
 | Reference                                 | Actual location                                                          |
 | ----------------------------------------- | ------------------------------------------------------------------------ |
 | `<project_root>/.workdir/`                | `<cwd>/.workdir/` — e.g. `D:\Project\.workdir\`                          |
@@ -53,18 +61,20 @@ After collecting answers, write `skills/info-collector/config.json` and confirm 
 
 2. Write `scope.json` to `<project_root>/.workdir/scope.json`.
 
-3. **Run gate**: `python scripts/cli.py proceed --from scope --to search`
+3. **Run gate**: `python -m scripts.cli proceed --from scope --to search`
    - If exit code != 0 → show errors, fix scope.json, retry.
 
 ## Phase 2: Search-Collect-Filter
 
-1. **Get source recommendations**: `python scripts/cli.py source <goal_type>`
+1. **Get source recommendations**: `python -m scripts.cli source <goal_type>`
 
 2. **Search**: Use `exa_web_search_exa` + `exa_web_fetch_exa` (primary), `playwright_browser_*` (supplementary). Use `site:` queries from recommended sources. Aim for ~3 search rounds (soft limit).
 
    **Search language rule**: Search English-language sources using English queries even if the topic is in Chinese. Use Chinese queries only for Chinese domains (cnki.net, zhihu.com, baidu.com, etc.).
 
    **Tier 4 search strategy**: Tier 4 sources are not pre-configured in config.json. When deep research requires Tier 4 coverage, search broadly on Reddit, Hacker News, Dev.to, and personal blogs. All Tier 4 findings must use strong qualifier language in the report.
+
+   **Search strategy**: Follow the tier-based search order in `references/search-strategy.md`. After each search round, update `search_plan.json` task statuses (`completed`/`skipped`/`pending`) to track coverage progress.
 
 3. **Collect**: Add each result to `<project_root>/.workdir/collected.json`:
 
@@ -81,7 +91,7 @@ After collecting answers, write `skills/info-collector/config.json` and confirm 
 
    **`covered_directions`** (optional, ADR 0017): Declares which search_directions this source covers. Use when title/snippet token overlap is below threshold. Constraints: subset of scope.json's search_directions, max 3 per entry, invalid values ignored with WARN.
 
-4. **Run gate**: `python scripts/cli.py proceed --from search --to analysis`
+4. **Run gate**: `python -m scripts.cli proceed --from search --to analysis`
    - Checks topic_coverage (BLOCKER), tier_coverage (WARN), per_direction_min_sources (WARN), min_sources (WARN).
    - If BLOCKER → search more before proceeding.
 
@@ -109,14 +119,14 @@ Merge all sections into a single analysis.json. JSON merge only — never rewrit
 
 #### Step 3.5: Run concreteness check
 
-`python scripts/cli.py gateway`
+`python -m scripts.cli gateway`
 
 - If BLOCKER → fix analysis.json and re-run gateway
 - If clean → proceed to 3b
 
 ### Gate: proceed --from analysis --to review
 
-Run: `python scripts/cli.py proceed --from analysis --to review`
+Run: `python -m scripts.cli proceed --from analysis --to review`
 
 - Validates analysis.json has topic, goal_type, non-empty sections, and url_traceability.
 - **YOU MUST ASK THE USER** whether to launch an independent review (adapt language to user).
@@ -130,8 +140,9 @@ If user says **yes**:
 3. Subagent reads scope.json, collected.json, analysis.json
 4. Subagent writes `<project_root>/.workdir/review_report.md` — **include the explicit `.workdir/` output path in the subagent prompt**
 5. Fix any issues found in analysis.json
-6. **After fixing analysis.json, re-run the gate**: `python scripts/cli.py proceed --from analysis --to review`
-   - **If the gate refuses** because phase has already advanced, reset first: `python scripts/cli.py reset --phase review`
+6. **After fixing analysis.json, re-run the gate**: `python -m scripts.cli proceed --from review --to review`
+   - This self-loop re-validates analysis.json without requiring a phase reset.
+   - If the gate still refuses, use `python -m scripts.cli reset --phase review` then `python -m scripts.cli proceed --from analysis --to review`.
 
 If user says **no** → quality will be set to `unreviewed` at finalization.
 
@@ -139,14 +150,14 @@ If user says **no** → quality will be set to `unreviewed` at finalization.
 
 Show the review report (or degradation notice) to user and ask:
 
-- User confirms approval (adapt language to user) → Run: `python scripts/cli.py proceed --from review --to final`
+- User confirms approval (adapt language to user) → Run: `python -m scripts.cli proceed --from review --to final`
 
   This runs gateway.py with 15 checks. BLOCKER fails = stop and fix. WARN = noted but does not block.
 
   Then generate final report:
 
   ```
-  python scripts/cli.py report --quality <passed|degraded|unreviewed> --search-rounds N --source-count N [--output DIR]
+  python -m scripts.cli report --quality <passed|degraded|unreviewed> --search-rounds N --source-count N [--output DIR]
   ```
 
   Report filename: `{english_title_or_topic}.md`. If file already exists, appends date suffix: `{name}_{YYYY-MM-DD}.md`.
@@ -155,7 +166,7 @@ Show the review report (or degradation notice) to user and ask:
 
 ## Phase 4: Cleanup
 
-1. Run: `python scripts/cli.py proceed --from final --to cleanup`
+1. Run: `python -m scripts.cli proceed --from final --to cleanup`
 2. Ask user whether to clean up intermediate files (adapt language to user).
    - Yes -> `python scripts/cli.py clean`
    - No -> `<project_root>/.workdir/` remains

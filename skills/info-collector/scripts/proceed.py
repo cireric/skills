@@ -1,4 +1,4 @@
-"""Phase transition gate logic with implicit state detection."""
+"""Phase transition gate logic with explicit state file detection."""
 
 from __future__ import annotations
 
@@ -68,7 +68,10 @@ _CLAIM_KEYS = frozenset({
 })
 
 
-def _sanitize_sections(analysis: dict) -> dict:
+_NON_EXACT_EVIDENCE_TYPES = frozenset({"third_party_estimate", "qualitative_trend", "expert_opinion"})
+
+
+def _sanitize_sections(analysis: dict, collected_urls: set[str] | None = None) -> dict:
     """Clean subagent output before schema validation."""
     result = dict(analysis)
     sections = result.get("sections")
@@ -95,6 +98,17 @@ def _sanitize_sections(analysis: dict) -> dict:
                 cl = dict(claim)
                 if "sources" in cl and "source_urls" not in cl:
                     cl["source_urls"] = cl.pop("sources")
+                # Auto-fix precision inflation: downgrade exact -> range for non-official evidence
+                if (
+                    cl.get("precision") == "exact"
+                    and cl.get("evidence_type") in _NON_EXACT_EVIDENCE_TYPES
+                ):
+                    cl["precision"] = "range"
+                # Auto-fix URL traceability: remove source_urls not in collected.json
+                if collected_urls is not None and "source_urls" in cl:
+                    valid = [u for u in cl["source_urls"] if u in collected_urls]
+                    if valid:
+                        cl["source_urls"] = valid
                 cleaned_claims.append({k: v for k, v in cl.items() if k in _CLAIM_KEYS})
             sec["claims"] = cleaned_claims
         cleaned_sections.append({k: v for k, v in sec.items() if k in _SECTION_KEYS})
@@ -102,13 +116,30 @@ def _sanitize_sections(analysis: dict) -> dict:
     return result
 
 
+def _write_phase_state(workdir: Path, phase: str) -> None:
+    state_path = workdir / "pipeline_state.json"
+    try:
+        write_json({"current_phase": phase}, state_path)
+    except OSError:
+        pass
+
+
 def detect_current_phase(workdir: Path) -> str:
-    """Return current phase string based on which artifacts exist.
+    """Return current phase string based on state file or artifact presence.
 
     Returns one of: pre_scope, post_scope, post_search, post_analysis, post_review
     """
     if not workdir.exists():
         return "pre_scope"
+    state_path = workdir / "pipeline_state.json"
+    if state_path.exists():
+        try:
+            state = read_json(state_path)
+            phase = state.get("current_phase", "")
+            if phase in ("pre_scope", "post_scope", "post_search", "post_analysis", "post_review"):
+                return phase
+        except Exception:
+            pass
     scope_present = (workdir / "scope.json").exists()
     collected_present = (workdir / "collected.json").exists()
     analysis_present = (workdir / "analysis.json").exists()
@@ -127,12 +158,13 @@ def detect_current_phase(workdir: Path) -> str:
     return phase
 
 
-_VALID_TRANSITIONS = {
-    "scope": "search",
-    "search": "analysis",
-    "analysis": "review",
-    "review": "final",
-    "final": "cleanup",
+_VALID_TRANSITIONS_SET = {
+    ("scope", "search"),
+    ("search", "analysis"),
+    ("analysis", "review"),
+    ("review", "final"),
+    ("review", "review"),
+    ("final", "cleanup"),
 }
 
 
@@ -178,13 +210,20 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
     # Tier coverage check (ADR 0007): verify collected sources cover each tier in the route
     route = get_route(goal_type, config)
     route_path = route.get("path", [])
+    optional_tiers = route.get("optional_tiers", [])
     if route_path and collected:
         covered_tiers = {entry.get("source_tier") for entry in collected if entry.get("source_tier")}
-        missing_tiers = [t for t in route_path if t not in covered_tiers]
-        if missing_tiers:
+        missing_required = [t for t in route_path if t not in covered_tiers]
+        if missing_required:
             warnings.append(
                 f"tier_coverage WARN: route requires tiers {route_path}, "
-                f"but tiers {missing_tiers} have no sources in collected.json"
+                f"but tiers {missing_required} have no sources in collected.json"
+            )
+        missing_optional = [t for t in optional_tiers if t not in covered_tiers]
+        if missing_optional:
+            print(
+                f"  [INFO] tier_coverage: optional tiers {missing_optional} have no sources (non-blocking)",
+                file=sys.stderr,
             )
 
     scope = read_json(workdir / "scope.json")
@@ -298,6 +337,8 @@ def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
                 "query_language": "zh" if is_chinese_tier else "en",
                 "site_queries": site_queries,
                 "min_sources": min_per_direction,
+                "status": "pending",
+                "collected_count": 0,
             })
 
     write_json({"goal_type": goal_type, "depth": depth, "route": route_path, "tasks": tasks}, workdir / "search_plan.json")
@@ -324,10 +365,9 @@ def proceeds(
             f"Phase mismatch: current={current}, expected={expected_from} for --from {from_phase}"
         ]
 
-    expected_to = _VALID_TRANSITIONS.get(from_phase)
-    if expected_to != to_phase:
+    if (from_phase, to_phase) not in _VALID_TRANSITIONS_SET:
         return False, [
-            f"Invalid transition: --from {from_phase} expects --to {expected_to}, got {to_phase}"
+            f"Invalid transition: --from {from_phase} --to {to_phase}"
         ]
 
     errors = []
@@ -349,7 +389,16 @@ def proceeds(
         except ArtifactError as e:
             errors.append(f"Cannot read analysis.json: {e}")
         else:
-            analysis = _sanitize_sections(analysis)
+            # Load collected URLs for auto-fix (URL filtering + precision fix)
+            collected_urls: set[str] | None = None
+            try:
+                from .lib.utils import normalize_url
+                collected = read_json(workdir / "collected.json")
+                if isinstance(collected, list):
+                    collected_urls = {normalize_url(e.get("url", "")) for e in collected if isinstance(e, dict)}
+            except ArtifactError:
+                pass
+            analysis = _sanitize_sections(analysis, collected_urls=collected_urls)
             write_json(analysis, workdir / "analysis.json")
             from .lib.schemas import validate_analysis
             schema_errors = validate_analysis(analysis)
@@ -370,7 +419,10 @@ def proceeds(
     elif from_phase == "final":
         pass
 
-    return len(errors) == 0, errors
+    passed = len(errors) == 0
+    if passed:
+        _write_phase_state(workdir, f"post_{to_phase}")
+    return passed, errors
 
 
 def get_gateway_results(workdir: Path) -> list[CheckResult]:

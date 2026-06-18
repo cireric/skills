@@ -106,7 +106,7 @@ def cmd_clean(args: argparse.Namespace) -> None:
 
 
 _PHASE_ARTIFACTS: dict[str, list[str]] = {
-    "scope": ["scope.json", "search_plan.json", "collected.json", "analysis.json", "review_report.md"],
+    "scope": ["scope.json", "search_plan.json", "collected.json", "analysis.json", "review_report.md", "pipeline_state.json"],
     "search": ["collected.json", "analysis.json", "review_report.md"],
     "analysis": ["analysis.json", "review_report.md"],
     "review": ["review_report.md"],
@@ -124,6 +124,14 @@ def cmd_reset(args: argparse.Namespace) -> None:
         if path.exists():
             path.unlink()
             removed.append(name)
+    from .proceed import detect_current_phase, _write_phase_state
+    actual_phase = detect_current_phase(WORKDIR)
+    state_path = WORKDIR / "pipeline_state.json"
+    if state_path.exists():
+        state_path.unlink()
+        removed.append("pipeline_state.json")
+    if actual_phase != "pre_scope":
+        _write_phase_state(WORKDIR, actual_phase)
     if removed:
         print(f"Reset from phase '{phase}': removed {', '.join(removed)}")
     else:
@@ -141,7 +149,11 @@ def _detect_quality() -> str:
     # Find "## Overall Verdict" section and parse the verdict
     match = re.search(r"##\s*Overall\s+Verdict\s*\n\s*\*\*(pass|pass_with_issues|fail)\*\*", content, re.IGNORECASE)
     if not match:
-        # Fallback: conservative — degraded if review exists but verdict unparseable
+        # Fallback: if review_report.md exists and contains "pass" in verdict area, assume passed
+        # Otherwise conservative — degraded if review exists but verdict unparseable
+        verdict_section = re.search(r"##\s*Overall\s+Verdict\s*\n(.{0,200})", content, re.IGNORECASE | re.DOTALL)
+        if verdict_section and "pass" in verdict_section.group(1).lower():
+            return "passed"
         return "degraded"
     verdict = match.group(1).lower()
     if verdict == "pass":

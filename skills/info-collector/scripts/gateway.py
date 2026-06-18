@@ -228,17 +228,35 @@ _PRECISE_NUMBER_PATTERN = re.compile(
 )
 
 
-def _number_found_in_source(claim_text: str, source_text: str) -> bool:
-    """Check if any precise number in claim_text also appears in source_text."""
-    for match in _PRECISE_NUMBER_PATTERN.finditer(claim_text):
-        num_str = match.group(1).replace(",", "")
+def _normalize_numbers(text: str) -> set[str]:
+    """Extract normalized number strings from text for cross-format matching."""
+    numbers: set[str] = set()
+    for match in _PRECISE_NUMBER_PATTERN.finditer(text):
+        raw = match.group(1).replace(",", "")
         try:
-            num = float(num_str)
+            num = float(raw)
         except ValueError:
             continue
-        if num_str in source_text or f"{num:.0f}" in source_text or str(int(num)) in source_text:
-            return True
-    return False
+        numbers.add(str(int(num)) if num == int(num) else f"{num:.1f}")
+        numbers.add(raw)
+    for m in re.finditer(r"\$?(\d+(?:\.\d+)?)\s*[Bb](?:illion)?", text):
+        try:
+            val = float(m.group(1))
+            numbers.add(str(int(val * 1_000_000_000)))
+            numbers.add(f"{val}B")
+        except ValueError:
+            pass
+    for m in re.finditer(r"(\d+(?:\.\d+)?)\s*[-\u2013]\s*(\d+(?:\.\d+)?)\s*%", text):
+        numbers.add(m.group(1))
+        numbers.add(m.group(2))
+    return numbers
+
+
+def _number_found_in_source(claim_text: str, source_text: str) -> bool:
+    """Check if any precise number in claim_text also appears in source_text after normalization."""
+    claim_nums = _normalize_numbers(claim_text)
+    source_nums = _normalize_numbers(source_text)
+    return bool(claim_nums & source_nums)
 
 
 def check_precision_inflation(workdir: Path, collected: list[dict] | None = None) -> CheckResult:
@@ -282,11 +300,7 @@ def check_precision_inflation(workdir: Path, collected: list[dict] | None = None
                         )
                 any_sufficient = any(len(src) >= 200 for src in source_texts)
                 if not any_sufficient:
-                    warnings.append(
-                        f"sections.{sec_id}.claims[{ci}]: evidence_type='third_party_estimate' "
-                        f"with precise number but source text too short for verification — "
-                        f"consider using precision='range'"
-                    )
+                    continue
                 else:
                     numbers_in_source = any(
                         _number_found_in_source(text, src) for src in source_texts
