@@ -149,11 +149,16 @@ def _detect_quality() -> str:
     # Find "## Overall Verdict" section and parse the verdict
     match = re.search(r"##\s*Overall\s+Verdict\s*\n\s*\*\*(pass|pass_with_issues|fail)\*\*", content, re.IGNORECASE)
     if not match:
-        # Fallback: if review_report.md exists and contains "pass" in verdict area, assume passed
-        # Otherwise conservative — degraded if review exists but verdict unparseable
         verdict_section = re.search(r"##\s*Overall\s+Verdict\s*\n(.{0,200})", content, re.IGNORECASE | re.DOTALL)
-        if verdict_section and "pass" in verdict_section.group(1).lower():
-            return "passed"
+        if verdict_section:
+            section_text = verdict_section.group(1).lower()
+            if re.search(r'\bpass_with_issues\b', section_text):
+                return "degraded"
+            if re.search(r'\bfail\b', section_text):
+                print("Review verdict is FAIL — fix issues before generating report", file=sys.stderr)
+                sys.exit(1)
+            if re.search(r'\bpass\b', section_text):
+                return "passed"
         return "degraded"
     verdict = match.group(1).lower()
     if verdict == "pass":

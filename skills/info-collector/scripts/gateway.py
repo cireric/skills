@@ -704,6 +704,103 @@ def check_claim_dedup(workdir: Path) -> CheckResult:
     return CheckResult("claim_dedup", "WARN", True)
 
 
+_FETCHED_CONTENT_MIN_LENGTH = 200
+
+
+def check_fetched_content_depth(workdir: Path) -> CheckResult:
+    """WARN if collected entries have missing or stub fetched_content;
+    BLOCKER if >50% of entries have missing or stub content."""
+    try:
+        collected = read_json(workdir / "collected.json") or []
+    except ArtifactError:
+        return CheckResult("fetched_content_depth", "WARN", True, "collected.json not found")
+    if not collected:
+        return CheckResult("fetched_content_depth", "WARN", True, "collected.json is empty")
+    stub_count = 0
+    empty_count = 0
+    for entry in collected:
+        fc = entry.get("fetched_content", "")
+        if not fc:
+            empty_count += 1
+        elif len(fc) < _FETCHED_CONTENT_MIN_LENGTH:
+            stub_count += 1
+    total = len(collected)
+    problem_count = empty_count + stub_count
+    ratio = problem_count / total
+    parts: list[str] = []
+    if empty_count > 0:
+        parts.append(f"{empty_count}/{total} entries have no fetched_content")
+    if stub_count > 0:
+        parts.append(
+            f"{stub_count}/{total} entries have fetched_content < {_FETCHED_CONTENT_MIN_LENGTH} chars (likely snippets)"
+        )
+    msg = "; ".join(parts) if parts else "all entries have substantial fetched_content"
+    if ratio > 0.5:
+        return CheckResult(
+            "fetched_content_depth",
+            "BLOCKER",
+            False,
+            f"{problem_count}/{total} entries ({ratio:.0%}) have missing or stub fetched_content — re-fetch with full content before proceeding",
+        )
+    if problem_count > 0:
+        return CheckResult("fetched_content_depth", "WARN", False, msg)
+    return CheckResult("fetched_content_depth", "WARN", True, msg)
+
+
+def check_claim_source_relevance(workdir: Path, collected: list[dict] | None = None) -> CheckResult:
+    """WARN if a claim contains precise numbers not found in its source fetched_content.
+    Skips claims with evidence_type='third_party_estimate' (already covered by check_precision_inflation)."""
+    try:
+        analysis = read_json(workdir / "analysis.json")
+    except ArtifactError:
+        return CheckResult("claim_source_relevance", "WARN", True, "Cannot read analysis.json")
+    if collected is None:
+        try:
+            collected = read_json(workdir / "collected.json") or []
+        except ArtifactError:
+            collected = []
+    collected_by_url: dict[str, dict] = {}
+    for item in collected:
+        url = item.get("url", "")
+        if url:
+            collected_by_url[normalize_url(url)] = item
+    warnings: list[str] = []
+    for section in analysis.get("sections", []):
+        sec_id = section.get("id", "?")
+        for ci, claim in enumerate(section.get("claims", [])):
+            if claim.get("evidence_type") == "third_party_estimate":
+                continue
+            text = claim.get("text", "")
+            if not _PRECISE_NUMBER_PATTERN.search(text):
+                continue
+            source_texts = []
+            for url in claim.get("source_urls", []):
+                item = collected_by_url.get(normalize_url(url))
+                if item:
+                    source_texts.append(
+                        (item.get("fetched_content", "") + " " + item.get("snippet", "")).lower()
+                    )
+            if not source_texts:
+                continue
+            any_sufficient = any(len(src) >= 200 for src in source_texts)
+            if not any_sufficient:
+                continue
+            numbers_in_source = any(
+                _number_found_in_source(text, src) for src in source_texts
+            )
+            if not numbers_in_source:
+                warnings.append(
+                    f"sections.{sec_id}.claims[{ci}]: claim contains precise number(s) "
+                    f"not found in source fetched_content — verify source attribution or use range/qualitative precision"
+                )
+    if warnings:
+        msg = f"{len(warnings)} claim(s) with numbers not found in sources: " + "; ".join(warnings[:5])
+        if len(warnings) > 5:
+            msg += f"; ... and {len(warnings) - 5} more"
+        return CheckResult("claim_source_relevance", "WARN", False, msg)
+    return CheckResult("claim_source_relevance", "WARN", True, "all numeric claims traceable to sources")
+
+
 def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
     collected: list[dict] | None = None
     try:
@@ -717,6 +814,7 @@ def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
         check_analysis_schema(workdir),
         check_quality_heuristics(workdir),
         check_precision_inflation(workdir, collected),
+        check_claim_source_relevance(workdir, collected),
         check_metric_type_homogeneity(workdir),
         check_claim_metadata(workdir, goal_type),
         check_claim_verified(workdir),

@@ -20,6 +20,8 @@ from scripts.gateway import (
     check_section_coverage,
     check_source_metadata,
     check_source_tier_balance,
+    check_claim_source_relevance,
+    check_fetched_content_depth,
     check_url_traceability,
     run_all,
 )
@@ -1409,3 +1411,149 @@ class TestNumberNormalization:
 
     def test_no_false_match(self):
         assert not _number_found_in_source("response time 45ms", "latency was 450ms average")
+
+
+class TestCheckFetchedContentDepth:
+    def test_all_entries_have_substantial_content(self, tmp_path):
+        _write_json(
+            tmp_path / "collected.json",
+            [
+                {"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "x" * 500},
+                {"url": "https://b.com", "title": "B", "snippet": "s", "fetched_content": "y" * 300},
+            ],
+        )
+        result = check_fetched_content_depth(tmp_path)
+        assert result.passed
+        assert result.level == "WARN"
+
+    def test_empty_fetched_content_warns(self, tmp_path):
+        _write_json(
+            tmp_path / "collected.json",
+            [
+                {"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "x" * 500},
+                {"url": "https://b.com", "title": "B", "snippet": "s"},
+            ],
+        )
+        result = check_fetched_content_depth(tmp_path)
+        assert not result.passed
+        assert "no fetched_content" in result.message
+
+    def test_stub_fetched_content_warns(self, tmp_path):
+        _write_json(
+            tmp_path / "collected.json",
+            [
+                {"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "short"},
+                {"url": "https://b.com", "title": "B", "snippet": "s", "fetched_content": "y" * 300},
+            ],
+        )
+        result = check_fetched_content_depth(tmp_path)
+        assert not result.passed
+        assert "snippets" in result.message
+
+    def test_majority_stub_blocks(self, tmp_path):
+        _write_json(
+            tmp_path / "collected.json",
+            [
+                {"url": "https://a.com", "title": "A", "snippet": "s"},
+                {"url": "https://b.com", "title": "B", "snippet": "s"},
+                {"url": "https://c.com", "title": "C", "snippet": "s", "fetched_content": "ok" * 100},
+            ],
+        )
+        result = check_fetched_content_depth(tmp_path)
+        assert result.level == "BLOCKER"
+
+    def test_missing_collected_warns(self, tmp_path):
+        result = check_fetched_content_depth(tmp_path)
+        assert result.level == "WARN"
+
+    def test_empty_collected_warns(self, tmp_path):
+        _write_json(tmp_path / "collected.json", [])
+        result = check_fetched_content_depth(tmp_path)
+        assert result.level == "WARN"
+
+
+class TestCheckClaimSourceRelevance:
+    def _make_collected(self, entries):
+        return entries
+
+    def _make_analysis(self, claims):
+        return {
+            "topic": "test",
+            "goal_type": "panoramic_understanding",
+            "audience": "engineer",
+            "sections": [
+                {"id": "s1", "title": "S1", "content": "c", "claims": claims}
+            ],
+        }
+
+    def test_no_numbers_in_claim_passes(self, tmp_path):
+        collected = [{"url": "https://a.com", "title": "A", "snippet": "about coding", "fetched_content": "x" * 300}]
+        claims = [{"text": "AI is widely used", "source_urls": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "qualitative"}]
+        _write_json(tmp_path / "collected.json", collected)
+        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+        result = check_claim_source_relevance(tmp_path)
+        assert result.passed
+
+    def test_number_found_in_source_passes(self, tmp_path):
+        collected = [{"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "the accuracy reached 95 percent in tests " + "x" * 200}]
+        claims = [{"text": "Model achieves 95% accuracy", "source_urls": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact"}]
+        _write_json(tmp_path / "collected.json", collected)
+        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+        result = check_claim_source_relevance(tmp_path)
+        assert result.passed
+
+    def test_number_not_in_source_warns(self, tmp_path):
+        collected = [{"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "the model performed well in general " + "x" * 200}]
+        claims = [{"text": "Model achieves 98% accuracy", "source_urls": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact"}]
+        _write_json(tmp_path / "collected.json", collected)
+        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+        result = check_claim_source_relevance(tmp_path)
+        assert not result.passed
+        assert "not found in source" in result.message
+
+    def test_third_party_estimate_skipped(self, tmp_path):
+        collected = [{"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "no numbers here " + "x" * 200}]
+        claims = [{"text": "Revenue reached $5B in 2026", "source_urls": ["https://a.com"], "evidence_type": "third_party_estimate", "confidence": "medium", "precision": "range"}]
+        _write_json(tmp_path / "collected.json", collected)
+        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+        result = check_claim_source_relevance(tmp_path)
+        assert result.passed
+
+    def test_expert_opinion_number_not_in_source_warns(self, tmp_path):
+        collected = [{"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "expert analysis of the market " + "x" * 200}]
+        claims = [{"text": "Adoption rate is 85% according to experts", "source_urls": ["https://a.com"], "evidence_type": "expert_opinion", "confidence": "medium", "precision": "range"}]
+        _write_json(tmp_path / "collected.json", collected)
+        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+        result = check_claim_source_relevance(tmp_path)
+        assert not result.passed
+
+    def test_short_fetched_content_skipped(self, tmp_path):
+        collected = [{"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "short"}]
+        claims = [{"text": "Model achieves 98% accuracy", "source_urls": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact"}]
+        _write_json(tmp_path / "collected.json", collected)
+        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+        result = check_claim_source_relevance(tmp_path)
+        assert result.passed
+
+    def test_no_source_urls_skipped(self, tmp_path):
+        collected = [{"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "x" * 300}]
+        claims = [{"text": "Model achieves 98% accuracy", "source_urls": [], "evidence_type": "official_data", "confidence": "high", "precision": "exact"}]
+        _write_json(tmp_path / "collected.json", collected)
+        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+        result = check_claim_source_relevance(tmp_path)
+        assert result.passed
+
+    def test_multiple_claims_mixed_results(self, tmp_path):
+        collected = [
+            {"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "accuracy was 95 percent " + "x" * 200},
+            {"url": "https://b.com", "title": "B", "snippet": "s", "fetched_content": "no relevant data " + "x" * 200},
+        ]
+        claims = [
+            {"text": "Model achieves 95% accuracy", "source_urls": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact"},
+            {"text": "Revenue reached 98 billion dollars", "source_urls": ["https://b.com"], "evidence_type": "official_data", "confidence": "high", "precision": "range"},
+        ]
+        _write_json(tmp_path / "collected.json", collected)
+        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+        result = check_claim_source_relevance(tmp_path)
+        assert not result.passed
+        assert "1 claim(s)" in result.message

@@ -264,7 +264,11 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
         for entry in collected:
             if entry.get("covered_directions") is not None:
                 continue
-            combined_text = (entry.get("title", "") + " " + entry.get("snippet", "")).lower()
+            combined_text = (
+                entry.get("title", "")
+                + " " + entry.get("snippet", "")
+                + " " + entry.get("fetched_content", "")[:500]
+            ).lower()
             for direction in needed:
                 tokens = _tokenize_direction(direction)
                 if not tokens:
@@ -304,6 +308,28 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
                         warnings.append(
                             f"  Suggestion: try searching for '{d}' with keywords: {', '.join(suggestions[:5])}"
                         )
+    # fetched_content depth check
+    if collected:
+        empty_count = sum(1 for e in collected if not e.get("fetched_content", ""))
+        stub_count = sum(
+            1 for e in collected
+            if e.get("fetched_content", "") and len(e.get("fetched_content", "")) < 200
+        )
+        total = len(collected)
+        problem_count = empty_count + stub_count
+        ratio = problem_count / total if total > 0 else 0
+        if empty_count > 0:
+            warnings.append(
+                f"fetched_content_depth WARN: {empty_count}/{total} entries have no fetched_content"
+            )
+        if stub_count > 0:
+            warnings.append(
+                f"fetched_content_depth WARN: {stub_count}/{total} entries have fetched_content < 200 chars (likely snippets, not full content)"
+            )
+        if ratio > 0.5:
+            blockers.append(
+                f"fetched_content_depth BLOCKER: {problem_count}/{total} entries ({ratio:.0%}) have missing or stub fetched_content — re-fetch with full content before proceeding"
+            )
     return blockers, warnings
 
 
@@ -331,7 +357,14 @@ def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
                 s.get("domain", "").endswith((".cn", ".com.cn")) or "cnki" in s.get("domain", "")
                 for s in tier_sources
             )
-            tasks.append({
+            fetch_hint = ""
+            tier_domains = [s.get("domain", "") for s in tier_sources]
+            if any("arxiv.org" in d for d in tier_domains):
+                fetch_hint = "MUST fetch full paper content (not just abstract) using exa_web_fetch_exa; search-result snippets are insufficient for Tier 1 academic sources"
+            elif any("github.com" in d for d in tier_domains):
+                fetch_hint = "Prefer fetching README, key source files, or documentation rather than just the repo listing"
+
+            task = {
                 "direction": direction,
                 "tier": tier,
                 "query_language": "zh" if is_chinese_tier else "en",
@@ -339,7 +372,10 @@ def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
                 "min_sources": min_per_direction,
                 "status": "pending",
                 "collected_count": 0,
-            })
+            }
+            if fetch_hint:
+                task["fetch_hint"] = fetch_hint
+            tasks.append(task)
 
     write_json({"goal_type": goal_type, "depth": depth, "route": route_path, "tasks": tasks}, workdir / "search_plan.json")
 

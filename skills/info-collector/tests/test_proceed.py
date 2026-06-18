@@ -38,7 +38,7 @@ def _make_scope(workdir, goal_type="tech_selection", depth="standard", report_la
 def _write_scope_and_collected(workdir):
     scope = {"topic": "t", "goal_type": "exploratory", "depth": "quick", "audience": "engineer", "scope_description": "d", "search_directions": ["d1"]}
     _write_json(workdir / "scope.json", scope)
-    _write_json(workdir / "collected.json", [{"url": "https://example.com", "title": "x", "snippet": "d1", "source_tier": 4}])
+    _write_json(workdir / "collected.json", [{"url": "https://example.com", "title": "x", "snippet": "d1", "source_tier": 4, "fetched_content": "x" * 300}])
 
 
 class TestDetectCurrentPhase:
@@ -113,8 +113,8 @@ class TestProceeds:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI News", "snippet": "About AI"},
-                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML"},
+                {"url": "https://a.com", "title": "AI News", "snippet": "About AI", "fetched_content": "x" * 300},
+                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML", "fetched_content": "x" * 300},
             ],
         )
         ok, errors = proceeds(tmp_path, "search", "analysis")
@@ -168,7 +168,7 @@ class TestProceeds:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://x.com", "title": "AI advances in 2026", "snippet": "About AI and ML"},
+                {"url": "https://x.com", "title": "AI advances in 2026", "snippet": "About AI and ML", "fetched_content": "x" * 300},
             ],
         )
         ok, errors = proceeds(tmp_path, "search", "analysis")
@@ -283,8 +283,8 @@ class TestPerDirectionMinSources:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI News", "snippet": "About AI"},
-                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML"},
+                {"url": "https://a.com", "title": "AI News", "snippet": "About AI", "fetched_content": "x" * 300},
+                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML", "fetched_content": "x" * 300},
             ],
         )
         from scripts.proceed import _check_search_gate
@@ -303,8 +303,8 @@ class TestPerDirectionMinSources:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI News", "snippet": "About AI"},
-                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML"},
+                {"url": "https://a.com", "title": "AI News", "snippet": "About AI", "fetched_content": "x" * 300},
+                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML", "fetched_content": "x" * 300},
             ],
         )
         from scripts.proceed import _check_search_gate
@@ -325,8 +325,8 @@ class TestPerDirectionMinSources:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI News", "snippet": "About AI"},
-                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML"},
+                {"url": "https://a.com", "title": "AI News", "snippet": "About AI", "fetched_content": "x" * 300},
+                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML", "fetched_content": "x" * 300},
             ],
         )
         from scripts.proceed import _check_search_gate
@@ -416,7 +416,7 @@ class TestGetGatewayResults:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "主流agentic coding框架对比", "snippet": "关于框架对比"},
+                {"url": "https://a.com", "title": "主流agentic coding框架对比", "snippet": "关于框架对比", "fetched_content": "x" * 300},
             ],
         )
         ok, errors = proceeds(tmp_path, "search", "analysis")
@@ -428,7 +428,7 @@ class TestGetGatewayResults:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "MCP 17-month anniversary 97M downloads", "snippet": "Fastest protocol adoption"},
+                {"url": "https://a.com", "title": "MCP 17-month anniversary 97M downloads", "snippet": "Fastest protocol adoption", "fetched_content": "x" * 300},
             ],
         )
         ok, errors = proceeds(tmp_path, "search", "analysis")
@@ -440,7 +440,7 @@ class TestGetGatewayResults:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "Unrelated", "snippet": "Something else"},
+                {"url": "https://a.com", "title": "Unrelated", "snippet": "Something else", "fetched_content": "x" * 300},
             ],
         )
         ok, errors = proceeds(tmp_path, "search", "analysis")
@@ -456,7 +456,7 @@ class TestGetGatewayResults:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI Coding Tools 2026", "snippet": "Benchmarks comparison"},
+                {"url": "https://a.com", "title": "AI Coding Tools 2026", "snippet": "Benchmarks comparison", "fetched_content": "x" * 300},
             ],
         )
         ok, errors = proceeds(tmp_path, "search", "analysis")
@@ -472,8 +472,8 @@ class TestTierCoverage:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI", "snippet": "About AI", "source_tier": 2},
-                {"url": "https://b.com", "title": "ML", "snippet": "About ML", "source_tier": 1},
+                {"url": "https://a.com", "title": "AI", "snippet": "About AI", "source_tier": 2, "fetched_content": "x" * 300},
+                {"url": "https://b.com", "title": "ML", "snippet": "About ML", "source_tier": 1, "fetched_content": "x" * 300},
             ],
         )
         ok, errors = proceeds(tmp_path, "search", "analysis")
@@ -487,8 +487,8 @@ class TestTierCoverage:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI ML", "snippet": "About AI and ML", "source_tier": 4},
-                {"url": "https://b.com", "title": "More AI", "snippet": "About ML too", "source_tier": 4},
+                {"url": "https://a.com", "title": "AI ML", "snippet": "About AI and ML", "source_tier": 4, "fetched_content": "x" * 300},
+                {"url": "https://b.com", "title": "More AI", "snippet": "About ML too", "source_tier": 4, "fetched_content": "x" * 300},
             ],
         )
         ok, errors = proceeds(tmp_path, "search", "analysis")
@@ -515,9 +515,9 @@ class TestTierCoverage:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI ML", "snippet": "About AI and ML", "source_tier": 4},
-                {"url": "https://b.com", "title": "More AI", "snippet": "About ML too", "source_tier": 3},
-                {"url": "https://c.com", "title": "Deep AI", "snippet": "About AI research", "source_tier": 1},
+                {"url": "https://a.com", "title": "AI ML", "snippet": "About AI and ML", "source_tier": 4, "fetched_content": "x" * 300},
+                {"url": "https://b.com", "title": "More AI", "snippet": "About ML too", "source_tier": 3, "fetched_content": "x" * 300},
+                {"url": "https://c.com", "title": "Deep AI", "snippet": "About AI research", "source_tier": 1, "fetched_content": "x" * 300},
             ],
         )
         blockers, warnings = _check_search_gate(tmp_path, config)
@@ -722,7 +722,7 @@ class TestIntegrationMediumComplexity:
         _write_json(workdir / "scope.json", scope)
         proceeds(workdir, "scope", "search", config)
         assert detect_current_phase(workdir) == "post_search"
-        collected = [{"url": "https://example.com", "title": "d1 info", "snippet": "d1", "source_tier": 4}]
+        collected = [{"url": "https://example.com", "title": "d1 info", "snippet": "d1", "source_tier": 4, "fetched_content": "x" * 300}]
         _write_json(workdir / "collected.json", collected)
         proceeds(workdir, "search", "analysis")
         assert detect_current_phase(workdir) == "post_analysis"

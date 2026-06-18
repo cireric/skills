@@ -83,3 +83,20 @@ Merge all sections into a single analysis.json. **This step is JSON merge only �
 ```
 
 Every claim MUST have at least one source_url linking to a URL in collected.json.
+
+## Numeric Claim Source Rule
+
+Any claim containing a specific number (percentage, dollar amount, benchmark score, etc.) MUST satisfy one of these conditions:
+
+1. **The number appears verbatim in the `fetched_content` of the cited source** — use `precision: "exact"` or `"range"`.
+2. **The number does NOT appear in `fetched_content`** — you MUST either:
+   - Use `precision: "qualitative"` and rephrase without the exact figure (e.g., "outperformed the baseline by a significant margin" instead of "72.2% vs 64.8%"), OR
+   - Use `precision: "range"` with a conservative range (e.g., "~70-75%" instead of "72.2%"), OR
+   - Remove the claim entirely.
+
+**Rationale**: The review subagent cross-checks every exact number against `fetched_content`. Numbers not present in the fetched source will be flagged as precision inflation and may block the review gate.
+
+**Example violations to avoid**:
+- ❌ Claim: "Agyn achieves 72.2% on SWE-bench 500" with `precision: "exact"` when the fetched_content only mentions "multi-agent system" without the 72.2% figure
+- ✅ Claim: "Agyn outperforms single-agent baselines on SWE-bench 500" with `precision: "qualitative"`
+- ✅ Claim: "Agyn achieves ~70-75% on SWE-bench 500" with `precision: "range"`
