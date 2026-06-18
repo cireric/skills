@@ -73,6 +73,10 @@ Search depth (quick, standard, deep). A **behavior-driving field** — drives pe
 
 Language for the final report output (e.g., "zh", "en"). Stored in scope.json (per-research decision), falls back to config.json `default_report_language`, then "en". Drives AI writing language and reporter.py fixed label i18n (Sources/数据来源, References/参考文献, etc.).
 
+### english_title
+
+An optional field in scope.json providing an English title for the research topic. Required (BLOCKER) when `topic` contains non-ASCII characters (e.g., CJK). Used as the report filename base instead of `topic`, ensuring filenames are ASCII-only. For pure-ASCII topics, `english_title` is unnecessary and ignored if present.
+
 ### hint field
 
 A scope.json field that informs AI behavior without driving deterministic code logic. Currently: audience only. Contrast with goal_type (drives 5+ code-level behavior differences) and depth (drives per-direction source counts).
@@ -130,7 +134,7 @@ search→analysis gate check (WARN level) that verifies collected.json contains 
 
 ### Artifacts
 
-- **scope.json** — Phase 1 output: topic, goal_type, depth, audience, report_language, scope_description, search_directions
+- **scope.json** — Phase 1 output: topic, goal_type, depth, audience, report_language, scope_description, search_directions, english_title?
 - **collected.json** — Phase 2 output: array of {url, title, snippet, source_tier, fetched_content, covered_directions?}
 - **analysis.json** — Phase 3a output: topic, goal_type, audience, sections (each with id, title, content, claims)
 - **review_report.md** — Phase 3b output: subagent review findings

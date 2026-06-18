@@ -127,16 +127,16 @@ class TestBuildFrontMatter:
         assert fm.endswith("---")
         assert "topic: Test Topic" in fm
         assert "quality: passed" in fm
-        assert "version: 1" in fm
+        assert "version:" not in fm
 
     def test_no_parent_field(self):
         """ADR 0009: cross-session iteration removed, no parent in front matter."""
         fm = build_front_matter("T", "fact_check", "S", "passed", 1, 3)
         assert "parent:" not in fm
 
-    def test_custom_version(self):
-        fm = build_front_matter("T", "fact_check", "S", "passed", 1, 3, version=3)
-        assert "version: 3" in fm
+    def test_custom_version_removed(self):
+        fm = build_front_matter("T", "fact_check", "S", "passed", 1, 3)
+        assert "version:" not in fm
 
 
 class TestRenderTestConditions:

@@ -150,6 +150,40 @@ class TestValidateScopeEdgeCases:
         assert not any(e.field == "report_language" for e in errors)
 
 
+class TestValidateScopeEnglishTitle:
+    def test_cjk_topic_without_english_title_errors(self):
+        errors = validate_scope(_scope(topic="智能体编程"))
+        assert any(e.field == "english_title" and "required" in e.message for e in errors)
+
+    def test_cjk_topic_with_english_title_passes(self):
+        errors = validate_scope(_scope(topic="智能体编程", english_title="agentic coding"))
+        assert not any(e.field == "english_title" for e in errors)
+
+    def test_ascii_topic_without_english_title_ok(self):
+        errors = validate_scope(_scope(topic="agentic coding"))
+        assert not any(e.field == "english_title" for e in errors)
+
+    def test_ascii_topic_with_english_title_ok(self):
+        errors = validate_scope(_scope(topic="agentic coding", english_title="agentic coding"))
+        assert not any(e.field == "english_title" for e in errors)
+
+    def test_english_title_empty_str(self):
+        errors = validate_scope(_scope(topic="智能体编程", english_title=""))
+        assert any(e.field == "english_title" for e in errors)
+
+    def test_english_title_not_str(self):
+        errors = validate_scope(_scope(topic="智能体编程", english_title=123))
+        assert any(e.field == "english_title" for e in errors)
+
+    def test_mixed_ascii_and_cjk_topic_requires_english_title(self):
+        errors = validate_scope(_scope(topic="2026 AI 趋势"))
+        assert any(e.field == "english_title" and "required" in e.message for e in errors)
+
+    def test_accented_latin_without_english_title_errors(self):
+        errors = validate_scope(_scope(topic="développement"))
+        assert any(e.field == "english_title" and "required" in e.message for e in errors)
+
+
 def _analysis(**overrides) -> dict:
     base = {
         "topic": "test",

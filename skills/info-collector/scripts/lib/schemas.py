@@ -23,6 +23,7 @@ class ScopeDict(TypedDict, total=False):
     scope_description: str
     search_directions: list[str]
     report_language: str
+    english_title: str
 
 
 class ClaimDict(TypedDict, total=False):
@@ -119,7 +120,22 @@ def validate_scope(data: dict) -> list[ValidationError]:
         rl = data["report_language"]
         if not isinstance(rl, str) or not rl:
             errors.append(_err("report_language", "report_language must be a non-empty string if present"))
+    if "english_title" in data:
+        et = data["english_title"]
+        if not isinstance(et, str) or not et:
+            errors.append(_err("english_title", "english_title must be a non-empty string if present"))
+    _check_english_title_required(data, errors)
     return errors
+
+
+def _has_non_ascii(s: str) -> bool:
+    return any(ord(c) > 127 for c in s)
+
+
+def _check_english_title_required(data: dict, errors: list[ValidationError]) -> None:
+    topic = data.get("topic")
+    if isinstance(topic, str) and _has_non_ascii(topic) and "english_title" not in data:
+        errors.append(_err("english_title", "english_title is required when topic contains non-ASCII characters"))
 
 
 def validate_analysis(data: dict) -> list[ValidationError]:

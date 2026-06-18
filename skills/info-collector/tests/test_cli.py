@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts.cli import _detect_quality, cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_reset, cmd_source, main, WORKDIR
+from scripts.cli import _detect_quality, _build_report_filename, cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_reset, cmd_source, main, WORKDIR
 from scripts.lib.exceptions import InfoCollectorError
 
 
@@ -214,8 +214,6 @@ class TestCmdReport:
                     quality="passed",
                     search_rounds=1,
                     source_count=1,
-                    version=1,
-                    parent=None,
                     output=str(output_dir),
                 )
             )
@@ -246,20 +244,19 @@ class TestCmdReport:
                         quality="passed",
                         search_rounds=1,
                         source_count=1,
-                        version=1,
-                        parent=None,
                         output=None,
                     )
                 )
                 mock_exit.assert_called_with(1)
 
-    def test_report_cjk_topic_filename(self, tmp_path):
+    def test_report_cjk_topic_uses_english_title(self, tmp_path):
         workdir = tmp_path / ".workdir"
         workdir.mkdir()
         _write_json(
             workdir / "scope.json",
             {
                 "topic": "智能体编程趋势",
+                "english_title": "agentic coding trends",
                 "goal_type": "tech_selection",
                 "depth": "standard",
                 "audience": "engineer",
@@ -311,15 +308,14 @@ class TestCmdReport:
                     quality="passed",
                     search_rounds=1,
                     source_count=1,
-                    version=1,
-                    parent=None,
                     output=str(output_dir),
                 )
             )
         report_files = list(output_dir.glob("*.md"))
         assert len(report_files) >= 1
         filename = report_files[0].name
-        assert any('\u4e00' <= c <= '\u9fff' for c in filename)
+        assert not any('\u4e00' <= c <= '\u9fff' for c in filename)
+        assert "agentic_coding_trends" in filename
 
 
 class TestCmdSource:
@@ -412,6 +408,68 @@ class TestCmdReset:
         main()
         assert len(called) == 1
         assert called[0].phase == "scope"
+
+
+class TestBuildReportFilename:
+    def test_ascii_topic_no_english_title(self, tmp_path):
+        scope_data = {"topic": "agentic coding trends"}
+        output_path = tmp_path / "reports"
+        output_path.mkdir()
+        result = _build_report_filename(scope_data, output_path)
+        assert result.name == "agentic_coding_trends.md"
+
+    def test_cjk_topic_uses_english_title(self, tmp_path):
+        scope_data = {"topic": "智能体编程趋势", "english_title": "agentic coding trends"}
+        output_path = tmp_path / "reports"
+        output_path.mkdir()
+        result = _build_report_filename(scope_data, output_path)
+        assert result.name == "agentic_coding_trends.md"
+
+    def test_cjk_topic_without_english_title_falls_back(self, tmp_path):
+        scope_data = {"topic": "智能体编程趋势"}
+        output_path = tmp_path / "reports"
+        output_path.mkdir()
+        result = _build_report_filename(scope_data, output_path)
+        assert result.name == "untitled.md"
+
+    def test_mixed_topic_without_english_title_keeps_ascii(self, tmp_path):
+        scope_data = {"topic": "2026 AI 趋势"}
+        output_path = tmp_path / "reports"
+        output_path.mkdir()
+        result = _build_report_filename(scope_data, output_path)
+        assert result.name == "2026_ai.md"
+
+    def test_date_suffix_when_file_exists(self, tmp_path):
+        scope_data = {"topic": "test topic"}
+        output_path = tmp_path / "reports"
+        output_path.mkdir()
+        (output_path / "test_topic.md").write_text("old report", encoding="utf-8")
+        result = _build_report_filename(scope_data, output_path)
+        assert "test_topic_" in result.name
+        assert result.name.endswith(".md")
+
+    def test_no_date_suffix_when_file_not_exists(self, tmp_path):
+        scope_data = {"topic": "test topic"}
+        output_path = tmp_path / "reports"
+        output_path.mkdir()
+        result = _build_report_filename(scope_data, output_path)
+        assert result.name == "test_topic.md"
+
+    def test_special_chars_sanitized(self, tmp_path):
+        scope_data = {"topic": "AI/ML: Frameworks & Tools!"}
+        output_path = tmp_path / "reports"
+        output_path.mkdir()
+        result = _build_report_filename(scope_data, output_path)
+        assert "/" not in result.name
+        assert "!" not in result.name
+        assert "&" not in result.name
+
+    def test_consecutive_underscores_collapsed(self, tmp_path):
+        scope_data = {"topic": "AI   ML   Frameworks"}
+        output_path = tmp_path / "reports"
+        output_path.mkdir()
+        result = _build_report_filename(scope_data, output_path)
+        assert "__" not in result.name
 
 
 class TestMain:

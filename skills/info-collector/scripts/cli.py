@@ -77,15 +77,12 @@ def cmd_report(args: argparse.Namespace) -> None:
         quality=quality,
         search_rounds=args.search_rounds or 1,
         source_count=args.source_count or _count_sources(),
-        version=args.version or 1,
         report_language=report_language,
     )
     default_output = (config or {}).get("output_dir", "./reports/")
     output_path = Path(args.output) if args.output else _find_project_root() / default_output
     output_path.mkdir(parents=True, exist_ok=True)
-    topic = _read_topic(scope_path)
-    safe_topic = "".join(c if c.isalnum() or c in ("-", "_") or '\u4e00' <= c <= '\u9fff' else "_" for c in topic.lower())
-    filename = output_path / f"{safe_topic}_v{args.version or 1}.md"
+    filename = _build_report_filename(scope_data, output_path)
     filename.write_text(report, encoding="utf-8")
     print(f"Report saved: {filename}")
 
@@ -177,6 +174,27 @@ def _read_topic(scope_path: Path) -> str:
         return "untitled"
 
 
+def _build_report_filename(scope_data: dict, output_path: Path) -> Path:
+    english_title = scope_data.get("english_title")
+    if english_title:
+        raw = english_title
+    else:
+        raw = scope_data.get("topic", "untitled")
+    safe_name = "".join(c if c.isascii() and (c.isalnum() or c in ("-", "_")) else "_" for c in raw.lower())
+    import re as _re
+    safe_name = _re.sub(r"_+", "_", safe_name).strip("_")
+    if not safe_name:
+        safe_name = "untitled"
+    base_path = output_path / f"{safe_name}.md"
+    if not base_path.exists():
+        return base_path
+    report_date = scope_data.get("report_date")
+    if not report_date:
+        from datetime import date as _date
+        report_date = _date.today().isoformat()
+    return output_path / f"{safe_name}_{report_date}.md"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Info-Collector Skill CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -193,7 +211,6 @@ def main() -> None:
     p_report.add_argument("--quality", choices=["passed", "degraded", "unreviewed"])
     p_report.add_argument("--search-rounds", type=int)
     p_report.add_argument("--source-count", type=int)
-    p_report.add_argument("--version", type=int, default=1)
     p_report.add_argument("--output")
     p_report.set_defaults(func=cmd_report)
 

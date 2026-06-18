@@ -82,7 +82,6 @@ def build_front_matter(
     quality: str,
     search_rounds: int,
     source_count: int,
-    version: int = 1,
     audience: str | None = None,
     report_language: str | None = None,
 ) -> str:
@@ -90,7 +89,6 @@ def build_front_matter(
     lines.append(f"topic: {topic}")
     lines.append(f"goal_type: {goal_type}")
     lines.append(f"date: {date.today().isoformat()}")
-    lines.append(f"version: {version}")
     if audience:
         lines.append(f"audience: {audience}")
     if report_language:
@@ -186,7 +184,6 @@ def generate_report(
     quality: str,
     search_rounds: int,
     source_count: int,
-    version: int = 1,
     report_language: str | None = None,
 ) -> str:
     analysis = read_json(analysis_path)
@@ -204,7 +201,6 @@ def generate_report(
         quality,
         search_rounds,
         source_count,
-        version,
         audience,
         report_language,
     )
