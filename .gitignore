@@ -50,6 +50,9 @@ nuxt/
 # omo
 .omo/run-continuation/
 
+# superPowers
+docs/superpowers/
+
 docs/research/
 reports/
 .workdir/
