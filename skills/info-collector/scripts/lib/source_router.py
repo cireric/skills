@@ -40,8 +40,10 @@ def recommend_sources(
     routes: dict = cfg.get("routes", {})
     route = routes.get(goal_type, routes.get("other", {"entry_tier": 3, "path": [3, 2, 1]}))
     path_tiers: list[int] = route["path"]
+    optional_tiers: list[int] = route.get("optional_tiers", [])
+    all_path_tiers = path_tiers + [t for t in optional_tiers if t not in path_tiers]
     recommended: dict[int, list[dict]] = {}
-    for t in path_tiers:
+    for t in all_path_tiers:
         tier_key = str(t)
         recommended[t] = list(sources.get(tier_key, {}).get("sources", []))
     all_sources: dict[int, list[dict]] = {}
@@ -51,6 +53,7 @@ def recommend_sources(
         "goal_type": goal_type,
         "entry_tier": route["entry_tier"],
         "path": path_tiers,
+        "optional_tiers": optional_tiers,
         "recommended_sources": recommended,
         "all_sources": all_sources,
     }

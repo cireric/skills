@@ -39,7 +39,7 @@
   },
   "routes": {
     "exploratory": {"entry_tier": 4, "path": [4, 2]},
-    "panoramic_understanding": {"entry_tier": 4, "path": [4, 2, 1]},
+    "panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]},
     "tech_selection": {"entry_tier": 2, "path": [2, 1]},
     "feasibility_assessment": {"entry_tier": 2, "path": [2, 1]},
     "competitive_comparison": {"entry_tier": 4, "path": [4, 3]},

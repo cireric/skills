@@ -84,6 +84,52 @@ class TestRecommendSources:
         assert "Zhihu" in names
 
 
+class TestOptionalTiers:
+    def test_optional_tiers_returned(self):
+        cfg = {
+            "sources": {"1": {"sources": []}, "2": {"sources": []}, "3": {"sources": []}, "4": {"sources": []}},
+            "routes": {"panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]}},
+        }
+        route = get_route("panoramic_understanding", cfg)
+        assert route["optional_tiers"] == [2]
+
+    def test_optional_tiers_missing_is_empty(self):
+        cfg = {
+            "sources": {"1": {"sources": []}, "2": {"sources": []}, "3": {"sources": []}, "4": {"sources": []}},
+            "routes": {"tech_selection": {"entry_tier": 2, "path": [2, 1]}},
+        }
+        route = get_route("tech_selection", cfg)
+        assert route.get("optional_tiers", []) == []
+
+    def test_recommend_sources_includes_optional_tiers(self):
+        cfg = {
+            "sources": {
+                "1": {"sources": [{"name": "arXiv", "domain": "arxiv.org"}]},
+                "2": {"sources": [{"name": "GitHub", "domain": "github.com"}]},
+                "3": {"sources": [{"name": "Medium", "domain": "medium.com"}]},
+                "4": {"sources": [{"name": "Reddit", "domain": "reddit.com"}]},
+            },
+            "routes": {"panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]}},
+        }
+        result = recommend_sources("panoramic_understanding", cfg)
+        assert 2 in result["recommended_sources"]
+        assert any(s["name"] == "GitHub" for s in result["recommended_sources"][2])
+
+    def test_cmd_source_output_includes_optional_tiers(self):
+        cfg = {
+            "sources": {
+                "1": {"sources": []},
+                "2": {"sources": [{"name": "GitHub", "domain": "github.com"}]},
+                "3": {"sources": []},
+                "4": {"sources": []},
+            },
+            "routes": {"panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]}},
+        }
+        result = recommend_sources("panoramic_understanding", cfg)
+        assert "optional_tiers" in result
+        assert result["optional_tiers"] == [2]
+
+
 class TestGetDefaults:
     def test_default_min_sources(self):
         assert get_default_min_sources("tech_selection", TEST_CONFIG) == 2  # noqa: PLR2004
