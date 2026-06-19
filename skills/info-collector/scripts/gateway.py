@@ -704,12 +704,20 @@ def check_claim_dedup(workdir: Path) -> CheckResult:
     return CheckResult("claim_dedup", "WARN", True)
 
 
-_FETCHED_CONTENT_MIN_LENGTH = 200
+_FETCHED_CONTENT_MIN_LENGTH = 200  # Legacy fallback; per-tier minimums take priority
+_FETCHED_CONTENT_MIN_BY_TIER = {
+    1: 1000,  # Academic papers — methodology, results, limitations
+    2: 800,   # Official docs — API details, configuration
+    3: 600,   # Industry blogs — context, nuance, caveats
+    4: 400,   # Community posts — shorter but still fetched
+}
+_FETCHED_CONTENT_STUB_RATIO_BLOCKER = 0.30  # BLOCKER if >30% entries are stubs (was 0.50)
 
 
 def check_fetched_content_depth(workdir: Path) -> CheckResult:
-    """WARN if collected entries have missing or stub fetched_content;
-    BLOCKER if >50% of entries have missing or stub content."""
+    """WARN/BLOCKER if collected entries have missing or stub fetched_content.
+    Uses per-tier minimum lengths from _FETCHED_CONTENT_MIN_BY_TIER.
+    BLOCKER if >30% of entries are stubs (excluding fetch_failed entries)."""
     try:
         collected = read_json(workdir / "collected.json") or []
     except ArtifactError:
@@ -718,33 +726,84 @@ def check_fetched_content_depth(workdir: Path) -> CheckResult:
         return CheckResult("fetched_content_depth", "WARN", True, "collected.json is empty")
     stub_count = 0
     empty_count = 0
+    fetch_failed_count = 0
+    tier_violations: list[str] = []
     for entry in collected:
         fc = entry.get("fetched_content", "")
+        tier = entry.get("source_tier", 0)
+        if entry.get("fetch_failed", False):
+            fetch_failed_count += 1
+            continue  # exempt from depth checks
         if not fc:
             empty_count += 1
-        elif len(fc) < _FETCHED_CONTENT_MIN_LENGTH:
-            stub_count += 1
+        else:
+            min_len = _FETCHED_CONTENT_MIN_BY_TIER.get(tier, _FETCHED_CONTENT_MIN_LENGTH)
+            if len(fc) < min_len:
+                stub_count += 1
+                tier_violations.append(f"Tier {tier}: {len(fc)} chars < {min_len} min")
     total = len(collected)
+    checked = total - fetch_failed_count
     problem_count = empty_count + stub_count
-    ratio = problem_count / total
+    ratio = problem_count / checked if checked > 0 else 0
     parts: list[str] = []
     if empty_count > 0:
         parts.append(f"{empty_count}/{total} entries have no fetched_content")
     if stub_count > 0:
         parts.append(
-            f"{stub_count}/{total} entries have fetched_content < {_FETCHED_CONTENT_MIN_LENGTH} chars (likely snippets)"
+            f"{stub_count}/{total} entries have stub fetched_content (below per-tier minimum)"
         )
+    if fetch_failed_count > 0:
+        parts.append(f"{fetch_failed_count}/{total} entries have fetch_failed=true (exempt)")
+    if tier_violations:
+        # Show up to 3 examples
+        for v in tier_violations[:3]:
+            parts.append(f"  e.g. {v}")
     msg = "; ".join(parts) if parts else "all entries have substantial fetched_content"
-    if ratio > 0.5:
+    if ratio > _FETCHED_CONTENT_STUB_RATIO_BLOCKER:
         return CheckResult(
             "fetched_content_depth",
             "BLOCKER",
             False,
-            f"{problem_count}/{total} entries ({ratio:.0%}) have missing or stub fetched_content — re-fetch with full content before proceeding",
+            f"{problem_count}/{checked} entries ({ratio:.0%}) have missing or stub fetched_content — re-fetch with full content before proceeding",
         )
     if problem_count > 0:
         return CheckResult("fetched_content_depth", "WARN", False, msg)
     return CheckResult("fetched_content_depth", "WARN", True, msg)
+
+
+def check_search_plan_compliance(workdir: Path) -> CheckResult:
+    """WARN if search_plan.json tasks are still pending (plan not followed)."""
+    plan_path = workdir / "search_plan.json"
+    if not plan_path.exists():
+        return CheckResult("search_plan_compliance", "WARN", True, "search_plan.json not found")
+    try:
+        plan = read_json(plan_path)
+    except ArtifactError:
+        return CheckResult("search_plan_compliance", "WARN", True, "search_plan.json unreadable")
+    tasks = plan.get("tasks", [])
+    if not tasks:
+        return CheckResult("search_plan_compliance", "WARN", True, "search_plan.json has no tasks")
+    pending = [t for t in tasks if t.get("status") == "pending"]
+    completed = [t for t in tasks if t.get("status") == "completed"]
+    skipped = [t for t in tasks if t.get("status") == "skipped"]
+    directions_in_plan = set(t.get("direction", "") for t in tasks)
+    directions_completed = set(t.get("direction", "") for t in completed)
+    directions_missing = directions_in_plan - directions_completed
+    if pending and not completed:
+        return CheckResult(
+            "search_plan_compliance", "WARN", False,
+            f"0/{len(tasks)} tasks completed, {len(pending)} pending — search_plan was not followed. "
+            f"Directions without any completed task: {', '.join(sorted(directions_missing))}",
+        )
+    if directions_missing:
+        return CheckResult(
+            "search_plan_compliance", "WARN", False,
+            f"{len(completed)}/{len(tasks)} tasks completed, but directions without coverage: {', '.join(sorted(directions_missing))}",
+        )
+    return CheckResult(
+        "search_plan_compliance", "WARN", True,
+        f"{len(completed)}/{len(tasks)} tasks completed, {len(skipped)} skipped",
+    )
 
 
 def check_claim_source_relevance(workdir: Path, collected: list[dict] | None = None) -> CheckResult:

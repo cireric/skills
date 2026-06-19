@@ -310,28 +310,58 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
                         warnings.append(
                             f"  Suggestion: try searching for '{d}' with keywords: {', '.join(suggestions[:5])}"
                         )
-    # fetched_content depth check
+    # fetched_content depth check (per-tier minimums)
+    _TIER_MINS = {1: 1000, 2: 800, 3: 600, 4: 400}
     if collected:
-        empty_count = sum(1 for e in collected if not e.get("fetched_content", ""))
+        empty_count = sum(1 for e in collected if not e.get("fetched_content", "") and not e.get("fetch_failed", False))
         stub_count = sum(
             1 for e in collected
-            if e.get("fetched_content", "") and len(e.get("fetched_content", "")) < 200
+            if e.get("fetched_content", "") and not e.get("fetch_failed", False)
+            and len(e.get("fetched_content", "")) < _TIER_MINS.get(e.get("source_tier", 0), 200)
         )
+        fetch_failed_count = sum(1 for e in collected if e.get("fetch_failed", False))
         total = len(collected)
+        checked = total - fetch_failed_count
         problem_count = empty_count + stub_count
-        ratio = problem_count / total if total > 0 else 0
+        ratio = problem_count / checked if checked > 0 else 0
         if empty_count > 0:
             warnings.append(
                 f"fetched_content_depth WARN: {empty_count}/{total} entries have no fetched_content"
             )
         if stub_count > 0:
             warnings.append(
-                f"fetched_content_depth WARN: {stub_count}/{total} entries have fetched_content < 200 chars (likely snippets, not full content)"
+                f"fetched_content_depth WARN: {stub_count}/{total} entries have stub fetched_content (below per-tier minimum)"
             )
-        if ratio > 0.5:
+        if fetch_failed_count > 0:
+            warnings.append(
+                f"fetched_content_depth WARN: {fetch_failed_count}/{total} entries have fetch_failed=true (exempt)"
+            )
+        if ratio > 0.30:
             blockers.append(
-                f"fetched_content_depth BLOCKER: {problem_count}/{total} entries ({ratio:.0%}) have missing or stub fetched_content — re-fetch with full content before proceeding"
+                f"fetched_content_depth BLOCKER: {problem_count}/{checked} entries ({ratio:.0%}) have missing or stub fetched_content — re-fetch with full content before proceeding"
             )
+    # search_plan compliance check
+    plan_path = workdir / "search_plan.json"
+    if plan_path.exists():
+        try:
+            plan = read_json(plan_path)
+            tasks = plan.get("tasks", [])
+            if tasks:
+                pending = sum(1 for t in tasks if t.get("status") == "pending")
+                completed = sum(1 for t in tasks if t.get("status") == "completed")
+                if pending and not completed:
+                    warnings.append(
+                        f"search_plan_compliance WARN: 0/{len(tasks)} tasks completed, {pending} pending — search_plan was not followed"
+                    )
+                dirs_in_plan = set(t.get("direction", "") for t in tasks)
+                dirs_completed = set(t.get("direction", "") for t in tasks if t.get("status") == "completed")
+                dirs_missing = dirs_in_plan - dirs_completed
+                if dirs_missing:
+                    warnings.append(
+                        f"search_plan_compliance WARN: directions without completed tasks: {', '.join(sorted(dirs_missing))}"
+                    )
+        except ArtifactError:
+            pass
     return blockers, warnings
 
 
