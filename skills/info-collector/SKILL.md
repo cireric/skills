@@ -66,34 +66,70 @@ After collecting answers, write `skills/info-collector/config.json` and confirm 
 
 ## Phase 2: Search-Collect-Filter
 
-1. **Get source recommendations**: `python -m scripts.cli source <goal_type>`
+### Step 2.1: Get source recommendations
 
-2. **Search**: Use `exa_web_search_exa` + `exa_web_fetch_exa` (primary), `playwright_browser_*` (supplementary). Use `site:` queries from recommended sources. Aim for ~3 search rounds (soft limit).
+`python -m scripts.cli source <goal_type>`
 
-   **Search language rule**: Search English-language sources using English queries even if the topic is in Chinese. Use Chinese queries only for Chinese domains (cnki.net, zhihu.com, baidu.com, etc.).
+### Step 2.2: Search (rounds 1-3)
 
-   **Tier 4 search strategy**: Tier 4 sources are not pre-configured in config.json. When deep research requires Tier 4 coverage, search broadly on Reddit, Hacker News, Dev.to, and personal blogs. All Tier 4 findings must use strong qualifier language in the report.
+Use `exa_web_search_exa` for discovery. Use `site:` queries from recommended sources. Aim for ~3 search rounds (soft limit).
 
-   **Search strategy**: Follow the tier-based search order in `references/search-strategy.md`. After each search round, update `search_plan.json` task statuses (`completed`/`skipped`/`pending`) to track coverage progress.
+**You MUST execute searches by following `search_plan.json`**: Read it before searching. For each task in the plan, execute the corresponding search using that task's `site_queries` and `query_language`. After each search round, update task statuses to `completed` / `skipped` / `pending` in `search_plan.json`. Do NOT proceed to Step 2.3 until every direction has at least one `completed` task.
 
-3. **Collect**: Add each result to `<project_root>/.workdir/collected.json`:
+**Search language rule**: Search English-language sources using English queries even if the topic is in Chinese. Use Chinese queries only for Chinese domains (cnki.net, zhihu.com, baidu.com, etc.).
 
-   ```json
-   {
-   	"url": "...",
-   	"title": "...",
-   	"snippet": "...",
-   	"source_tier": 2,
-   	"fetched_content": "...",
-   	"covered_directions": ["direction 1", "direction 2"]
-   }
-   ```
+**Tier 4 search strategy**: Tier 4 sources are not pre-configured in config.json. When deep research requires Tier 4 coverage, search broadly on Reddit, Hacker News, Dev.to, and personal blogs. All Tier 4 findings must use strong qualifier language in the report.
 
-   **`covered_directions`** (optional, ADR 0017): Declares which search_directions this source covers. Use when title/snippet token overlap is below threshold. Constraints: subset of scope.json's search_directions, max 3 per entry, invalid values ignored with WARN.
+**Search strategy**: Follow the tier-based search order in `references/search-strategy.md`.
 
-4. **Run gate**: `python -m scripts.cli proceed --from search --to analysis`
-   - Checks topic_coverage (BLOCKER), tier_coverage (WARN), per_direction_min_sources (WARN), min_sources (WARN).
-   - If BLOCKER → search more before proceeding.
+### Step 2.3: Full-content fetch (MANDATORY — do NOT skip)
+
+For EVERY entry you plan to add to `collected.json`, you MUST fetch its full content using `webfetch` (or `exa_web_fetch_exa` if available). Search-result highlights are NOT sufficient — they are summaries, not source material.
+
+**Minimum fetched_content lengths (BLOCKER if not met)**:
+
+| Source tier | Minimum fetched_content | Rationale |
+|-------------|------------------------|-----------|
+| Tier 1 (academic) | 1000 chars | Academic papers contain methodology, results, limitations that highlights cannot capture |
+| Tier 2 (docs) | 800 chars | Official docs have API details, configuration, examples |
+| Tier 3 (industry) | 600 chars | Blog posts and reports have context, nuance, caveats |
+| Tier 4 (community) | 400 chars | Forum posts are shorter but must still be fetched, not summarized from highlights |
+
+If a URL cannot be fetched (paywall, 403, timeout), you MAY still add the entry but MUST set `fetched_content` to the empty string `""` and add `"fetch_failed": true` to the entry. Entries with `fetch_failed: true` are exempt from depth checks but CANNOT be used as the sole source for claims with `precision: "exact"` or `evidence_type: "official_data"`.
+
+### Step 2.4: Collect
+
+Add each result to `<project_root>/.workdir/collected.json`:
+
+```json
+{
+	"url": "...",
+	"title": "...",
+	"snippet": "...",
+	"source_tier": 2,
+	"fetched_content": "...",
+	"covered_directions": ["direction 1", "direction 2"],
+	"fetch_failed": false
+}
+```
+
+**`covered_directions`** (optional, ADR 0017): Declares which search_directions this source covers. Use when title/snippet token overlap is below threshold. Constraints: subset of scope.json's search_directions, max 3 per entry, invalid values ignored with WARN.
+
+**`fetch_failed`** (optional, default false): Set to `true` only when the URL could not be fetched after attempting. Exempts the entry from depth checks but imposes claim restrictions.
+
+### Step 2.5: Run gate
+
+`python -m scripts.cli proceed --from search --to analysis`
+
+Checks:
+- topic_coverage (BLOCKER) — search directions covered
+- tier_coverage (WARN) — source tier diversity
+- per_direction_min_sources (WARN) — enough sources per direction
+- min_sources (WARN) — total source count
+- fetched_content_depth (BLOCKER if >30% entries are stubs) — full content was actually fetched
+- search_plan_compliance (WARN) — plan tasks were executed and updated
+
+If BLOCKER → fix the issue (fetch missing content, search more) before proceeding.
 
 ## Phase 3: Report
 
