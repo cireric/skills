@@ -18,11 +18,14 @@ from .lib.exceptions import ArtifactError
 from .lib.utils import ensure_dir, read_json, write_json
 
 
-from .lib.constants import _CHINESE_STOP_WORDS, _ENGLISH_STOP_WORDS
+from .lib.constants import (
+    _CHINESE_STOP_WORDS,
+    _COVERAGE_THRESHOLD,
+    _DEPTH_MIN_SOURCES_PER_DIRECTION,
+    _ENGLISH_STOP_WORDS,
+)
 
 _STOP_WORDS = _ENGLISH_STOP_WORDS | _CHINESE_STOP_WORDS
-
-_DEPTH_MIN_SOURCES_PER_DIRECTION = {"quick": 1, "standard": 3, "deep": 5}
 
 
 def _is_stop_word(token: str) -> bool:
@@ -34,9 +37,6 @@ def _is_stop_word(token: str) -> bool:
     if token in _STOP_WORDS:
         return True
     return False
-
-
-_COVERAGE_THRESHOLD = 0.5
 
 
 def _tokenize_direction(direction: str) -> list[str]:
@@ -310,36 +310,13 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
                         warnings.append(
                             f"  Suggestion: try searching for '{d}' with keywords: {', '.join(suggestions[:5])}"
                         )
-    # fetched_content depth check (per-tier minimums)
-    _TIER_MINS = {1: 1000, 2: 800, 3: 600, 4: 400}
-    if collected:
-        empty_count = sum(1 for e in collected if not e.get("fetched_content", "") and not e.get("fetch_failed", False))
-        stub_count = sum(
-            1 for e in collected
-            if e.get("fetched_content", "") and not e.get("fetch_failed", False)
-            and len(e.get("fetched_content", "")) < _TIER_MINS.get(e.get("source_tier", 0), 200)
-        )
-        fetch_failed_count = sum(1 for e in collected if e.get("fetch_failed", False))
-        total = len(collected)
-        checked = total - fetch_failed_count
-        problem_count = empty_count + stub_count
-        ratio = problem_count / checked if checked > 0 else 0
-        if empty_count > 0:
-            warnings.append(
-                f"fetched_content_depth WARN: {empty_count}/{total} entries have no fetched_content"
-            )
-        if stub_count > 0:
-            warnings.append(
-                f"fetched_content_depth WARN: {stub_count}/{total} entries have stub fetched_content (below per-tier minimum)"
-            )
-        if fetch_failed_count > 0:
-            warnings.append(
-                f"fetched_content_depth WARN: {fetch_failed_count}/{total} entries have fetch_failed=true (exempt)"
-            )
-        if ratio > 0.30:
-            blockers.append(
-                f"fetched_content_depth BLOCKER: {problem_count}/{checked} entries ({ratio:.0%}) have missing or stub fetched_content — re-fetch with full content before proceeding"
-            )
+    from .gateway import check_fetched_content_depth
+    fetched_result = check_fetched_content_depth(workdir)
+    if not fetched_result.passed:
+        if fetched_result.level == "BLOCKER":
+            blockers.append(fetched_result.message)
+        else:
+            warnings.append(fetched_result.message)
     # search_plan compliance check
     plan_path = workdir / "search_plan.json"
     if plan_path.exists():
