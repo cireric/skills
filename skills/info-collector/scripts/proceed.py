@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import string
 import sys
@@ -11,6 +12,7 @@ from typing import cast
 from .cli import _find_project_root
 from .gateway import CheckResult
 from .gateway import run_all as run_gateway
+from .gateway import run_report_checks
 from .lib.source_router import get_default_min_sources, get_route, recommend_sources
 from .lib.exceptions import ArtifactError
 from .lib.utils import ensure_dir, read_json, write_json
@@ -388,6 +390,26 @@ def _get_goal_type(workdir: Path) -> str:
         return "other"
 
 
+def _find_report_path(workdir: Path) -> Path | None:
+    """Find the latest .md report file in the configured output directory."""
+    from .cli import _find_project_root
+
+    project_root = _find_project_root()
+    config_path = Path(__file__).parent.parent / "config.json"
+    output_dir = project_root / "./reports/"
+    if config_path.exists():
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                config = json.load(f)
+            output_dir = project_root / config.get("output_dir", "./reports/")
+        except (OSError, json.JSONDecodeError):
+            pass
+    if not output_dir.exists():
+        return None
+    md_files = sorted(output_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return md_files[0] if md_files else None
+
+
 def proceeds(
     workdir: Path, from_phase: str, to_phase: str, config: dict | None = None
 ) -> tuple[bool, list[str]]:
@@ -453,7 +475,14 @@ def proceeds(
             errors.append(f"[BLOCKER] {b.name}: {b.message}")
 
     elif from_phase == "final":
-        pass
+        report_path = _find_report_path(workdir)
+        if report_path is None:
+            errors.append("No report file found in output directory for 3d verification")
+        else:
+            report_results = run_report_checks(report_path)
+            failed = [r for r in report_results if not r.passed]
+            for r in failed:
+                errors.append(f"[{r.level}] {r.name}: {r.message}")
 
     passed = len(errors) == 0
     if passed:

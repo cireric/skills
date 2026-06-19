@@ -73,7 +73,7 @@ A required section (id="methodology") for quantitative goal_types. Describes: da
 _Avoid_: method section, approach section
 
 **Reference numbering**:
-[N] citation system in the final report. Global numbering across all sections, assigned by first-appearance order. Maps to a References appendix at report end: `[N]: URL — title`.
+[N] citation system in the final report. Global numbering across all sections, assigned by first-appearance order. In-text citations use CommonMark/GFM-compatible link syntax (e.g., `[&#91;N&#93;](#refs)` or `[\[N\]](#refs)`). The References appendix uses a visible list format (e.g., `- **[N]** Title — [URL](URL)`) with an explicit anchor (`<a id="refs"></a>`) for in-text link targets. Pure `[N]: URL` hidden definitions are not rendered by most Markdown renderers and must not be the sole format in the References section.
 _Avoid_: citation numbering, footnote numbering
 
 **topic_coverage**:

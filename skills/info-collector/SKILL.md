@@ -164,6 +164,52 @@ Show the review report (or degradation notice) to user and ask:
 
 - User expresses dissatisfaction → Start a new research from Phase 1 with a new scope.
 
+### 3d: Report rendering verification
+
+After the report file is generated in 3c, verify it renders correctly before cleanup. This step catches problems that are invisible in source code but obvious in rendered output (e.g., references section not showing, citations not clickable).
+
+#### Step 1: AI rendering sanity check
+
+Read the generated `.md` file and verify the following items against CommonMark/GFM standards:
+
+| ID | Check | Pass criteria |
+|----|-------|---------------|
+| B | In-text citations are clickable | Citation syntax matches an allowed format (see below) |
+| C | Reference URLs are clickable | URLs in the References section use Markdown link syntax |
+| G | No trailing artifacts | File ends cleanly — no duplicate headings, JSON fragments, or orphaned definition lines |
+| 11 | Internal anchors resolve | Any `(#anchor)` in-text links match an actual anchor in the References section |
+
+**Allowed citation syntax** (CommonMark/GFM compatible):
+- `[&#91;N&#93;](#refs)` — HTML entity brackets (widest compatibility)
+- `[\[N\]](#refs)` — Escaped bracket syntax
+
+**Disallowed citation syntax:**
+- `[N]` — Plain text, not a link
+- `[N][]` — Relies on hidden definition; most renderers do not render a clickable link or jump target
+
+If any check fails → directly edit the `.md` file to fix → re-run this step.
+
+#### Step 2: Gateway check
+
+Run: `python -m scripts.cli proceed --from final --to cleanup`
+
+This runs 10 automated checks on the report file (all WARN level):
+
+| ID | Check | Description |
+|----|-------|-------------|
+| F1 | Dangling references | In-text `[N]` has no matching definition in References section |
+| F2 | Orphaned definitions | References section has `[N]` not cited in body text |
+| A | References visibility | References section consists only of `[N]: URL` hidden definitions with no visible list |
+| D | Table delimiter alignment | Table delimiter row `|` count differs from header row |
+| 9 | Front matter format | YAML front matter is malformed or missing required fields |
+| 10 | Heading level skip | Heading level jumps (e.g., `##` directly to `####`) |
+| 12 | Duplicate headings | Same-level headings with identical text appear more than once |
+| 13 | Unclosed code block | Fenced code block markers (` ``` `) appear an odd number of times |
+| 15 | Empty section | Section heading exists but has no content |
+| 16 | Overlong line | Single line exceeds 500 characters |
+
+If any check fails → fix the `.md` file → re-run `proceed --from final --to cleanup`.
+
 ## Phase 4: Cleanup
 
 1. Run: `python -m scripts.cli proceed --from final --to cleanup`

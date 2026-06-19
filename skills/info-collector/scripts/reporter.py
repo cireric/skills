@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date
 from pathlib import Path
 
@@ -56,6 +57,7 @@ def _render_references(reference_map: dict[str, int], collected: list[dict], lan
     if not reference_map:
         return ""
     parts = [f"\n## {_label('references', lang)}\n"]
+    parts.append('\n<a id="refs"></a>\n')
     collected_by_url = {}
     for item in collected:
         url = item.get("url", "")
@@ -65,14 +67,45 @@ def _render_references(reference_map: dict[str, int], collected: list[dict], lan
     for norm_url, num in sorted_refs:
         item = collected_by_url.get(norm_url)
         title = item.get("title", norm_url) if item else norm_url
-        line = f"[{num}]: {norm_url} — {title}"
+        tier_str = ""
         if item is not None:
             tier = item.get("source_tier")
             tier_key = str(tier) if tier is not None else None
             if tier_key and tier_key in _TIER_LABELS:
-                line += f" ({_TIER_LABELS[tier_key]})"
-        parts.append(line)
+                tier_str = f" ({_TIER_LABELS[tier_key]})"
+        clean_url = _clean_url(norm_url)
+        if title and title != clean_url:
+            parts.append(f"- **[{num}]** {title}{tier_str} — [{clean_url}]({clean_url})")
+        else:
+            parts.append(f"- **[{num}]** [{clean_url}]({clean_url})")
     return "\n".join(parts)
+
+
+def _clean_url(url: str) -> str:
+    """Remove preview- prefix and other non-standard URL prefixes."""
+    return re.sub(r'^https?://preview-', 'https://', url)
+
+
+def _post_process(markdown: str) -> str:
+    """Fix known rendering issues in the generated Markdown."""
+    # Fix literal \n that should be real newlines
+    markdown = re.sub(r'(?<!\\)\\n', '\n', markdown)
+    # Fix preview- URL prefix
+    markdown = re.sub(r'https?://preview-', 'https://', markdown)
+    # Fix bare URLs in body (not in reference section) — convert to Markdown links
+    ref_idx = markdown.rfind('## 参考文献')
+    if ref_idx == -1:
+        ref_idx = markdown.rfind('## References')
+    if ref_idx != -1:
+        body = markdown[:ref_idx]
+        refs = markdown[ref_idx:]
+        body = re.sub(
+            r'(?<!\]\()https?://(\S+)',
+            r'[https://\1](https://\1)',
+            body,
+        )
+        markdown = body + refs
+    return markdown
 
 
 def build_front_matter(
@@ -210,4 +243,5 @@ def generate_report(
     if collected_path.exists():
         collected = read_json(collected_path) or []
     body = sections_to_markdown(analysis, collected, lang=report_language or "en")
-    return front + "\n" + body + "\n"
+    raw = front + "\n" + body + "\n"
+    return _post_process(raw)
