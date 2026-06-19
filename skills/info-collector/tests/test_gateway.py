@@ -1418,8 +1418,8 @@ class TestCheckFetchedContentDepth:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "x" * 500},
-                {"url": "https://b.com", "title": "B", "snippet": "s", "fetched_content": "y" * 300},
+                {"url": "https://a.com", "title": "A", "snippet": "s", "source_tier": 4, "fetched_content": "x" * 500},
+                {"url": "https://b.com", "title": "B", "snippet": "s", "source_tier": 4, "fetched_content": "y" * 500},
             ],
         )
         result = check_fetched_content_depth(tmp_path)
@@ -1430,25 +1430,26 @@ class TestCheckFetchedContentDepth:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "x" * 500},
-                {"url": "https://b.com", "title": "B", "snippet": "s"},
+                {"url": "https://a.com", "title": "A", "snippet": "s", "source_tier": 4, "fetched_content": "x" * 500},
+                {"url": "https://b.com", "title": "B", "snippet": "s", "source_tier": 4},
             ],
         )
         result = check_fetched_content_depth(tmp_path)
         assert not result.passed
-        assert "no fetched_content" in result.message
+        assert result.level == "BLOCKER"
+        assert "missing or stub" in result.message
 
     def test_stub_fetched_content_warns(self, tmp_path):
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "short"},
-                {"url": "https://b.com", "title": "B", "snippet": "s", "fetched_content": "y" * 300},
+                {"url": "https://a.com", "title": "A", "snippet": "s", "source_tier": 4, "fetched_content": "short"},
+                {"url": "https://b.com", "title": "B", "snippet": "s", "source_tier": 4, "fetched_content": "y" * 500},
             ],
         )
         result = check_fetched_content_depth(tmp_path)
         assert not result.passed
-        assert "snippets" in result.message
+        assert "stub" in result.message
 
     def test_majority_stub_blocks(self, tmp_path):
         _write_json(

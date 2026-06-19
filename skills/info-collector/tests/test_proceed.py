@@ -35,10 +35,19 @@ def _make_scope(workdir, goal_type="tech_selection", depth="standard", report_la
     _write_json(workdir / "scope.json", data)
 
 
+def _make_completed_search_plan(workdir, directions=None):
+    if directions is None:
+        scope = json.loads((workdir / "scope.json").read_text(encoding="utf-8"))
+        directions = scope.get("search_directions", ["AI", "ML"])
+    tasks = [{"direction": d, "tier": 4, "status": "completed", "collected_count": 1} for d in directions]
+    _write_json(workdir / "search_plan.json", {"tasks": tasks})
+
+
 def _write_scope_and_collected(workdir):
     scope = {"topic": "t", "goal_type": "exploratory", "depth": "quick", "audience": "engineer", "scope_description": "d", "search_directions": ["d1"]}
     _write_json(workdir / "scope.json", scope)
-    _write_json(workdir / "collected.json", [{"url": "https://example.com", "title": "x", "snippet": "d1", "source_tier": 4, "fetched_content": "x" * 300}])
+    _write_json(workdir / "collected.json", [{"url": "https://example.com", "title": "x", "snippet": "d1", "source_tier": 4, "fetched_content": "x" * 500}])
+    _make_completed_search_plan(workdir, directions=["d1"])
 
 
 class TestDetectCurrentPhase:
@@ -472,10 +481,11 @@ class TestTierCoverage:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI", "snippet": "About AI", "source_tier": 2, "fetched_content": "x" * 300},
-                {"url": "https://b.com", "title": "ML", "snippet": "About ML", "source_tier": 1, "fetched_content": "x" * 300},
+                {"url": "https://a.com", "title": "AI", "snippet": "About AI", "source_tier": 2, "fetched_content": "x" * 800},
+                {"url": "https://b.com", "title": "ML", "snippet": "About ML", "source_tier": 1, "fetched_content": "x" * 1000},
             ],
         )
+        _make_completed_search_plan(tmp_path)
         ok, errors = proceeds(tmp_path, "search", "analysis")
         assert ok, errors
         # No tier_coverage warning in output
@@ -487,10 +497,11 @@ class TestTierCoverage:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI ML", "snippet": "About AI and ML", "source_tier": 4, "fetched_content": "x" * 300},
-                {"url": "https://b.com", "title": "More AI", "snippet": "About ML too", "source_tier": 4, "fetched_content": "x" * 300},
+                {"url": "https://a.com", "title": "AI ML", "snippet": "About AI and ML", "source_tier": 4, "fetched_content": "x" * 500},
+                {"url": "https://b.com", "title": "More AI", "snippet": "About ML too", "source_tier": 4, "fetched_content": "x" * 500},
             ],
         )
+        _make_completed_search_plan(tmp_path)
         ok, errors = proceeds(tmp_path, "search", "analysis")
         assert ok  # WARN does not block
         # Should have tier_coverage warning about missing required tiers 3 and 1
@@ -515,11 +526,12 @@ class TestTierCoverage:
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI ML", "snippet": "About AI and ML", "source_tier": 4, "fetched_content": "x" * 300},
-                {"url": "https://b.com", "title": "More AI", "snippet": "About ML too", "source_tier": 3, "fetched_content": "x" * 300},
-                {"url": "https://c.com", "title": "Deep AI", "snippet": "About AI research", "source_tier": 1, "fetched_content": "x" * 300},
+                {"url": "https://a.com", "title": "AI ML", "snippet": "About AI and ML", "source_tier": 4, "fetched_content": "x" * 500},
+                {"url": "https://b.com", "title": "More AI", "snippet": "About ML too", "source_tier": 3, "fetched_content": "x" * 700},
+                {"url": "https://c.com", "title": "Deep AI", "snippet": "About AI research", "source_tier": 1, "fetched_content": "x" * 1100},
             ],
         )
+        _make_completed_search_plan(tmp_path)
         blockers, warnings = _check_search_gate(tmp_path, config)
         assert not blockers
         assert not any("tier_coverage" in w for w in warnings)
@@ -722,8 +734,9 @@ class TestIntegrationMediumComplexity:
         _write_json(workdir / "scope.json", scope)
         proceeds(workdir, "scope", "search", config)
         assert detect_current_phase(workdir) == "post_search"
-        collected = [{"url": "https://example.com", "title": "d1 info", "snippet": "d1", "source_tier": 4, "fetched_content": "x" * 300}]
+        collected = [{"url": "https://example.com", "title": "d1 info", "snippet": "d1", "source_tier": 4, "fetched_content": "x" * 500}]
         _write_json(workdir / "collected.json", collected)
+        _make_completed_search_plan(workdir, directions=["d1"])
         proceeds(workdir, "search", "analysis")
         assert detect_current_phase(workdir) == "post_analysis"
         analysis = {"topic": "t", "goal_type": "exploratory", "sections": [
