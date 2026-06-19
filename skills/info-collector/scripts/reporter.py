@@ -4,6 +4,7 @@ import re
 from datetime import date
 from pathlib import Path
 
+from .lib.constants import _EXPLORATORY_GOAL_TYPES
 from .lib.utils import normalize_url, read_json
 
 _TIER_LABELS: dict[str, str] = {
@@ -31,9 +32,6 @@ _LABELS: dict[tuple[str, str], str] = {
     ("methodology", "en"): "Methodology",
     ("methodology", "zh"): "方法论",
 }
-
-
-_EXPLORATORY_GOAL_TYPES = frozenset({"exploratory", "panoramic_understanding", "background_check", "other"})
 
 
 def _label(key: str, lang: str) -> str:

@@ -12,6 +12,12 @@ from __future__ import annotations
 
 from typing import TypedDict
 
+from .constants import (
+    _VALID_AUDIENCES,
+    _VALID_DEPTHS,
+    _VALID_GOAL_TYPES,
+    _VALID_METRIC_TYPES,
+)
 from .exceptions import ValidationError
 
 
@@ -59,17 +65,6 @@ class CollectedEntryDict(TypedDict, total=False):
     covered_directions: list[str]
 
 
-_VALID_GOAL_TYPES = frozenset({
-    "exploratory", "panoramic_understanding", "tech_selection",
-    "feasibility_assessment", "competitive_comparison", "academic_research",
-    "fact_check", "background_check", "market_analysis", "other",
-})
-_VALID_DEPTHS = frozenset({"quick", "standard", "deep"})
-_VALID_AUDIENCES = frozenset({"CTO", "engineer", "researcher", "general"})
-_VALID_METRIC_TYPES = frozenset({
-    "swe_bench_verified", "swe_bench_pro", "terminal_bench",
-    "pr_merge_rate", "refactoring_safety", "custom",
-})
 _SCOPE_REQUIRED_FIELDS = (
     "topic", "goal_type", "depth", "audience",
     "scope_description", "search_directions",

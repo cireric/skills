@@ -7,7 +7,24 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .lib.constants import _CHINESE_STOP_WORDS
+from .lib.constants import (
+    _CHINESE_STOP_WORDS,
+    _CONCRETENESS_STRICT_GOAL_TYPES,
+    _EXPLORATORY_GOAL_TYPES,
+    _FETCHED_CONTENT_MIN_BY_TIER,
+    _FETCHED_CONTENT_MIN_LENGTH,
+    _FETCHED_CONTENT_STUB_RATIO_BLOCKER,
+    _METHODOLOGY_MIN_WORDS,
+    _MIN_SOURCES,
+    _OVERLONG_LINE_THRESHOLD,
+    _QUANTITATIVE_GOAL_TYPES,
+    _TIER_BALANCE_THRESHOLD,
+    _VALID_CONFIDENCE,
+    _VALID_EVIDENCE_TYPES,
+    _VALID_METRIC_TYPES,
+    _VALID_PRECISION,
+    _VAGUE_DENSITY_THRESHOLD,
+)
 from .lib.exceptions import ArtifactError
 from .lib.utils import normalize_url, read_json
 
@@ -22,37 +39,7 @@ _VAGUE_PHRASES_EN = frozenset({
     "somewhat better", "reasonably good", "fairly strong", "quite capable",
     "generally positive", "relatively mature",
 })
-_VAGUE_DENSITY_THRESHOLD = 0.10
-_CONCRETENESS_STRICT_GOAL_TYPES = frozenset({"tech_selection", "competitive_comparison"})
 _YEAR_PATTERN = re.compile(r'\b(20[0-9]{2})\b')
-
-# Goal types that involve quantitative analysis (benchmarks, data, metrics).
-_QUANTITATIVE_GOAL_TYPES = frozenset({
-    "tech_selection",
-    "competitive_comparison",
-    "feasibility_assessment",
-    "market_analysis",
-    "academic_research",
-})
-
-# Valid values for claim metadata fields.
-_VALID_EVIDENCE_TYPES = frozenset({
-    "official_data", "independent_benchmark", "third_party_estimate",
-    "qualitative_trend", "expert_opinion",
-})
-_VALID_CONFIDENCE = frozenset({"high", "medium", "low"})
-_VALID_PRECISION = frozenset({"exact", "range", "qualitative"})
-
-_TIER_BALANCE_THRESHOLD = 0.30
-
-_VALID_METRIC_TYPES = frozenset({
-    "swe_bench_verified",
-    "swe_bench_pro",
-    "terminal_bench",
-    "pr_merge_rate",
-    "refactoring_safety",
-    "custom",
-})
 
 
 @dataclass
@@ -106,9 +93,6 @@ _REQUIRED_SECTION_IDS: dict[str, list[str]] = {
     "academic_research": ["abstract", "findings", "references", "methodology"],
     "market_analysis": ["overview", "data", "trends", "conclusion", "methodology"],
 }
-
-_EXPLORATORY_GOAL_TYPES = frozenset({"exploratory", "panoramic_understanding", "background_check", "other"})
-
 
 def check_section_coverage(workdir: Path, goal_type: str) -> CheckResult:
     try:
@@ -167,7 +151,6 @@ def check_analysis_schema(workdir: Path) -> CheckResult:
     return CheckResult("analysis_schema", "BLOCKER", True)
 
 
-_MIN_SOURCES = 2
 _SINGLE_SOURCE_RATIO = 0.5
 
 
@@ -568,9 +551,6 @@ def check_content_concreteness(workdir: Path, goal_type: str) -> CheckResult:
     return CheckResult("content_concreteness", "BLOCKER", True)
 
 
-_METHODOLOGY_MIN_WORDS = 150
-
-
 def check_methodology_depth(workdir: Path, goal_type: str) -> CheckResult:
     """WARN if methodology section is too short or lacks a Markdown table."""
     if goal_type not in _QUANTITATIVE_GOAL_TYPES:
@@ -702,16 +682,6 @@ def check_claim_dedup(workdir: Path) -> CheckResult:
             f"{len(duplicates)} duplicate claims across sections: " + "; ".join(issues),
         )
     return CheckResult("claim_dedup", "WARN", True)
-
-
-_FETCHED_CONTENT_MIN_LENGTH = 200  # Legacy fallback; per-tier minimums take priority
-_FETCHED_CONTENT_MIN_BY_TIER = {
-    1: 1000,  # Academic papers — methodology, results, limitations
-    2: 800,   # Official docs — API details, configuration
-    3: 600,   # Industry blogs — context, nuance, caveats
-    4: 400,   # Community posts — shorter but still fetched
-}
-_FETCHED_CONTENT_STUB_RATIO_BLOCKER = 0.30  # BLOCKER if >30% entries are stubs (was 0.50)
 
 
 def check_fetched_content_depth(workdir: Path) -> CheckResult:
@@ -897,9 +867,6 @@ _REF_DEF_NUM = re.compile(r'^\[(\d+)\]:\s+https?://\S')
 _FENCED_CODE = re.compile(r'^```')
 _HEADING = re.compile(r'^(#{1,6})\s+(.+)$')
 _FRONT_MATTER_DELIM = re.compile(r'^---\s*$')
-_OVERLONG_LINE_THRESHOLD = 500
-
-
 def check_report_dangling_refs(report_path: Path) -> CheckResult:
     """F1: WARN if in-text [N] has no matching definition in References section."""
     try:
