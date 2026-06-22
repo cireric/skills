@@ -188,7 +188,7 @@ Show the review report (or degradation notice) to user and ask:
 
 - User confirms approval (adapt language to user) → Run: `python -m scripts.cli proceed --from review --to final`
 
-  This runs gateway.py with 15 checks. BLOCKER fails = stop and fix. WARN = noted but does not block.
+  This runs gateway.py with 18 artifact checks. BLOCKER fails = stop and fix. WARN = noted but does not block.
 
   Then generate final report:
 

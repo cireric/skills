@@ -9,11 +9,12 @@ import sys
 from pathlib import Path
 from typing import cast
 
+from .lib.constants import ARTIFACT_ANALYSIS, ARTIFACT_COLLECTED, ARTIFACT_PIPELINE_STATE, ARTIFACT_REVIEW_REPORT, ARTIFACT_SCOPE, _PHASE_ARTIFACTS
 from .lib.exceptions import InfoCollectorError
-from .lib.utils import _find_project_root
+from .lib.utils import config_path, find_project_root
 
-WORKDIR = _find_project_root() / ".workdir"
-_CONFIG_PATH = Path(__file__).parent.parent / "config.json"
+WORKDIR = find_project_root() / ".workdir"
+_CONFIG_PATH = config_path()
 
 
 def _load_config() -> dict | None:
@@ -55,8 +56,8 @@ def cmd_report(args: argparse.Namespace) -> None:
 
     config = _load_config()
 
-    analysis_path = WORKDIR / "analysis.json"
-    scope_path = WORKDIR / "scope.json"
+    analysis_path = WORKDIR / ARTIFACT_ANALYSIS
+    scope_path = WORKDIR / ARTIFACT_SCOPE
     if not analysis_path.exists():
         print("analysis.json not found", file=sys.stderr)
         sys.exit(1)
@@ -65,9 +66,14 @@ def cmd_report(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     from .lib.utils import read_json
+    from .lib.exceptions import ArtifactError
 
     quality = args.quality or _detect_quality()
-    scope_data = read_json(scope_path) if scope_path.exists() else {}
+    try:
+        scope_data = read_json(scope_path)
+    except ArtifactError as e:
+        print(f"Cannot read scope.json: {e}", file=sys.stderr)
+        sys.exit(1)
     report_language = scope_data.get("report_language")
     if not report_language:
         report_language = (config or {}).get("default_report_language", "zh")
@@ -80,7 +86,7 @@ def cmd_report(args: argparse.Namespace) -> None:
         report_language=report_language,
     )
     default_output = (config or {}).get("output_dir", "./reports/")
-    output_path = Path(args.output) if args.output else _find_project_root() / default_output
+    output_path = Path(args.output) if args.output else find_project_root() / default_output
     output_path.mkdir(parents=True, exist_ok=True)
     filename = _build_report_filename(scope_data, output_path)
     filename.write_text(report, encoding="utf-8")
@@ -105,14 +111,6 @@ def cmd_clean(args: argparse.Namespace) -> None:
         print(f"{WORKDIR} does not exist")
 
 
-_PHASE_ARTIFACTS: dict[str, list[str]] = {
-    "scope": ["scope.json", "search_plan.json", "collected.json", "analysis.json", "review_report.md", "pipeline_state.json"],
-    "search": ["collected.json", "analysis.json", "review_report.md"],
-    "analysis": ["analysis.json", "review_report.md"],
-    "review": ["review_report.md"],
-}
-
-
 def cmd_reset(args: argparse.Namespace) -> None:
     phase = args.phase
     if phase not in _PHASE_ARTIFACTS:
@@ -124,14 +122,14 @@ def cmd_reset(args: argparse.Namespace) -> None:
         if path.exists():
             path.unlink()
             removed.append(name)
-    from .proceed import detect_current_phase, _write_phase_state
+    from .proceed import detect_current_phase, write_phase_state
     actual_phase = detect_current_phase(WORKDIR)
-    state_path = WORKDIR / "pipeline_state.json"
+    state_path = WORKDIR / ARTIFACT_PIPELINE_STATE
     if state_path.exists():
         state_path.unlink()
-        removed.append("pipeline_state.json")
+        removed.append(ARTIFACT_PIPELINE_STATE)
     if actual_phase != "pre_scope":
-        _write_phase_state(WORKDIR, actual_phase)
+        write_phase_state(WORKDIR, actual_phase)
     if removed:
         print(f"Reset from phase '{phase}': removed {', '.join(removed)}")
     else:
@@ -139,7 +137,7 @@ def cmd_reset(args: argparse.Namespace) -> None:
 
 
 def _detect_quality() -> str:
-    review_path = WORKDIR / "review_report.md"
+    review_path = WORKDIR / ARTIFACT_REVIEW_REPORT
     if not review_path.exists():
         return "unreviewed"
     try:
@@ -175,20 +173,12 @@ def _detect_quality() -> str:
 def _count_sources() -> int:
     try:
         from .lib.utils import read_json
+        from .lib.exceptions import ArtifactError
 
-        collected = read_json(WORKDIR / "collected.json")
+        collected = read_json(WORKDIR / ARTIFACT_COLLECTED)
         return len(collected) if collected else 0
-    except Exception:
+    except (ArtifactError, OSError):
         return 0
-
-
-def _read_topic(scope_path: Path) -> str:
-    try:
-        from .lib.utils import read_json
-
-        return cast(str, read_json(scope_path).get("topic", "untitled"))
-    except Exception:
-        return "untitled"
 
 
 def _build_report_filename(scope_data: dict, output_path: Path) -> Path:

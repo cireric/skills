@@ -4,34 +4,9 @@ import re
 from datetime import date
 from pathlib import Path
 
-from .lib.constants import _EXPLORATORY_GOAL_TYPES
-from .lib.utils import normalize_url, read_json
-
-_TIER_LABELS: dict[str, str] = {
-    "1": "★★★☆ Tier 1",
-    "2": "★★☆☆ Tier 2",
-    "3": "★☆☆☆ Tier 3",
-    "4": "☆☆☆☆ Tier 4",
-}
-
-_LABELS: dict[tuple[str, str], str] = {
-    ("sources", "en"): "Sources",
-    ("sources", "zh"): "数据来源",
-    ("references", "en"): "References",
-    ("references", "zh"): "参考文献",
-    ("test_conditions", "en"): "Test Conditions",
-    ("test_conditions", "zh"): "测试环境",
-    ("claim", "en"): "Claim",
-    ("claim", "zh"): "声明",
-    ("conditions", "en"): "Conditions",
-    ("conditions", "zh"): "条件",
-    ("date", "en"): "Date",
-    ("date", "zh"): "日期",
-    ("source_type", "en"): "Source Type",
-    ("source_type", "zh"): "来源类型",
-    ("methodology", "en"): "Methodology",
-    ("methodology", "zh"): "方法论",
-}
+from .lib.constants import ARTIFACT_COLLECTED, _EXPLORATORY_GOAL_TYPES, _LABELS, _TIER_LABELS
+from .lib.utils import build_collected_by_url, normalize_url, read_json
+from .report_checks import _find_references_section
 
 
 def _label(key: str, lang: str) -> str:
@@ -56,11 +31,7 @@ def _render_references(reference_map: dict[str, int], collected: list[dict], lan
         return ""
     parts = [f"\n## {_label('references', lang)}\n"]
     parts.append('\n<a id="refs"></a>\n')
-    collected_by_url = {}
-    for item in collected:
-        url = item.get("url", "")
-        if url:
-            collected_by_url[normalize_url(url)] = item
+    collected_by_url = build_collected_by_url(collected)
     sorted_refs = sorted(reference_map.items(), key=lambda kv: kv[1])
     for norm_url, num in sorted_refs:
         item = collected_by_url.get(norm_url)
@@ -91,9 +62,7 @@ def _post_process(markdown: str) -> str:
     # Fix preview- URL prefix
     markdown = re.sub(r'https?://preview-', 'https://', markdown)
     # Fix bare URLs in body (not in reference section) — convert to Markdown links
-    ref_idx = markdown.rfind('## 参考文献')
-    if ref_idx == -1:
-        ref_idx = markdown.rfind('## References')
+    ref_idx = _find_references_section(markdown)
     if ref_idx != -1:
         body = markdown[:ref_idx]
         refs = markdown[ref_idx:]
@@ -237,7 +206,7 @@ def generate_report(
     )
     # Try to load collected.json from same directory as analysis.json
     collected = []
-    collected_path = analysis_path.parent / "collected.json"
+    collected_path = analysis_path.parent / ARTIFACT_COLLECTED
     if collected_path.exists():
         collected = read_json(collected_path) or []
     body = sections_to_markdown(analysis, collected, lang=report_language or "en")

@@ -8,7 +8,7 @@ from scripts.proceed import (
     _check_scope_schema,
     _check_search_gate,
     _sanitize_sections,
-    _write_phase_state,
+    write_phase_state,
     detect_current_phase,
     get_gateway_results,
     proceeds,
@@ -634,7 +634,7 @@ class TestPipelineStateFile:
         assert detect_current_phase(tmp_path) == "post_search"
 
     def test_write_phase_state(self, tmp_path):
-        _write_phase_state(tmp_path, "post_review")
+        write_phase_state(tmp_path, "post_review")
         state = json.loads((tmp_path / "pipeline_state.json").read_text(encoding="utf-8"))
         assert state == {"current_phase": "post_review"}
 
@@ -747,7 +747,7 @@ class TestIntegrationMediumComplexity:
         proceeds(workdir, "analysis", "review")
         assert detect_current_phase(workdir) == "post_review"
         (workdir / "review_report.md").write_text("## Overall Verdict\n**pass_with_issues**\n", encoding="utf-8")
-        _write_phase_state(workdir, "post_review")
+        write_phase_state(workdir, "post_review")
         passed, errors = proceeds(workdir, "review", "review")
         assert passed
         passed, errors = proceeds(workdir, "review", "final")

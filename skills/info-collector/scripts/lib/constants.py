@@ -55,6 +55,9 @@ _VALID_CONFIDENCE = frozenset({"high", "medium", "low"})
 
 _VALID_PRECISION = frozenset({"exact", "range", "qualitative"})
 
+# Evidence types that do not support 'exact' precision
+_NON_EXACT_EVIDENCE_TYPES = frozenset({"third_party_estimate", "qualitative_trend", "expert_opinion"})
+
 
 # ── Goal-type classifications ──
 
@@ -92,3 +95,89 @@ _FETCHED_CONTENT_MIN_BY_TIER = {
 _DEPTH_MIN_SOURCES_PER_DIRECTION = {"quick": 1, "standard": 3, "deep": 5}
 _COVERAGE_THRESHOLD = 0.5
 _OVERLONG_LINE_THRESHOLD = 500
+_SINGLE_SOURCE_RATIO = 0.5
+
+
+# ── Vague phrases (content quality) ──
+
+_VAGUE_PHRASES_ZH = frozenset({
+    "比较优秀", "性能良好", "值得关注", "较为突出", "比较突出",
+    "相对较好", "较为成熟", "相当不错", "比较强大", "较为完善",
+    "比较稳定", "比较丰富",
+})
+_VAGUE_PHRASES_EN = frozenset({
+    "relatively good", "quite impressive", "worth considering", "fairly well",
+    "somewhat better", "reasonably good", "fairly strong", "quite capable",
+    "generally positive", "relatively mature",
+})
+
+
+# ── Required section IDs per goal_type ──
+
+_REQUIRED_SECTION_IDS: dict[str, list[str]] = {
+    "tech_selection": ["overview", "comparison", "recommendation", "methodology"],
+    "feasibility_assessment": ["overview", "analysis", "conclusion", "methodology"],
+    "fact_check": ["claims", "evidence", "conclusion"],
+    "competitive_comparison": ["overview", "comparison", "positioning", "methodology"],
+    "academic_research": ["abstract", "findings", "references", "methodology"],
+    "market_analysis": ["overview", "data", "trends", "conclusion", "methodology"],
+}
+
+
+# ── Artifact filenames ──
+
+ARTIFACT_SCOPE = "scope.json"
+ARTIFACT_COLLECTED = "collected.json"
+ARTIFACT_ANALYSIS = "analysis.json"
+ARTIFACT_SEARCH_PLAN = "search_plan.json"
+ARTIFACT_PIPELINE_STATE = "pipeline_state.json"
+ARTIFACT_REVIEW_REPORT = "review_report.md"
+ARTIFACT_CONFIG = "config.json"
+
+
+# ── Pipeline configuration ──
+
+_VALID_TRANSITIONS_SET = {
+    ("scope", "search"),
+    ("search", "analysis"),
+    ("analysis", "review"),
+    ("review", "final"),
+    ("review", "review"),
+    ("final", "cleanup"),
+}
+
+_PHASE_ARTIFACTS: dict[str, list[str]] = {
+    "scope": [ARTIFACT_SCOPE, ARTIFACT_SEARCH_PLAN, ARTIFACT_COLLECTED, ARTIFACT_ANALYSIS, ARTIFACT_REVIEW_REPORT, ARTIFACT_PIPELINE_STATE],
+    "search": [ARTIFACT_COLLECTED, ARTIFACT_ANALYSIS, ARTIFACT_REVIEW_REPORT],
+    "analysis": [ARTIFACT_ANALYSIS, ARTIFACT_REVIEW_REPORT],
+    "review": [ARTIFACT_REVIEW_REPORT],
+}
+
+
+# ── Display labels ──
+
+_TIER_LABELS: dict[str, str] = {
+    "1": "★★★☆ Tier 1",
+    "2": "★★☆☆ Tier 2",
+    "3": "★☆☆☆ Tier 3",
+    "4": "☆☆☆☆ Tier 4",
+}
+
+_LABELS: dict[tuple[str, str], str] = {
+    ("sources", "en"): "Sources",
+    ("sources", "zh"): "数据来源",
+    ("references", "en"): "References",
+    ("references", "zh"): "参考文献",
+    ("test_conditions", "en"): "Test Conditions",
+    ("test_conditions", "zh"): "测试环境",
+    ("claim", "en"): "Claim",
+    ("claim", "zh"): "声明",
+    ("conditions", "en"): "Conditions",
+    ("conditions", "zh"): "条件",
+    ("date", "en"): "Date",
+    ("date", "zh"): "日期",
+    ("source_type", "en"): "Source Type",
+    ("source_type", "zh"): "来源类型",
+    ("methodology", "en"): "Methodology",
+    ("methodology", "zh"): "方法论",
+}

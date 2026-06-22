@@ -50,7 +50,15 @@ def write_json(data, path: Path, retries: int = 2, delay: float = 0.5) -> None:
             raise ArtifactError(str(path), f"Failed after {retries + 1} attempts") from None
 
 
-def _find_project_root() -> Path:
+from .constants import ARTIFACT_CONFIG
+
+
+def config_path() -> Path:
+    """Return the absolute path to config.json in the skill root directory."""
+    return Path(__file__).parent.parent.parent / ARTIFACT_CONFIG
+
+
+def find_project_root() -> Path:
     """Walk up from CWD to find the first directory containing .git."""
     current = Path.cwd()
     for parent in [current] + list(current.parents):
@@ -62,3 +70,45 @@ def _find_project_root() -> Path:
 def ensure_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def tokenize_cjk_aware(text: str, *, lowercase: bool = False) -> list[str]:
+    """Tokenize text with CJK character segmentation.
+
+    Splits on whitespace and CJK/fullwidth punctuation boundaries.
+    CJK runs become single tokens; Latin runs are split on whitespace.
+    Returns non-empty tokens only. Does NOT filter stop words.
+    """
+    if lowercase:
+        text = text.lower()
+    tokens: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if '\u4e00' <= ch <= '\u9fff':
+            j = i + 1
+            while j < len(text) and '\u4e00' <= text[j] <= '\u9fff':
+                j += 1
+            tokens.append(text[i:j])
+            i = j
+        elif ch.isspace() or ('\u3000' <= ch <= '\u303f') or ('\uff00' <= ch <= '\uffef'):
+            i += 1
+        else:
+            j = i + 1
+            while j < len(text) and not text[j].isspace() and not ('\u4e00' <= text[j] <= '\u9fff') and not ('\u3000' <= text[j] <= '\u303f') and not ('\uff00' <= text[j] <= '\uffef'):
+                j += 1
+            token = text[i:j]
+            if token.strip():
+                tokens.append(token)
+            i = j
+    return tokens
+
+
+def build_collected_by_url(collected: list[dict]) -> dict[str, dict]:
+    """Build a {normalized_url: entry} lookup dict from a collected list."""
+    result: dict[str, dict] = {}
+    for item in collected:
+        url = item.get("url", "")
+        if url:
+            result[normalize_url(url)] = item
+    return result

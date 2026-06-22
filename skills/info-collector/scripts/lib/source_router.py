@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from .utils import config_path
 from typing import cast
 
 
@@ -16,8 +17,8 @@ def _get_config(config: dict | None = None) -> dict:
     """Load config dict. Injects test config if provided, else reads from disk."""
     if config is not None:
         return config
-    config_path = Path(__file__).parent.parent.parent / "config.json"
-    with open(config_path, encoding="utf-8") as f:
+    cfg_path = config_path()
+    with open(cfg_path, encoding="utf-8") as f:
         return cast(dict, json.load(f))
 
 
