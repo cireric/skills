@@ -24,9 +24,12 @@
 
 核心规则：
 
-1. grill-with-docs 不可跳过 — 术语不对齐 = 后续 skill 各说各话
-2. 每层约束逐级收紧 — PRD 约束 issues，issue 的 acceptance criteria 约束执行
-3. 同文件 issue 串行执行 — 并行写同一文件会丢失改动
+1. grill-with-docs 不可跳过（有决策点时）— 兼具需求发现和需求对齐双重职责，术语不对齐 = 后续 skill 各说各话
+2. 逐级收紧是原则而非强制 PRD — PRD 是常用方式，grill 对话结论也可作为约束源
+3. 同文件 issue 串行执行 — 并行写同一文件会丢失改动；不同文件可用 worktree 隔离并行
+4. 按依赖分组执行 — 独立+简单→todo，有依赖/复杂→依赖连通子图→orchestrator+TDD worker
+5. 角色分离 — orchestrator 规划调度不写代码，worker 实施不规划
+6. Prometheus→Atlas 为备选 — 大多数时候用 TDD worker，特别复杂 issue 可用 Prometheus→Atlas
 
 ## 知识层级
 
