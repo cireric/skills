@@ -32,9 +32,7 @@ from .lib.constants import (
 from .lib.exceptions import ArtifactError
 from .lib.utils import build_collected_by_url, normalize_url, read_json, tokenize_cjk_aware
 
-
 _YEAR_PATTERN = re.compile(r'\b(20[0-9]{2})\b')
-
 
 @dataclass
 class CheckResult:
@@ -43,10 +41,8 @@ class CheckResult:
     passed: bool
     message: str = ""
 
-
 def _source_text(item: dict) -> str:
     return (item.get("fetched_content", "") + " " + item.get("snippet", "")).lower()
-
 
 def _read_artifact(path: Path, check_name: str, level: str = "BLOCKER") -> tuple[dict | None, CheckResult | None]:
     """Read a JSON artifact, returning (data, None) on success or (None, CheckResult) on failure.
@@ -62,11 +58,6 @@ def _read_artifact(path: Path, check_name: str, level: str = "BLOCKER") -> tuple
             return None, CheckResult(check_name, "BLOCKER", False, str(e))
         return None, CheckResult(check_name, "WARN", True, f"Cannot read {path.name}")
     return data, None
-    name: str
-    level: str  # "BLOCKER" | "WARN"
-    passed: bool
-    message: str = ""
-
 
 def check_artifact_exists(workdir: Path) -> CheckResult:
     missing = []

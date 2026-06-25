@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 import string
 import sys
 from pathlib import Path
@@ -317,7 +316,6 @@ def _check_search_gate(workdir: Path, config: dict | None = None) -> tuple[list[
 
     warnings.extend(_check_search_plan_inline(workdir))
     return blockers, warnings
-
 
 
 def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
