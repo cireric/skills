@@ -24,7 +24,7 @@ from .lib.constants import (
     _VAGUE_PHRASES_ZH,
 )
 from .lib.exceptions import ArtifactError
-from .lib.utils import build_collected_by_url, normalize_url, read_json, tokenize_cjk_aware
+from .lib.utils import build_collected_by_url, build_collected_url_set, normalize_url, read_json, tokenize_cjk_aware
 
 _YEAR_PATTERN = re.compile(r'\b(20[0-9]{2})\b')
 
@@ -35,17 +35,17 @@ class CheckResult:
     passed: bool
     message: str = ""
 
-def _read_artifact(path: Path, check_name: str, level: str = "BLOCKER") -> tuple[dict | None, CheckResult | None]:
+def _read_artifact(path: Path, check_name: str, read_error_level: str = "BLOCKER") -> tuple[dict | None, CheckResult | None]:
     """Read a JSON artifact, returning (data, None) on success or (None, CheckResult) on failure.
 
     On ArtifactError:
-      - level="BLOCKER" → CheckResult(name, "BLOCKER", False, str(e))
-      - level="WARN"    → CheckResult(name, "WARN", True, f"Cannot read {path.name}")
+      - read_error_level="BLOCKER" → CheckResult(name, "BLOCKER", False, str(e))
+      - read_error_level="WARN"    → CheckResult(name, "WARN", True, f"Cannot read {path.name}")
     """
     try:
         data = read_json(path)
     except ArtifactError as e:
-        if level == "BLOCKER":
+        if read_error_level == "BLOCKER":
             return None, CheckResult(check_name, "BLOCKER", False, str(e))
         return None, CheckResult(check_name, "WARN", True, f"Cannot read {path.name}")
     return data, None
@@ -67,7 +67,7 @@ def check_url_traceability(workdir: Path) -> CheckResult:
     collected, err = _read_artifact(workdir / ARTIFACT_COLLECTED, "url_traceability")
     if err:
         return err
-    collected_urls = {normalize_url(item["url"]) for item in collected if "url" in item}
+    collected_urls = build_collected_url_set(collected)
     untraceable: list[str] = []
     for section in analysis.get("sections", []):
         sec_id = section.get("id", "?")
@@ -167,7 +167,7 @@ def _count_words(text: str) -> int:
     return len(tokenize_cjk_aware(text))
 
 
-_VERSION_PATTERN = re.compile(r'\bv\d+\.\d+', re.IGNORECASE)
+
 _LIST_ITEM_PATTERN = re.compile(r'^\s*\d+\.', re.MULTILINE)
 _NUMBER_PATTERN = re.compile(r'\b\d+(?:\.\d+)?\b')
 

@@ -12,6 +12,8 @@ from pathlib import Path
 from .utils import config_path
 from typing import cast
 
+_DEFAULT_ROUTE = {"entry_tier": 3, "path": [3, 2, 1]}
+
 
 def _get_config(config: dict | None = None) -> dict:
     """Load config dict. Injects test config if provided, else reads from disk."""
@@ -27,7 +29,7 @@ def get_route(goal_type: str, config: dict | None = None) -> dict:
     cfg = _get_config(config)
     routes: dict = cfg.get("routes", {})
     return cast(
-        dict, routes.get(goal_type, routes.get("other", {"entry_tier": 3, "path": [3, 2, 1]}))
+        dict, routes.get(goal_type, routes.get("other", _DEFAULT_ROUTE))
     )
 
 
@@ -39,7 +41,7 @@ def recommend_sources(
     cfg = _get_config(config)
     sources: dict = cfg.get("sources", {})
     routes: dict = cfg.get("routes", {})
-    route = routes.get(goal_type, routes.get("other", {"entry_tier": 3, "path": [3, 2, 1]}))
+    route = routes.get(goal_type, routes.get("other", _DEFAULT_ROUTE))
     path_tiers: list[int] = route["path"]
     optional_tiers: list[int] = route.get("optional_tiers", [])
     all_path_tiers = path_tiers + [t for t in optional_tiers if t not in path_tiers]

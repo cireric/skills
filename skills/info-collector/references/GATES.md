@@ -20,19 +20,25 @@
 
 ## Gate 3: `proceed --from analysis --to review`
 
-- Validates analysis.json has topic, goal_type, and non-empty sections
-- **url_traceability (BLOCKER)**: all claim source_urls must exist in collected.json
+- Runs `run_all` filtered to analysis-phase checks only (excludes `claim_verified` and `claim_source_relevance`, which are review-phase concerns)
+- Schema validation + 14 analysis-phase BLOCKER checks: url_traceability, section_coverage, content_concreteness, claim_metadata, precision_inflation, metric_type_homogeneity, source_metadata, methodology_depth, recommendation_structure, source_tier_balance, claim_dedup, quality_heuristics, analysis_schema, artifact_exists
+- Analysis-phase BLOCKERs are caught here, not deferred to later gates (ADR 0025)
 - **Agent MUST ask user**: "启动独立审查？"
 
 ## Gate 4: `proceed --from review --to final`
 
-- Invokes gateway.py with 15 checks
+- Runs `run_all` filtered to review-phase checks only: `claim_verified` and `claim_source_relevance`
+- **claim_verified (BLOCKER)**: unverified claims block the transition
+- **claim_source_relevance (WARN)**: advisory only
 - Always runs, even if user skipped subagent review
-- 15 checks: artifact_exists, url_traceability, section_coverage, analysis_schema, quality_heuristics, precision_inflation, metric_type_homogeneity, claim_metadata (applies to all goal_types), claim_verified (includes verified ratio < 60% WARN), source_metadata, content_concreteness, methodology_depth, recommendation_structure, source_tier_balance, claim_dedup (WARN if same claim text appears in multiple sections)
+- No re-checking of analysis-phase concerns (ADR 0025)
 
 ## Gate 5: `proceed --from final --to cleanup`
 
-- No structural checks
+- Runs `run_report_checks()` (10 report checks)
+- Only BLOCKER-level failures block the transition; WARN-level are advisory
+- 3 BLOCKER checks: dangling refs (F1), orphaned defs (F2), front matter (9) — upgraded per ADR 0026
+- 7 WARN checks: refs_visibility, table_delimiters, heading_levels, duplicate_headings, unclosed_code_blocks, empty_sections, overlong_lines
 - **Note**: This gate skips phase detection — it passes regardless of the current detected phase. This allows cleanup to run at any point, but also means accidental invocation won't produce a phase-mismatch error.
 - Transitions to cleanup phase
 

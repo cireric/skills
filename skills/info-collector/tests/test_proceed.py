@@ -147,9 +147,27 @@ class TestProceeds:
                     {
                         "id": "overview",
                         "title": "O",
-                        "content": "C",
+                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
                         "claims": [{"text": "C1", "source_urls": ["https://a.com"]}],
-                    }
+                    },
+                    {
+                        "id": "comparison",
+                        "title": "Cmp",
+                        "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
+                        "claims": [{"text": "C2", "source_urls": ["https://a.com"]}],
+                    },
+                    {
+                        "id": "recommendation",
+                        "title": "Rec",
+                        "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
+                        "claims": [{"text": "C3", "source_urls": ["https://a.com"]}],
+                    },
+                    {
+                        "id": "methodology",
+                        "title": "Methodology",
+                        "content": "M",
+                        "claims": [],
+                    },
                 ],
             },
         )
@@ -168,9 +186,27 @@ class TestProceeds:
                     {
                         "id": "overview",
                         "title": "O",
-                        "content": "C",
+                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
                         "claims": [{"text": "C1", "source_urls": ["https://fabricated.com"]}],
-                    }
+                    },
+                    {
+                        "id": "comparison",
+                        "title": "Cmp",
+                        "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
+                        "claims": [{"text": "C2", "source_urls": ["https://a.com"]}],
+                    },
+                    {
+                        "id": "recommendation",
+                        "title": "Rec",
+                        "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
+                        "claims": [{"text": "C3", "source_urls": ["https://a.com"]}],
+                    },
+                    {
+                        "id": "methodology",
+                        "title": "Methodology",
+                        "content": "M",
+                        "claims": [],
+                    },
                 ],
             },
         )
@@ -460,13 +496,63 @@ class TestReviewSelfLoop:
         _write_scope_and_collected(tmp_path)
         _write_json(
             tmp_path / "analysis.json",
-            {"topic": "T", "goal_type": "tech_selection", "sections": []},
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"], "verified": False}],
+                    },
+                    {
+                        "id": "comparison",
+                        "title": "Cmp",
+                        "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
+                        "claims": [{"text": "C2", "source_urls": ["https://example.com"], "verified": False}],
+                    },
+                    {
+                        "id": "recommendation",
+                        "title": "Rec",
+                        "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
+                        "claims": [{"text": "C3", "source_urls": ["https://example.com"], "verified": False}],
+                    },
+                    {
+                        "id": "methodology",
+                        "title": "Methodology",
+                        "content": "M",
+                        "claims": [],
+                    },
+                ],
+            },
         )
         _write_json(tmp_path / "review_report.md", {})
         _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "review")
         assert not ok
+        assert any("claim_verified" in e for e in errors)
 
+
+class TestGateFinalOnlyBlocksBlocker:
+    """BUG-1 fix: _gate_final only blocks on BLOCKER-level failures, not WARN."""
+
+    def test_warn_does_not_block_final_to_cleanup(self, tmp_path, monkeypatch):
+        report = "---\ntopic: T\ngoal_type: exploratory\ndate: 2026-06-26\nquality: draft\n---\n## Overview\nContent with cite [&#91;1&#93;](#refs).\n\n## References\n- **[1]** Title — [URL](https://a.com)\n"
+        report_path = tmp_path / "report.md"
+        report_path.write_text(report, encoding="utf-8")
+        monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
+        ok, errors = proceeds(tmp_path, "final", "cleanup")
+        assert ok, f"WARN-only failures should not block: {errors}"
+
+    def test_blocker_blocks_final_to_cleanup(self, tmp_path, monkeypatch):
+        report = "No front matter, no references."
+        report_path = tmp_path / "report.md"
+        report_path.write_text(report, encoding="utf-8")
+        monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
+        ok, errors = proceeds(tmp_path, "final", "cleanup")
+        assert not ok
+        assert any("report_front_matter" in e for e in errors)
 
 class TestSearchPlanStatus:
     def test_search_plan_includes_status_field(self, tmp_path):
@@ -535,3 +621,112 @@ class TestProceedArtifactErrorHandling:
         errors = _check_scope_schema(tmp_path)
         assert len(errors) == 1
         assert "Cannot read scope.json" in errors[0]
+
+
+class TestGateAnalysisChecksAllBlockers:
+    """L2: _gate_analysis checks all analysis-phase BLOCKERs, not just url_traceability."""
+
+    def _make_passing_analysis(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://a.com"}])
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
+                        "claims": [{"text": "C1", "source_urls": ["https://a.com"]}],
+                    },
+                    {
+                        "id": "comparison",
+                        "title": "Cmp",
+                        "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
+                        "claims": [{"text": "C2", "source_urls": ["https://a.com"]}],
+                    },
+                    {
+                        "id": "recommendation",
+                        "title": "Rec",
+                        "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
+                        "claims": [{"text": "C3", "source_urls": ["https://a.com"]}],
+                    },
+                    {
+                        "id": "methodology",
+                        "title": "Methodology",
+                        "content": "M",
+                        "claims": [],
+                    },
+                ],
+            },
+        )
+
+    def test_section_coverage_blocker_caught(self, tmp_path):
+        self._make_passing_analysis(tmp_path)
+        analysis = json.loads((tmp_path / "analysis.json").read_text(encoding="utf-8"))
+        analysis["sections"] = [analysis["sections"][0]]
+        _write_json(tmp_path / "analysis.json", analysis)
+        ok, errors = proceeds(tmp_path, "analysis", "review")
+        assert not ok
+        assert any("section_coverage" in e for e in errors)
+
+    def test_content_concreteness_blocker_caught(self, tmp_path):
+        self._make_passing_analysis(tmp_path)
+        analysis = json.loads((tmp_path / "analysis.json").read_text(encoding="utf-8"))
+        analysis["sections"][0]["content"] = "Some vague text without numbers or names."
+        analysis["sections"][0]["claims"] = [{"text": "vague claim", "source_urls": ["https://a.com"]}]
+        _write_json(tmp_path / "analysis.json", analysis)
+        ok, errors = proceeds(tmp_path, "analysis", "review")
+        assert not ok
+        assert any("content_concreteness" in e for e in errors)
+
+
+class TestGateReviewOnlyChecksReviewItems:
+    """L3: _gate_review only checks claim_verified and claim_source_relevance."""
+
+    def test_review_gate_ignores_section_coverage_issues(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Kubernetes 1.28 handles 5000 nodes.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"], "verified": True}],
+                    },
+                ],
+            },
+        )
+        _write_json(tmp_path / "review_report.md", {})
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "review")
+        assert not any("section_coverage" in e for e in errors)
+
+    def test_review_gate_blocks_on_unverified_claims(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Kubernetes 1.28 handles 5000 nodes.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"], "verified": False}],
+                    },
+                ],
+            },
+        )
+        _write_json(tmp_path / "review_report.md", {})
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "review")
+        assert not ok
+        assert any("claim_verified" in e for e in errors)

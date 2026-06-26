@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import TypedDict
 
 from .constants import (
+    _MAX_COVERED_DIRECTIONS,
     _VALID_AUDIENCES,
     _VALID_DEPTHS,
     _VALID_GOAL_TYPES,
@@ -219,7 +220,7 @@ def validate_collected(data: list) -> list[ValidationError]:
             if not isinstance(cd, list):
                 errors.append(_err(f"{prefix}.covered_directions", f"expected list, got {type(cd).__name__}"))
             else:
-                if len(cd) > 3:
+                if len(cd) > _MAX_COVERED_DIRECTIONS:
                     errors.append(_err(f"{prefix}.covered_directions", "at most 3 items allowed"))
                 for k, direction in enumerate(cd):
                     if not isinstance(direction, str) or not direction:

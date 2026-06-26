@@ -33,64 +33,65 @@ def _find_references_section(content: str) -> int:
     return ref_idx
 
 
-def check_report_dangling_refs(report_path: Path) -> CheckResult:
-    """F1: WARN if in-text [N] has no matching definition in References section."""
-    try:
-        content = report_path.read_text(encoding="utf-8")
-    except OSError as e:
-        return CheckResult("report_dangling_refs", "WARN", True, f"Cannot read report: {e}")
-    ref_idx = _find_references_section(content)
-    if ref_idx == -1:
-        return CheckResult("report_dangling_refs", "WARN", True, "No References section found")
-    ref_section = content[ref_idx:]
+def _extract_defined_nums(ref_section: str) -> set[int]:
     defined_nums = set(int(m.group(1)) for m in _REF_DEF_NUM.finditer(ref_section))
     visible_nums = set(int(m.group(1)) for m in re.finditer(r'\*\*\[(\d+)\]\*\*', ref_section))
-    all_defined = defined_nums | visible_nums
+    return defined_nums | visible_nums
+
+
+def _extract_cited_nums(body: str) -> set[int]:
     cited_nums = set()
-    body = content[:ref_idx]
     for m in _INLINE_CITATION.finditer(body):
         num = m.group(1) or m.group(2)
         if num:
             cited_nums.add(int(num))
     for m in re.finditer(r'\[(\d{1,2})\]\[\]', body):
         cited_nums.add(int(m.group(1)))
+    return cited_nums
+
+
+def check_report_dangling_refs(report_path: Path) -> CheckResult:
+    """F1: BLOCKER if in-text [N] has no matching definition in References section."""
+    try:
+        content = report_path.read_text(encoding="utf-8")
+    except OSError as e:
+        return CheckResult("report_dangling_refs", "BLOCKER", True, f"Cannot read report: {e}")
+    ref_idx = _find_references_section(content)
+    if ref_idx == -1:
+        return CheckResult("report_dangling_refs", "BLOCKER", True, "No References section found")
+    ref_section = content[ref_idx:]
+    all_defined = _extract_defined_nums(ref_section)
+    body = content[:ref_idx]
+    cited_nums = _extract_cited_nums(body)
     dangling = cited_nums - all_defined
     if dangling:
         return CheckResult(
-            "report_dangling_refs", "WARN", False,
+            "report_dangling_refs", "BLOCKER", False,
             f"In-text citations with no reference definition: {sorted(dangling)}"
         )
-    return CheckResult("report_dangling_refs", "WARN", True)
+    return CheckResult("report_dangling_refs", "BLOCKER", True)
 
 
 def check_report_orphaned_defs(report_path: Path) -> CheckResult:
-    """F2: WARN if reference definition [N] is not cited in body text."""
+    """F2: BLOCKER if reference definition [N] is not cited in body text."""
     try:
         content = report_path.read_text(encoding="utf-8")
     except OSError as e:
-        return CheckResult("report_orphaned_defs", "WARN", True, f"Cannot read report: {e}")
+        return CheckResult("report_orphaned_defs", "BLOCKER", True, f"Cannot read report: {e}")
     ref_idx = _find_references_section(content)
     if ref_idx == -1:
-        return CheckResult("report_orphaned_defs", "WARN", True, "No References section found")
+        return CheckResult("report_orphaned_defs", "BLOCKER", True, "No References section found")
     ref_section = content[ref_idx:]
-    defined_nums = set(int(m.group(1)) for m in _REF_DEF_NUM.finditer(ref_section))
-    visible_nums = set(int(m.group(1)) for m in re.finditer(r'\*\*\[(\d+)\]\*\*', ref_section))
-    all_defined = defined_nums | visible_nums
+    all_defined = _extract_defined_nums(ref_section)
     body = content[:ref_idx]
-    cited_nums = set()
-    for m in _INLINE_CITATION.finditer(body):
-        num = m.group(1) or m.group(2)
-        if num:
-            cited_nums.add(int(num))
-    for m in re.finditer(r'\[(\d{1,2})\]\[\]', body):
-        cited_nums.add(int(m.group(1)))
+    cited_nums = _extract_cited_nums(body)
     orphaned = all_defined - cited_nums
     if orphaned:
         return CheckResult(
-            "report_orphaned_defs", "WARN", False,
+            "report_orphaned_defs", "BLOCKER", False,
             f"Reference definitions not cited in body: {sorted(orphaned)}"
         )
-    return CheckResult("report_orphaned_defs", "WARN", True)
+    return CheckResult("report_orphaned_defs", "BLOCKER", True)
 
 
 def check_report_refs_visibility(report_path: Path) -> CheckResult:
@@ -143,16 +144,16 @@ def check_report_table_delimiters(report_path: Path) -> CheckResult:
 
 
 def check_report_front_matter(report_path: Path) -> CheckResult:
-    """9: WARN if YAML front matter is malformed or missing required fields."""
+    """9: BLOCKER if YAML front matter is malformed or missing required fields."""
     try:
         content = report_path.read_text(encoding="utf-8")
     except OSError as e:
-        return CheckResult("report_front_matter", "WARN", True, f"Cannot read report: {e}")
+        return CheckResult("report_front_matter", "BLOCKER", True, f"Cannot read report: {e}")
     if not content.startswith("---"):
-        return CheckResult("report_front_matter", "WARN", False, "No YAML front matter delimiter found")
+        return CheckResult("report_front_matter", "BLOCKER", False, "No YAML front matter delimiter found")
     end_match = re.search(r'^---\s*$', content[3:], re.MULTILINE)
     if not end_match:
-        return CheckResult("report_front_matter", "WARN", False, "YAML front matter not properly closed")
+        return CheckResult("report_front_matter", "BLOCKER", False, "YAML front matter not properly closed")
     yaml_text = content[3:3 + end_match.start()]
     required_fields = {"topic", "goal_type", "date", "quality"}
     missing = []
@@ -161,10 +162,10 @@ def check_report_front_matter(report_path: Path) -> CheckResult:
             missing.append(field)
     if missing:
         return CheckResult(
-            "report_front_matter", "WARN", False,
+            "report_front_matter", "BLOCKER", False,
             f"Front matter missing required fields: {', '.join(missing)}"
         )
-    return CheckResult("report_front_matter", "WARN", True)
+    return CheckResult("report_front_matter", "BLOCKER", True)
 
 
 def check_report_heading_levels(report_path: Path) -> CheckResult:

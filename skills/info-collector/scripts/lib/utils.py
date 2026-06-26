@@ -112,3 +112,8 @@ def build_collected_by_url(collected: list[dict]) -> dict[str, dict]:
         if url:
             result[normalize_url(url)] = item
     return result
+
+
+def build_collected_url_set(collected: list[dict]) -> set[str]:
+    """Build a set of normalized URLs from a collected list."""
+    return {normalize_url(item.get("url", "")) for item in collected if isinstance(item, dict)}

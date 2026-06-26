@@ -188,8 +188,7 @@ def _build_report_filename(scope_data: dict, output_path: Path) -> Path:
     else:
         raw = scope_data.get("topic", "untitled")
     safe_name = "".join(c if c.isascii() and (c.isalnum() or c in ("-", "_")) else "_" for c in raw.lower())
-    import re as _re
-    safe_name = _re.sub(r"_+", "_", safe_name).strip("_")
+    safe_name = re.sub(r"_+", "_", safe_name).strip("_")
     if not safe_name:
         safe_name = "untitled"
     base_path = output_path / f"{safe_name}.md"

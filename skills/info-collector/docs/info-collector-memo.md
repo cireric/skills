@@ -1,7 +1,37 @@
 # Info-Collector 优化备忘
 
 > 基于 code-level 验证的改进方向备忘。原始提案见 `docs/info-collector-improvement-proposal.md`。
-> 验证时间: 2026-06-23 | 代码版本: v2 (21 ADRs)
+> 验证时间: 2026-06-26 | 代码版本: v2 (26 ADRs)
+
+---
+
+## 已实施
+
+### Batch 1 重构
+
+- R1: `_MAX_COVERED_DIRECTIONS` 常量提取
+- R2: `_DEFAULT_ROUTE` 默认路由常量
+- R3+R4: `report_checks.py` 中提取 helper 函数
+- R5: `claim_validator.py` 中 `_source_text` 去重
+- R6: `utils.py` 中 `build_collected_url_set` 提取
+- S3: 移除 `import re as _re`
+- S6: `_PHASE_ARTIFACTS` 增加 final/cleanup 阶段
+- S7: `read_error_level` 重命名
+- 移除重复 `_VERSION_PATTERN`
+
+### Batch 2 逻辑修复
+
+- L1: `search_gate.py` 中 per-direction CJK 分词（`_tokenize_direction`）
+- L2: `_gate_analysis` 检查全部 14 项 analysis-phase BLOCKER（见 ADR 0025）
+- L3: `_gate_review` 仅检查 `claim_verified` + `claim_source_relevance`（见 ADR 0025）
+- L4: F1/F2/9 从 WARN 升级为 BLOCKER（见 ADR 0026）
+
+### ADRs
+
+- 0022: `search_gate.py` 提取（从 `artifact_checks.py` 拆分）
+- 0024: `claim_validator.py` 提取（从 `artifact_checks.py` 拆分）
+- 0025: Gate phase 职责划分（`_gate_analysis` 检 14 项 BLOCKER，`_gate_review` 仅检 2 项）
+- 0026: F1/F2/9 升级为 BLOCKER（`_gate_final` WARN 不再误阻塞）
 
 ---
 
@@ -25,10 +55,10 @@
 
 | # | 遗漏项 | 验证结果 | 证据位置 |
 |---|-------|---------|---------|
-| 1 | `analysis → review` 门控过弱 | **确认**。`_gate_analysis`(`proceed.py:409-435`) 仅检查 schema + url_traceability 2 项，不运行 `run_all()` 的 16 项检查。完整 gateway 仅在 `_gate_review` 中执行 | `proceed.py:409-435` |
+| 1 | `analysis → review` 门控过弱 | **已修复**。`_gate_analysis`(`proceed.py:231-265`) 现检查全部 14 项 analysis-phase BLOCKER，而非仅 schema + url_traceability 2 项。见 ADR 0025 | `proceed.py:231-265` |
 | 2 | `final → cleanup` 无测试 | **确认**。所有测试文件中无任何 `cleanup` 相关测试 | grep 验证 |
-| 3 | `search_plan` 可生成空 `site_queries` 任务 | **确认**。`_generate_search_plan`(`proceed.py:340-341`) 当 `recommended.get(tier, [])` 为空时，生成空 site_queries 任务，无校验 | `proceed.py:340-341` |
-| 4 | `_gate_final` 把 WARN 也当阻塞 | **确认**。`_gate_final`(`proceed.py:444-450`) 过滤 `not r.passed` 不区分 level，WARN 也会阻塞 `final → cleanup`。与 `_gate_review` 仅阻塞 BLOCKER 的行为不一致 | `proceed.py:444-450` vs `438-441` |
+| 3 | `search_plan` 可生成空 `site_queries` 任务 | **确认**。`_generate_search_plan` 当 `recommended.get(tier, [])` 为空时，生成空 site_queries 任务，无校验 | `proceed.py` |
+| 4 | `_gate_final` 把 WARN 也当阻塞 | **已修复**。F1/F2/9 已从 WARN 升级为 BLOCKER（见 ADR 0026），`_gate_final`(`proceed.py:278-284`) 现仅阻塞 BLOCKER 级别。剩余 7 项 WARN 为建议性检查，不阻塞 `final → cleanup`，此为正确行为 | `proceed.py:278-284` vs `268-275` |
 
 ---
 
@@ -80,14 +110,9 @@ RRF 的前提条件——多流独立排名（每流有 `native_rank`）——�
 - 在 `proceed.py` 的 `_gate_scope` 中调用
 - REJECT（拒绝执行）vs WARN（建议补充）两类行为
 
-#### P0-2：`analysis → review` 门控增强
+#### ~~P0-2：`analysis → review` 门控增强~~ ✅ DONE
 
-`_gate_analysis` 当前仅检查 2 项（schema + url_traceability），analysis.json 可以是任意低质量（空 claims、无 metadata）就通过。SKILL.md Step 3.5 的 `gateway` 命令是手动触发的，不在 proceed 转换中强制执行。
-
-**实现要点**：
-- 在 `_gate_analysis` 中增加关键 BLOCKER 检查：`section_coverage`、`claim_metadata`（定量 goal_type）
-- 或在 `_VALID_TRANSITIONS_SET` 中增加 `("analysis", "draft")` 转换，增加 `analysis.json` 最小质量门控
-- 不需运行完整 `run_all()`，仅增加 2-3 项关键检查即可
+`_gate_analysis`(`proceed.py:231-265`) 现已检查全部 14 项 analysis-phase BLOCKER。见 ADR 0025。
 
 ### P1：核心改进
 
@@ -119,7 +144,7 @@ RRF 的前提条件——多流独立排名（每流有 `native_rank`）——�
 | 缺口 | 说明 | 优先级 |
 |------|------|-------|
 | `final → cleanup` 转换 | 零测试覆盖，清理逻辑可能是死代码 | 高 |
-| `_gate_final` WARN 阻塞行为 | WARN 也阻塞 `final → cleanup`，与 `_gate_review` 行为不一致，应有测试明确记录此行为 | 中 |
+| `_gate_final` 行为验证 | F1/F2/9 已升级为 BLOCKER，剩余 7 项 WARN 正确地不阻塞。需测试明确记录此正确行为 | 中 |
 | `search_plan` 空任务 | `_generate_search_plan` 可生成空 `site_queries` 任务，无校验 | 中 |
 
 ### P2：后续改进
@@ -165,14 +190,14 @@ P2-1 的补充。对标题做 trigram Jaccard 近重复检测，标记 `near_dup
 ## 六、实施路径建议（修订版）
 
 **迭代 1（P0，1-2 天）**：
-- 新增 `scripts/lib/preflight.py` + 测试
-- 增强 `_gate_analysis` 门控（增加 section_coverage 检查）+ 测试
+- ~~新增 `scripts/lib/preflight.py` + 测试~~ 待实施
+- ~~增强 `_gate_analysis` 门控（增加 section_coverage 检查）+ 测试~~ ✅ DONE（L2: 检查 14 项 BLOCKER，见 ADR 0025）
 
 **迭代 2（P1，3-5 天）**：
 - 新增 `references/OUTPUT_LAWS.md` + `verify_laws()`
 - 新增 `trust_level` 映射 + subagent prompt 沙箱改造
 - 新增 `check_source_diversity` 门控
-- 补全 `final → cleanup` 转换测试 + `_gate_final` 行为测试
+- 补全 `final → cleanup` 转换测试 + `_gate_final` 行为测试（F1/F2/9 已为 BLOCKER，WARN 不阻塞为正确行为）
 
 **迭代 3（P2，2-3 天）**：
 - SKILL.md 写入时 URL 去重指引
@@ -187,4 +212,4 @@ P2-1 的补充。对标题做 trigram Jaccard 近重复检测，标记 `near_dup
 
 ---
 
-_验证时间: 2026-06-23_
+_验证时间: 2026-06-26_

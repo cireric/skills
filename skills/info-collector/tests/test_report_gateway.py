@@ -50,7 +50,7 @@ class TestCheckReportDanglingRefs:
         _write_md(tmp_path / "report.md", md)
         result = check_report_dangling_refs(tmp_path / "report.md")
         assert result.passed
-        assert result.level == "WARN"
+        assert result.level == "BLOCKER"
 
     def test_dangling_ref_warns(self, tmp_path):
         md = """Text cites [&#91;1&#93;](#refs) but no definition here.
@@ -61,7 +61,7 @@ class TestCheckReportDanglingRefs:
         _write_md(tmp_path / "report.md", md)
         result = check_report_dangling_refs(tmp_path / "report.md")
         assert not result.passed
-        assert result.level == "WARN"
+        assert result.level == "BLOCKER"
         assert "1" in result.message
 
     def test_no_references_section_passes(self, tmp_path):
@@ -114,7 +114,7 @@ class TestCheckReportOrphanedDefs:
         _write_md(tmp_path / "report.md", md)
         result = check_report_orphaned_defs(tmp_path / "report.md")
         assert result.passed
-        assert result.level == "WARN"
+        assert result.level == "BLOCKER"
 
     def test_orphaned_def_warns(self, tmp_path):
         md = """Nothing cited in body.
@@ -275,7 +275,7 @@ quality: draft
         _write_md(tmp_path / "report.md", self.FM_VALID + "\nBody content.")
         result = check_report_front_matter(tmp_path / "report.md")
         assert result.passed
-        assert result.level == "WARN"
+        assert result.level == "BLOCKER"
 
     def test_no_front_matter_warns(self, tmp_path):
         _write_md(tmp_path / "report.md", "No front matter here.")
@@ -508,8 +508,8 @@ Content with cite [&#91;1&#93;](#refs).
         for r in results:
             assert isinstance(r, CheckResult)
 
-    def test_all_return_warn_level(self, tmp_path):
-        """All report checks return WARN level regardless of pass/fail."""
+    def test_levels_are_warn_or_blocker(self, tmp_path):
+        """Report checks return WARN or BLOCKER level depending on check type."""
         md = """---
 topic: AI
 goal_type: tech_selection
@@ -524,5 +524,67 @@ Content.
 """
         _write_md(tmp_path / "report.md", md)
         results = run_report_checks(tmp_path / "report.md")
+        blocker_names = {"report_dangling_refs", "report_orphaned_defs", "report_front_matter"}
         for r in results:
-            assert r.level == "WARN", f"{r.name} is not WARN (got {r.level})"
+            if r.name in blocker_names:
+                assert r.level == "BLOCKER", f"{r.name} should be BLOCKER (got {r.level})"
+            else:
+                assert r.level == "WARN", f"{r.name} should be WARN (got {r.level})"
+
+
+class TestF1F2F9BlockerUpgrade:
+    """L4: F1 (dangling refs), F2 (orphaned defs), 9 (front matter) are BLOCKER."""
+
+    def test_dangling_refs_is_blocker_level(self, tmp_path):
+        md = """Text cites [&#91;1&#93;](#refs) but no definition.
+
+## References
+[2]: https://example.com
+"""
+        _write_md(tmp_path / "report.md", md)
+        result = check_report_dangling_refs(tmp_path / "report.md")
+        assert result.level == "BLOCKER"
+
+    def test_orphaned_defs_is_blocker_level(self, tmp_path):
+        md = """No citations.
+
+## References
+- **[1]** Title — [URL](https://example.com)
+"""
+        _write_md(tmp_path / "report.md", md)
+        result = check_report_orphaned_defs(tmp_path / "report.md")
+        assert result.level == "BLOCKER"
+
+    def test_front_matter_is_blocker_level(self, tmp_path):
+        _write_md(tmp_path / "report.md", "No front matter at all.")
+        result = check_report_front_matter(tmp_path / "report.md")
+        assert result.level == "BLOCKER"
+
+    def test_front_matter_cannot_read_is_blocker(self, tmp_path):
+        result = check_report_front_matter(tmp_path / "nonexistent.md")
+        assert result.level == "BLOCKER"
+        assert result.passed
+        assert "Cannot read" in result.message
+
+    def test_dangling_refs_cannot_read_is_blocker(self, tmp_path):
+        result = check_report_dangling_refs(tmp_path / "nonexistent.md")
+        assert result.level == "BLOCKER"
+        assert result.passed
+
+    def test_gate_final_blocks_on_dangling_refs(self, tmp_path):
+        md = """---
+topic: AI
+goal_type: tech_selection
+date: 2026-01-01
+quality: draft
+---
+Text cites [&#91;99&#93;](#refs).
+
+## References
+- **[1]** Title — [URL](https://example.com)
+"""
+        _write_md(tmp_path / "report.md", md)
+        results = run_report_checks(tmp_path / "report.md")
+        dangling = next(r for r in results if r.name == "report_dangling_refs")
+        assert not dangling.passed
+        assert dangling.level == "BLOCKER"

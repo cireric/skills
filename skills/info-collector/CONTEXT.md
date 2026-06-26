@@ -32,6 +32,18 @@ _Avoid_: research level, thoroughness
 Language for the final report output (e.g., "zh", "en"). Stored in scope.json, falls back to config.json `default_report_language`, then "en". Drives AI writing language and reporter.py fixed label i18n.
 _Avoid_: output language
 
+**gate phase responsibility**:
+Each pipeline gate checks only its own phase's concerns. `_gate_analysis` (analysis→review) checks analysis-phase BLOCKERs only, excluding `claim_verified` and `claim_source_relevance`. `_gate_review` (review→review, review→final) checks only `claim_verified` and `claim_source_relevance`. `_gate_final` (final→cleanup) runs report checks; only BLOCKER-level failures block, WARN are advisory. See ADR 0025.
+_Avoid_: gate scope, gate coverage, per-gate filtering
+
+**report_checks**:
+The deep module that validates the final report file. Interface: `run_report_checks(report_path) → list[CheckResult]`. Owns 10 checks: 3 BLOCKER (dangling refs F1, orphaned defs F2, front matter 9) + 7 WARN (refs visibility, table delimiters, heading levels, duplicate headings, unclosed code blocks, empty sections, overlong lines). See ADR 0026.
+_Avoid_: report gateway, report validator, final gate checks
+
+**BLOCKER report checks**:
+The 3 report-level checks that block the final→cleanup transition: `report_dangling_refs` (in-text citation with no source definition), `report_orphaned_defs` (source definition with no in-text citation), `report_front_matter` (missing or malformed YAML front matter). Upgraded from WARN in ADR 0026.
+_Avoid_: hard report checks, mandatory report checks
+
 **english_title**:
 An optional field in scope.json providing an English title for the research topic. Required (BLOCKER) when `topic` contains non-ASCII characters. Used as the report filename base, ensuring filenames are ASCII-only.
 _Avoid_: english name, translated title
@@ -118,3 +130,5 @@ _Avoid_: repo root, workspace root
 - **depth** drives minimum source count per search_direction; **audience** does not drive deterministic logic
 - **covered_directions** overrides **topic_coverage** token matching when present
 - **precision: exact** requires **evidence_type: official_data** or **independent_benchmark**
+- A **gate phase responsibility** determines which checks run at each pipeline transition; BLOCKERs caught at earliest stage
+- **BLOCKER report checks** block final→cleanup; the 7 WARN report checks are advisory

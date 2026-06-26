@@ -164,7 +164,7 @@ Merge all sections into a single analysis.json. JSON merge only — never rewrit
 
 Run: `python -m scripts.cli proceed --from analysis --to review`
 
-- Validates analysis.json has topic, goal_type, non-empty sections, and url_traceability.
+- Runs all gateway checks but filters to **analysis-phase only** (excludes `claim_verified` and `claim_source_relevance`). Checks schema validation + 14 analysis-phase BLOCKERs including url_traceability, section_coverage, content_concreteness, claim_metadata, precision_inflation, source_metadata, metric_type_homogeneity, claim_dedup, etc. (ADR 0025)
 - **YOU MUST ASK THE USER** whether to launch an independent review (adapt language to user).
 
 ### 3b: Review
@@ -188,7 +188,7 @@ Show the review report (or degradation notice) to user and ask:
 
 - User confirms approval (adapt language to user) → Run: `python -m scripts.cli proceed --from review --to final`
 
-  This runs gateway.py with 18 artifact checks. BLOCKER fails = stop and fix. WARN = noted but does not block.
+  This runs only 2 review-phase checks: `claim_verified` (BLOCKER) and `claim_source_relevance` (WARN). Only unverified claims block the transition. (ADR 0025)
 
   Then generate final report:
 
@@ -229,15 +229,22 @@ If any check fails → directly edit the `.md` file to fix → re-run this step.
 
 Run: `python -m scripts.cli proceed --from final --to cleanup`
 
-This runs 10 automated checks on the report file (all WARN level):
+This runs 10 automated report checks on the `.md` file. Only BLOCKER-level failures block the transition; WARN-level failures are advisory and do not block. (ADR 0026)
+
+**BLOCKER** (must fix):
 
 | ID | Check | Description |
 |----|-------|-------------|
 | F1 | Dangling references | In-text `[N]` has no matching definition in References section |
 | F2 | Orphaned definitions | References section has `[N]` not cited in body text |
+| 9 | Front matter format | YAML front matter is malformed or missing required fields |
+
+**WARN** (advisory, does not block):
+
+| ID | Check | Description |
+|----|-------|-------------|
 | A | References visibility | References section consists only of `[N]: URL` hidden definitions with no visible list |
 | D | Table delimiter alignment | Table delimiter row `|` count differs from header row |
-| 9 | Front matter format | YAML front matter is malformed or missing required fields |
 | 10 | Heading level skip | Heading level jumps (e.g., `##` directly to `####`) |
 | 12 | Duplicate headings | Same-level headings with identical text appear more than once |
 | 13 | Unclosed code block | Fenced code block markers (` ``` `) appear an odd number of times |

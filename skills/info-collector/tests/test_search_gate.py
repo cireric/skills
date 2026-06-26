@@ -356,6 +356,49 @@ class TestFetchedContentDepth:
         assert fcd.level == "WARN"
 
 
+class TestPerDirectionCJKDowngrade:
+    """L1: CJK downgrade is per-direction, not all-or-nothing."""
+
+    def test_mixed_cjk_and_ascii_uncovered(self, tmp_path):
+        _make_scope(tmp_path, search_directions=["智能体编程框架", "AI tools"])
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://x.com", "title": "Unrelated", "snippet": "Something else"}],
+        )
+        results = SearchGate(tmp_path).check()
+        tc = _find_result(results, "topic_coverage")
+        assert tc is not None
+        assert not tc.passed
+        assert tc.level == "BLOCKER"
+        assert "AI tools" in tc.message
+
+    def test_cjk_direction_warns_ascii_direction_blocks(self, tmp_path):
+        _make_scope(tmp_path, search_directions=["智能体编程框架", "ML frameworks"])
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://x.com", "title": "Unrelated", "snippet": "Something else"}],
+        )
+        results = SearchGate(tmp_path).check()
+        tc = _find_result(results, "topic_coverage")
+        assert tc is not None
+        assert not tc.passed
+        assert tc.level == "BLOCKER"
+        assert "ML frameworks" in tc.message or "CJK" in tc.message
+
+    def test_only_cjk_uncovered_is_warn(self, tmp_path):
+        _make_scope(tmp_path, search_directions=["智能体编程框架", "AI"])
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "title": "AI advances", "snippet": "About AI", "fetched_content": "x" * 300}],
+        )
+        results = SearchGate(tmp_path).check()
+        tc = _find_result(results, "topic_coverage")
+        assert tc is not None
+        assert not tc.passed
+        assert tc.level == "WARN"
+        assert "CJK" in tc.message
+
+
 class TestSearchPlanCompliance:
     def test_no_plan_warns(self, tmp_path):
         _make_scope(tmp_path)

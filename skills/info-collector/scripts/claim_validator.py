@@ -309,7 +309,7 @@ class ClaimValidator:
                 item = self._collected_by_url.get(normalize_url(url))
                 if item:
                     source_texts.append(
-                        (item.get("fetched_content", "") + " " + item.get("snippet", "")).lower()
+                        _source_text(item)
                     )
             if not source_texts:
                 continue

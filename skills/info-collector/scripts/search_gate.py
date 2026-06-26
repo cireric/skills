@@ -23,6 +23,7 @@ from .lib.constants import (
     _FETCHED_CONTENT_MIN_BY_TIER,
     _FETCHED_CONTENT_MIN_LENGTH,
     _FETCHED_CONTENT_STUB_RATIO_BLOCKER,
+    _MAX_COVERED_DIRECTIONS,
 )
 from .lib.exceptions import ArtifactError
 from .lib.source_router import get_default_min_sources, get_route
@@ -151,7 +152,7 @@ class SearchGate:
                 continue
             if not isinstance(cd, list):
                 continue
-            if len(cd) > 3:
+            if len(cd) > _MAX_COVERED_DIRECTIONS:
                 continue
             invalid = [d for d in cd if d not in needed]
             if invalid:
@@ -191,17 +192,16 @@ class SearchGate:
 
         missing = needed - covered
         if missing:
-            cjk_heavy = self._has_cjk_tokens(list(needed))
-            if cjk_heavy:
-                messages.append(
-                    f"topic_coverage WARN (CJK directions): search directions not covered: {', '.join(missing)}"
-                )
-            else:
-                return CheckResult(
-                    "topic_coverage", "BLOCKER", False,
-                    f"topic_coverage BLOCKER: search directions not covered: {', '.join(missing)}",
-                )
             for d in missing:
+                if self._has_cjk_tokens([d]):
+                    messages.append(
+                        f"topic_coverage WARN (CJK direction): search direction not covered: {d}"
+                    )
+                else:
+                    return CheckResult(
+                        "topic_coverage", "BLOCKER", False,
+                        f"topic_coverage BLOCKER: search direction not covered: {d}",
+                    )
                 tokens = self._tokenize_direction(d)
                 if tokens:
                     suggestions = [t for t in tokens if not self._is_stop_word(t)]

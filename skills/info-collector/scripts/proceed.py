@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from .lib.utils import config_path, find_project_root, ensure_dir, read_json, write_json
+from .lib.utils import config_path, find_project_root, ensure_dir, read_json, write_json, build_collected_url_set
 from .artifact_checks import CheckResult, run_all as run_gateway
 from .report_checks import run_report_checks
 from .search_gate import SearchGate
@@ -182,14 +182,6 @@ def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
     write_json({"goal_type": goal_type, "depth": depth, "route": route_path, "tasks": tasks}, workdir / ARTIFACT_SEARCH_PLAN)
 
 
-def _get_goal_type(workdir: Path) -> str:
-    try:
-        scope = read_json(workdir / ARTIFACT_SCOPE)
-        return cast(str, scope.get("goal_type", "other"))
-    except ArtifactError:
-        return "other"
-
-
 def _find_report_path(workdir: Path) -> Path | None:
     """Find the latest .md report file in the configured output directory."""
     project_root = find_project_root()
@@ -237,10 +229,9 @@ def _gate_analysis(workdir: Path) -> list[str]:
         return errors
     collected_urls: set[str] | None = None
     try:
-        from .lib.utils import normalize_url
         collected = read_json(workdir / ARTIFACT_COLLECTED)
         if isinstance(collected, list):
-            collected_urls = {normalize_url(e.get("url", "")) for e in collected if isinstance(e, dict)}
+            collected_urls = build_collected_url_set(collected)
     except ArtifactError:
         pass
     analysis = _sanitize_sections(analysis, collected_urls=collected_urls)
@@ -250,16 +241,29 @@ def _gate_analysis(workdir: Path) -> list[str]:
     if schema_errors:
         errors.extend(f"analysis.json {e.field}: {e.message}" for e in schema_errors)
     else:
-        url_result = run_gateway(workdir, _get_goal_type(workdir))
-        url_check = next((r for r in url_result if r.name == "url_traceability"), None)
-        if url_check and not url_check.passed:
-            errors.append(f"[BLOCKER] url_traceability: {url_check.message}")
+        gateway_results = run_gateway(workdir, _get_goal_type(workdir))
+        analysis_check_names = {
+            "artifact_exists", "url_traceability", "section_coverage",
+            "analysis_schema", "precision_inflation", "claim_metadata",
+            "content_concreteness", "quality_heuristics", "source_tier_balance",
+            "source_metadata", "metric_type_homogeneity", "claim_dedup",
+            "methodology_depth", "recommendation_structure",
+        }
+        blockers = [
+            r for r in gateway_results
+            if r.level == "BLOCKER" and not r.passed and r.name in analysis_check_names
+        ]
+        errors.extend(f"[BLOCKER] {b.name}: {b.message}" for b in blockers)
     return errors
 
 
 def _gate_review(workdir: Path) -> list[str]:
     gateway_results = run_gateway(workdir, _get_goal_type(workdir))
-    blockers = [r for r in gateway_results if r.level == "BLOCKER" and not r.passed]
+    review_check_names = {"claim_verified", "claim_source_relevance"}
+    blockers = [
+        r for r in gateway_results
+        if r.level == "BLOCKER" and not r.passed and r.name in review_check_names
+    ]
     return [f"[BLOCKER] {b.name}: {b.message}" for b in blockers]
 
 
@@ -268,8 +272,8 @@ def _gate_final(workdir: Path) -> list[str]:
     if report_path is None:
         return ["No report file found in output directory for 3d verification"]
     report_results = run_report_checks(report_path)
-    failed = [r for r in report_results if not r.passed]
-    return [f"[{r.level}] {r.name}: {r.message}" for r in failed]
+    blockers = [r for r in report_results if r.level == "BLOCKER" and not r.passed]
+    return [f"[BLOCKER] {b.name}: {b.message}" for b in blockers]
 
 
 def proceeds(
