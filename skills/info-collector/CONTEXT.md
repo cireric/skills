@@ -88,6 +88,14 @@ _Avoid_: matched directions, direction tags
 search→analysis gate check (WARN level) that verifies collected.json contains at least one source from each tier in the goal_type's route.
 _Avoid_: source diversity, tier balance
 
+**SearchGate**:
+The deep module that validates whether the search phase produced sufficient material to proceed to analysis. Owns topic_coverage, tier_coverage, fetched_content_depth, search_plan_compliance, and collected.json schema checks. Interface: `SearchGate(workdir, config).check() → list[CheckResult]`. Internal helpers (tokenization, stop-word filtering, per-direction counting) are private to its implementation.
+_Avoid_: search validator, search quality checker, search gate checks
+
+**ClaimValidator**:
+The deep module that validates claim quality in analysis.json against collected.json. Owns claim_metadata, precision_inflation, claim_verified, source_metadata, metric_type_homogeneity, claim_dedup, and claim_source_relevance checks. Interface: `ClaimValidator(workdir, goal_type).check() → list[CheckResult]`. Reads analysis.json + collected.json once; shared helpers (number normalization, source text matching, data variance) are private to its implementation.
+_Avoid_: claim checker, claim gate, claim quality checker
+
 **search plan**:
 Auto-generated plan (`.workdir/search_plan.json`) produced after scope→search gate passes. Based on goal_type route and search_directions, generates specific search tasks per direction × tier. AI executes the plan rather than free-form searching.
 _Avoid_: search strategy, search outline

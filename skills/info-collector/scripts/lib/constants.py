@@ -52,10 +52,8 @@ _VALID_EVIDENCE_TYPES = frozenset({
 })
 
 _VALID_CONFIDENCE = frozenset({"high", "medium", "low"})
-
 _VALID_PRECISION = frozenset({"exact", "range", "qualitative"})
 
-# Evidence types that do not support 'exact' precision
 _NON_EXACT_EVIDENCE_TYPES = frozenset({"third_party_estimate", "qualitative_trend", "expert_opinion"})
 
 

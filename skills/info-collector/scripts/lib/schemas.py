@@ -5,7 +5,7 @@ accept raw dict (from read_json()) and return list[ValidationError].
 Schema validation answers "is the structure correct?" — quality gates
 answer "is the content good enough?". Claim metadata completeness
 (evidence_type/confidence/precision) is a quality concern, not a schema
-concern, and remains in gateway.py.
+concern, and remains in artifact_checks.py.
 """
 
 from __future__ import annotations

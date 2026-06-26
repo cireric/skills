@@ -1,0 +1,323 @@
+"""SearchGate: deep module for the search→analysis phase gate.
+
+Owns all validation logic that determines whether the search phase
+produced sufficient material to proceed to analysis. Public interface:
+
+    SearchGate(workdir, config).check() -> list[CheckResult]
+"""
+
+from __future__ import annotations
+
+import string
+from pathlib import Path
+
+from .artifact_checks import CheckResult, _read_artifact
+from .lib.constants import (
+    ARTIFACT_COLLECTED,
+    ARTIFACT_SCOPE,
+    ARTIFACT_SEARCH_PLAN,
+    _CHINESE_STOP_WORDS,
+    _COVERAGE_THRESHOLD,
+    _DEPTH_MIN_SOURCES_PER_DIRECTION,
+    _ENGLISH_STOP_WORDS,
+    _FETCHED_CONTENT_MIN_BY_TIER,
+    _FETCHED_CONTENT_MIN_LENGTH,
+    _FETCHED_CONTENT_STUB_RATIO_BLOCKER,
+)
+from .lib.exceptions import ArtifactError
+from .lib.source_router import get_default_min_sources, get_route
+from .lib.utils import read_json, tokenize_cjk_aware
+
+_STOP_WORDS = _ENGLISH_STOP_WORDS | _CHINESE_STOP_WORDS
+
+
+class SearchGate:
+    """Validates search-phase artifacts before proceeding to analysis."""
+
+    def __init__(self, workdir: Path, config: dict | None = None):
+        self.workdir = workdir
+        self.config = config
+        self._scope: dict | None = None
+        self._collected: list | None = None
+        self._search_plan: dict | None = None
+
+        try:
+            self._scope = read_json(workdir / ARTIFACT_SCOPE)
+        except ArtifactError:
+            pass
+
+        try:
+            self._collected = read_json(workdir / ARTIFACT_COLLECTED)
+            if not isinstance(self._collected, list):
+                self._collected = None
+        except ArtifactError:
+            pass
+
+        try:
+            self._search_plan = read_json(workdir / ARTIFACT_SEARCH_PLAN)
+        except ArtifactError:
+            pass
+
+    def check(self) -> list[CheckResult]:
+        """Run all search-gate checks. Returns list of CheckResult."""
+        return [
+            self._check_collected_exists(),
+            self._check_collected_schema(),
+            self._check_min_sources(),
+            self._check_tier_coverage(),
+            self._check_topic_coverage(),
+            self._check_fetched_content_depth(),
+            self._check_search_plan_compliance(),
+        ]
+
+    @property
+    def _goal_type(self) -> str:
+        if self._scope:
+            return self._scope.get("goal_type", "other")
+        return "other"
+
+    @property
+    def _search_directions(self) -> set[str]:
+        if self._scope:
+            return set(self._scope.get("search_directions", []))
+        return set()
+
+    def _check_collected_exists(self) -> CheckResult:
+        if self._collected is None:
+            return CheckResult("collected_exists", "BLOCKER", False, "Cannot read collected.json")
+        if len(self._collected) < 1:
+            return CheckResult("collected_exists", "BLOCKER", False, "collected.json must have at least 1 entry")
+        return CheckResult("collected_exists", "BLOCKER", True)
+
+    def _check_collected_schema(self) -> CheckResult:
+        if self._collected is None:
+            return CheckResult("collected_schema", "BLOCKER", True, "Skipped (no collected.json)")
+        from .lib.schemas import validate_collected
+        errors = validate_collected(self._collected)
+        if errors:
+            detail = "; ".join(f"{e.field}: {e.message}" for e in errors)
+            return CheckResult("collected_schema", "BLOCKER", False, detail)
+        return CheckResult("collected_schema", "BLOCKER", True)
+
+    def _check_min_sources(self) -> CheckResult:
+        if self._collected is None:
+            return CheckResult("min_sources", "WARN", True, "Skipped (no collected.json)")
+        goal_type = self._goal_type
+        min_src = get_default_min_sources(goal_type, self.config)
+        if len(self._collected) < min_src:
+            return CheckResult(
+                "min_sources", "WARN", False,
+                f"min_sources warning: {len(self._collected)} < {min_src} (configurable WARN)",
+            )
+        return CheckResult("min_sources", "WARN", True)
+
+    def _check_tier_coverage(self) -> CheckResult:
+        if self._collected is None:
+            return CheckResult("tier_coverage", "WARN", True, "Skipped (no collected.json)")
+        goal_type = self._goal_type
+        route = get_route(goal_type, self.config)
+        route_path = route.get("path", [])
+        optional_tiers = route.get("optional_tiers", [])
+        if route_path and self._collected:
+            covered_tiers = {entry.get("source_tier") for entry in self._collected if entry.get("source_tier")}
+            missing_required = [t for t in route_path if t not in covered_tiers]
+            if missing_required:
+                return CheckResult(
+                    "tier_coverage", "WARN", False,
+                    f"tier_coverage WARN: route requires tiers {route_path}, "
+                    f"but tiers {missing_required} have no sources in collected.json",
+                )
+            missing_optional = [t for t in optional_tiers if t not in covered_tiers]
+            if missing_optional:
+                print(
+                    f"  [INFO] tier_coverage: optional tiers {missing_optional} have no sources (non-blocking)",
+                    file=__import__("sys").stderr,
+                )
+        return CheckResult("tier_coverage", "WARN", True)
+
+    def _check_topic_coverage(self) -> CheckResult:
+        if self._collected is None or self._scope is None:
+            return CheckResult("topic_coverage", "BLOCKER", False, "Cannot read collected.json or scope.json")
+        needed = self._search_directions
+        if not needed:
+            return CheckResult("topic_coverage", "BLOCKER", True)
+
+        covered: set[str] = set()
+        direction_counts: dict[str, int] = {d: 0 for d in needed}
+
+        for entry in self._collected:
+            cd = entry.get("covered_directions")
+            if cd is None:
+                continue
+            if not isinstance(cd, list):
+                continue
+            if len(cd) > 3:
+                continue
+            invalid = [d for d in cd if d not in needed]
+            if invalid:
+                continue
+            for d in cd:
+                covered.add(d)
+                direction_counts[d] += 1
+
+        for entry in self._collected:
+            if entry.get("covered_directions") is not None:
+                continue
+            combined_text = (
+                entry.get("title", "")
+                + " " + entry.get("snippet", "")
+                + " " + entry.get("fetched_content", "")[:500]
+            ).lower()
+            for direction in needed:
+                tokens = self._tokenize_direction(direction)
+                if not tokens:
+                    continue
+                matched = sum(1 for t in tokens if t in combined_text)
+                if matched / len(tokens) >= _COVERAGE_THRESHOLD:
+                    covered.add(direction)
+                    direction_counts[direction] += 1
+
+        depth = self._scope.get("depth", "standard")
+        min_per_direction = _DEPTH_MIN_SOURCES_PER_DIRECTION.get(depth, 3)
+
+        messages: list[str] = []
+        for direction in needed:
+            count = direction_counts.get(direction, 0)
+            if count < min_per_direction:
+                messages.append(
+                    f"per_direction_min_sources WARN: direction '{direction}' "
+                    f"has {count} sources, depth='{depth}' requires {min_per_direction}"
+                )
+
+        missing = needed - covered
+        if missing:
+            cjk_heavy = self._has_cjk_tokens(list(needed))
+            if cjk_heavy:
+                messages.append(
+                    f"topic_coverage WARN (CJK directions): search directions not covered: {', '.join(missing)}"
+                )
+            else:
+                return CheckResult(
+                    "topic_coverage", "BLOCKER", False,
+                    f"topic_coverage BLOCKER: search directions not covered: {', '.join(missing)}",
+                )
+            for d in missing:
+                tokens = self._tokenize_direction(d)
+                if tokens:
+                    suggestions = [t for t in tokens if not self._is_stop_word(t)]
+                    if suggestions:
+                        messages.append(
+                            f"  Suggestion: try searching for '{d}' with keywords: {', '.join(suggestions[:5])}"
+                        )
+
+        if messages:
+            has_blocker = any("BLOCKER" in m for m in messages)
+            level = "BLOCKER" if has_blocker else "WARN"
+            return CheckResult("topic_coverage", level, False, "; ".join(messages))
+        return CheckResult("topic_coverage", "BLOCKER", True)
+
+    def _check_fetched_content_depth(self) -> CheckResult:
+        if self._collected is None:
+            return CheckResult("fetched_content_depth", "WARN", True, "Cannot read collected.json")
+        if not self._collected:
+            return CheckResult("fetched_content_depth", "WARN", True, "collected.json is empty")
+        stub_count = 0
+        empty_count = 0
+        fetch_failed_count = 0
+        tier_violations: list[str] = []
+        for entry in self._collected:
+            fc = entry.get("fetched_content", "")
+            tier = entry.get("source_tier", 0)
+            if entry.get("fetch_failed", False):
+                fetch_failed_count += 1
+                continue
+            if not fc:
+                empty_count += 1
+            else:
+                min_len = _FETCHED_CONTENT_MIN_BY_TIER.get(tier, _FETCHED_CONTENT_MIN_LENGTH)
+                if len(fc) < min_len:
+                    stub_count += 1
+                    tier_violations.append(f"Tier {tier}: {len(fc)} chars < {min_len} min")
+        total = len(self._collected)
+        checked = total - fetch_failed_count
+        problem_count = empty_count + stub_count
+        ratio = problem_count / checked if checked > 0 else 0
+        parts: list[str] = []
+        if empty_count > 0:
+            parts.append(f"{empty_count}/{total} entries have no fetched_content")
+        if stub_count > 0:
+            parts.append(
+                f"{stub_count}/{total} entries have stub fetched_content (below per-tier minimum)"
+            )
+        if fetch_failed_count > 0:
+            parts.append(f"{fetch_failed_count}/{total} entries have fetch_failed=true (exempt)")
+        if tier_violations:
+            for v in tier_violations[:3]:
+                parts.append(f"  e.g. {v}")
+        msg = "; ".join(parts) if parts else "all entries have substantial fetched_content"
+        if ratio > _FETCHED_CONTENT_STUB_RATIO_BLOCKER:
+            return CheckResult(
+                "fetched_content_depth",
+                "BLOCKER",
+                False,
+                f"{problem_count}/{checked} entries ({ratio:.0%}) have missing or stub fetched_content — re-fetch with full content before proceeding",
+            )
+        if problem_count > 0:
+            return CheckResult("fetched_content_depth", "WARN", False, msg)
+        return CheckResult("fetched_content_depth", "WARN", True, msg)
+
+    def _check_search_plan_compliance(self) -> CheckResult:
+        if self._search_plan is None:
+            return CheckResult("search_plan_compliance", "WARN", True, "search_plan.json not found")
+        tasks = self._search_plan.get("tasks", [])
+        if not tasks:
+            return CheckResult("search_plan_compliance", "WARN", True, "search_plan.json has no tasks")
+        pending = [t for t in tasks if t.get("status") == "pending"]
+        completed = [t for t in tasks if t.get("status") == "completed"]
+        skipped = [t for t in tasks if t.get("status") == "skipped"]
+        directions_in_plan = set(t.get("direction", "") for t in tasks)
+        directions_completed = set(t.get("direction", "") for t in completed)
+        directions_missing = directions_in_plan - directions_completed
+        if pending and not completed:
+            return CheckResult(
+                "search_plan_compliance", "WARN", False,
+                f"0/{len(tasks)} tasks completed, {len(pending)} pending — search_plan was not followed. "
+                f"Directions without any completed task: {', '.join(sorted(directions_missing))}",
+            )
+        if pending:
+            return CheckResult(
+                "search_plan_compliance", "WARN", False,
+                f"{len(completed)}/{len(tasks)} tasks completed, {len(pending)} pending — search_plan incomplete. "
+                f"Directions without coverage: {', '.join(sorted(directions_missing))}",
+            )
+        if directions_missing:
+            return CheckResult(
+                "search_plan_compliance", "WARN", False,
+                f"{len(completed)}/{len(tasks)} tasks completed, but directions without coverage: {', '.join(sorted(directions_missing))}",
+            )
+        return CheckResult(
+            "search_plan_compliance", "WARN", True,
+            f"{len(completed)}/{len(tasks)} tasks completed, {len(skipped)} skipped",
+        )
+
+    @staticmethod
+    def _is_stop_word(token: str) -> bool:
+        if len(token) <= 1:
+            return True
+        if all(c in string.punctuation for c in token):
+            return True
+        if token in _STOP_WORDS:
+            return True
+        return False
+
+    @staticmethod
+    def _tokenize_direction(direction: str) -> list[str]:
+        return [t for t in tokenize_cjk_aware(direction, lowercase=True) if not SearchGate._is_stop_word(t)]
+
+    @staticmethod
+    def _has_cjk_tokens(directions: list[str]) -> bool:
+        for d in directions:
+            for ch in d:
+                if '\u4e00' <= ch <= '\u9fff':
+                    return True
+        return False

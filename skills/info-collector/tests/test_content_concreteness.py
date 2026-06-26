@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.gateway import (
+from scripts.artifact_checks import (
     _count_words,
     _has_concrete_name,
     _has_valid_number,

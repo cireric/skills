@@ -1,9 +1,9 @@
-"""Tests for report-level gateway checks in scripts.gateway.
+"""Tests for report-level gateway checks in scripts.report_checks.
 
 These tests operate on .md files, following the same class-based pattern
 as test_gateway.py but using a _write_md helper instead of _write_json.
 
-NOTE: _HEADING and _FENCED_CODE regexes in gateway.py lack re.MULTILINE flag,
+NOTE: _HEADING and _FENCED_CODE regexes in report_checks.py lack re.MULTILINE flag,
 so some heading-related checks (levels, duplicates, empty sections, code blocks)
 can only find patterns at position 0 of the content. Tests document this limitation.
 """
@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.gateway import (
-    CheckResult,
+from scripts.artifact_checks import CheckResult
+from scripts.report_checks import (
     check_report_dangling_refs,
     check_report_duplicate_headings,
     check_report_empty_sections,
