@@ -5,43 +5,48 @@ from pathlib import Path
 
 from scripts.reporter import (
     _TIER_LABELS,
-    _build_reference_map,
     _label,
     _render_references,
     _render_test_conditions,
+    _resolve_ref_markers,
     build_front_matter,
     generate_report,
     sections_to_markdown,
 )
 
 
-class TestBuildReferenceMap:
-    def test_overlapping_urls_deduped(self):
-        analysis = {
-            "sections": [
-                {"claims": [{"text": "A", "source_urls": ["https://a.com"]}]},
-                {"claims": [{"text": "B", "source_urls": ["https://b.com", "https://a.com"]}]},
-            ]
-        }
-        ref_map = _build_reference_map(analysis, [])
-        # a.com appears first, gets 1; b.com second, gets 2
+class TestResolveRefMarkers:
+    def test_single_marker_replaced(self):
+        ref_map: dict[str, int] = {}
+        result = _resolve_ref_markers("See {{ref:https://example.com}} for details.", ref_map)
+        assert "{{ref:" not in result
+        assert "[&#91;1&#93;](#refs)" in result
+        assert ref_map == {"https://example.com/": 1}
+
+    def test_multiple_markers_numbered_by_first_appearance(self):
+        ref_map: dict[str, int] = {}
+        result = _resolve_ref_markers("{{ref:https://a.com}} and {{ref:https://b.com}}", ref_map)
+        assert "[&#91;1&#93;](#refs)" in result
+        assert "[&#91;2&#93;](#refs)" in result
         assert ref_map == {"https://a.com/": 1, "https://b.com/": 2}
 
-    def test_no_source_urls(self):
-        analysis = {"sections": [{"claims": [{"text": "A", "source_urls": []}]}]}
-        ref_map = _build_reference_map(analysis, [])
-        assert ref_map == {}
+    def test_same_url_gets_same_number(self):
+        ref_map: dict[str, int] = {}
+        result = _resolve_ref_markers("{{ref:https://a.com}} then {{ref:https://a.com}}", ref_map)
+        assert result.count("[&#91;1&#93;](#refs)") == 2
+        assert ref_map == {"https://a.com/": 1}
 
-    def test_first_appearance_ordering(self):
-        analysis = {
-            "sections": [
-                {"claims": [{"text": "A", "source_urls": ["https://z.com"]}]},
-                {"claims": [{"text": "B", "source_urls": ["https://a.com"]}]},
-            ]
-        }
-        ref_map = _build_reference_map(analysis, [])
-        assert ref_map["https://z.com/"] == 1
-        assert ref_map["https://a.com/"] == 2
+    def test_ref_map_accumulates_across_calls(self):
+        ref_map: dict[str, int] = {}
+        _resolve_ref_markers("{{ref:https://a.com}}", ref_map)
+        _resolve_ref_markers("{{ref:https://b.com}}", ref_map)
+        assert ref_map == {"https://a.com/": 1, "https://b.com/": 2}
+
+    def test_no_markers_returns_content_unchanged(self):
+        ref_map: dict[str, int] = {}
+        result = _resolve_ref_markers("No markers here.", ref_map)
+        assert result == "No markers here."
+        assert ref_map == {}
 
 
 class TestRenderReferences:
@@ -306,7 +311,7 @@ class TestSectionsToMarkdownWithTestConditions:
                 {
                     "id": "overview",
                     "title": "Overview",
-                    "content": "Some content here.",
+                    "content": "Some content here {{ref:https://a.com}}.",
                     "claims": [
                         {
                             "text": "Claim A",
@@ -333,7 +338,7 @@ class TestSectionsToMarkdownWithTestConditions:
                 {
                     "id": "intro",
                     "title": "Intro",
-                    "content": "Just intro.",
+                    "content": "Just intro {{ref:https://a.com}}.",
                     "claims": [
                         {"text": "Claim A", "source_urls": ["https://a.com"]}
                     ],
@@ -351,16 +356,16 @@ class TestSectionsToMarkdown:
                 {
                     "id": "overview",
                     "title": "Overview",
-                    "content": "Some content here.",
+                    "content": "Some content here {{ref:https://example.com}}.",
                     "claims": [{"text": "A claim.", "source_urls": ["https://example.com"]}],
                 }
             ],
         }
         md = sections_to_markdown(analysis)
         assert "## Overview" in md
-        assert "Some content here." in md
+        assert "Some content here" in md
         assert "A claim." in md
-        assert "https://example.com" in md
+        assert "[&#91;1&#93;](#refs)" in md
 
     def test_section_without_claims(self):
         analysis = {
@@ -439,14 +444,14 @@ class TestSectionsToMarkdown:
                 {
                     "id": "overview",
                     "title": "Overview",
-                    "content": "Some content here.",
+                    "content": "Some content here {{ref:https://example.com}}.",
                     "claims": [{"text": "A claim.", "source_urls": ["https://example.com"]}],
                 }
             ],
         }
         md = sections_to_markdown(analysis)
         assert "## Overview" in md
-        assert "Some content here." in md
+        assert "Some content here" in md
         assert "**Sources:**" not in md
         assert "**数据来源:**" not in md
         assert "A claim." not in md
@@ -461,7 +466,7 @@ class TestSectionsToMarkdown:
                 {
                     "id": "overview",
                     "title": "Overview",
-                    "content": "Some content here.",
+                    "content": "Some content here {{ref:https://example.com}}.",
                     "claims": [{"text": "A claim.", "source_urls": ["https://example.com"]}],
                 }
             ],
@@ -469,6 +474,60 @@ class TestSectionsToMarkdown:
         md = sections_to_markdown(analysis)
         assert "**Sources:**" in md
         assert "A claim." in md
+
+
+class TestSectionsToMarkdownRefMarkers:
+    def test_markers_resolved_not_in_output(self):
+        analysis = {
+            "sections": [
+                {
+                    "id": "s1",
+                    "title": "Section 1",
+                    "content": "See {{ref:https://example.com}} for details.",
+                    "claims": [],
+                }
+            ],
+        }
+        md = sections_to_markdown(analysis)
+        assert "{{ref:" not in md
+        assert "[&#91;1&#93;](#refs)" in md
+
+    def test_claim_source_url_gets_correct_number(self):
+        analysis = {
+            "sections": [
+                {
+                    "id": "s1",
+                    "title": "Section 1",
+                    "content": "Some content {{ref:https://a.com}} here.",
+                    "claims": [{"text": "Claim A", "source_urls": ["https://a.com"]}],
+                }
+            ],
+        }
+        md = sections_to_markdown(analysis)
+        assert "[&#91;1&#93;](#refs)" in md
+        assert "- Claim A [1]" in md
+
+    def test_multiple_sections_shared_urls_consistent_numbering(self):
+        analysis = {
+            "sections": [
+                {
+                    "id": "s1",
+                    "title": "Section 1",
+                    "content": "First {{ref:https://a.com}} and {{ref:https://b.com}}.",
+                    "claims": [{"text": "Claim A", "source_urls": ["https://a.com"]}],
+                },
+                {
+                    "id": "s2",
+                    "title": "Section 2",
+                    "content": "Second {{ref:https://a.com}} again.",
+                    "claims": [{"text": "Claim B", "source_urls": ["https://a.com", "https://b.com"]}],
+                },
+            ],
+        }
+        md = sections_to_markdown(analysis)
+        assert md.count("[&#91;1&#93;](#refs)") >= 2
+        assert "[&#91;2&#93;](#refs)" in md
+        assert "- Claim B [1][2]" in md
 
 
 class TestGenerateReport:
@@ -482,7 +541,7 @@ class TestGenerateReport:
                     {
                         "id": "comparison",
                         "title": "Comparison",
-                        "content": "PyTorch vs TensorFlow.",
+                        "content": "PyTorch vs TensorFlow {{ref:https://example.com}}.",
                         "claims": [
                             {"text": "PyTorch is popular.", "source_urls": ["https://example.com"]}
                         ],
@@ -508,7 +567,7 @@ class TestGenerateReport:
         assert "topic: AI Frameworks" in report
         assert "quality: passed" in report
         assert "## Comparison" in report
-        assert "PyTorch vs TensorFlow." in report
+        assert "PyTorch vs TensorFlow" in report
         assert "PyTorch is popular." in report
 
     def test_report_language_explicit_parameter(self, tmp_path):
@@ -566,7 +625,7 @@ class TestI18nLabels:
             {
                 "id": "s1",
                 "title": "Section 1",
-                "content": "Content.",
+                "content": "Content. {{ref:https://a.com}}",
                 "claims": [
                     {
                         "text": "Claim A",

@@ -13,17 +13,17 @@ def _label(key: str, lang: str) -> str:
     return _LABELS.get((key, lang), _LABELS.get((key, "en"), key))
 
 
-def _build_reference_map(analysis: dict, collected: list[dict]) -> dict[str, int]:
-    ref_map = {}
-    next_num = 1
-    for sec in analysis.get("sections", []):
-        for claim in sec.get("claims", []):
-            for url in claim.get("source_urls", []):
-                norm = normalize_url(url)
-                if norm not in ref_map:
-                    ref_map[norm] = next_num
-                    next_num += 1
-    return ref_map
+_REF_MARKER_RE = re.compile(r'\{\{ref:(.*?)\}\}')
+
+
+def _resolve_ref_markers(content: str, ref_map: dict[str, int]) -> str:
+    def _replacer(match: re.Match) -> str:
+        url = match.group(1).strip()
+        norm = normalize_url(url)
+        if norm not in ref_map:
+            ref_map[norm] = len(ref_map) + 1
+        return f"[&#91;{ref_map[norm]}&#93;](#refs)"
+    return _REF_MARKER_RE.sub(_replacer, content)
 
 
 def _render_references(reference_map: dict[str, int], collected: list[dict], lang: str = "en") -> str:
@@ -147,17 +147,22 @@ def _build_claim_ref(claim: dict, reference_map: dict[str, int]) -> str:
 def sections_to_markdown(analysis: dict, collected: list[dict] | None = None, lang: str = "en") -> str:
     parts = []
     collected = collected or []
-    ref_map = _build_reference_map(analysis, collected)
+    ref_map: dict[str, int] = {}
     goal_type = analysis.get("goal_type", "")
     compact = goal_type in _EXPLORATORY_GOAL_TYPES
-    for sec in analysis.get("sections", []):
+
+    resolved_contents: dict[int, str] = {}
+    for idx, sec in enumerate(analysis.get("sections", [])):
+        content = sec.get("content", "")
+        heading = f"## {sec.get('title', sec.get('id', ''))}"
+        if content.startswith(heading):
+            content = content[len(heading):].lstrip("\n")
+        resolved_contents[idx] = _resolve_ref_markers(content, ref_map)
+
+    for idx, sec in enumerate(analysis.get("sections", [])):
         title = sec.get("title", sec.get("id", ""))
         parts.append(f"\n## {title}\n")
-        content = sec.get("content", "")
-        heading = f"## {title}"
-        if content.startswith(heading):
-            content = content[len(heading) :].lstrip("\n")
-        parts.append(content)
+        parts.append(resolved_contents[idx])
         if not compact:
             claims = sec.get("claims", [])
             if claims:
