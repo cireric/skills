@@ -255,6 +255,7 @@ def _gate_analysis(workdir: Path) -> list[str]:
             "content_concreteness", "quality_heuristics", "source_tier_balance",
             "source_metadata", "metric_type_homogeneity", "claim_dedup",
             "methodology_depth", "recommendation_structure",
+            "ref_marker_validity", "claim_source_ref_coverage",
         }
         blockers = [
             r for r in gateway_results

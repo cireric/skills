@@ -147,19 +147,19 @@ class TestProceeds:
                     {
                         "id": "overview",
                         "title": "O",
-                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
+                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently {{ref:https://a.com}}.",
                         "claims": [{"text": "C1", "source_urls": ["https://a.com"]}],
                     },
                     {
                         "id": "comparison",
                         "title": "Cmp",
-                        "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
+                        "content": "Docker runs 10000 containers per host with Kubernetes orchestration {{ref:https://a.com}}.",
                         "claims": [{"text": "C2", "source_urls": ["https://a.com"]}],
                     },
                     {
                         "id": "recommendation",
                         "title": "Rec",
-                        "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
+                        "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility {{ref:https://a.com}}.",
                         "claims": [{"text": "C3", "source_urls": ["https://a.com"]}],
                     },
                     {
@@ -186,7 +186,7 @@ class TestProceeds:
                     {
                         "id": "overview",
                         "title": "O",
-                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
+                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently {{ref:https://a.com}}.",
                         "claims": [{"text": "C1", "source_urls": ["https://fabricated.com"]}],
                     },
                     {
@@ -242,19 +242,19 @@ class TestProceeds:
                     {
                         "id": "overview",
                         "title": "O",
-                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
-                        "claims": [{"text": "C1", "source_urls": ["https://a.com"], "verified": True}],
+                        "content": "Kubernetes 1.28 handles 5000 nodes efficiently {{ref:https://a.com}}.",
+                        "claims": [{"text": "C1", "source_urls": ["https://a.com"]}],
                     },
                     {
                         "id": "comparison",
                         "title": "Cmp",
-                        "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
-                        "claims": [{"text": "C2", "source_urls": ["https://a.com"], "verified": True}],
+                        "content": "Docker runs 10000 containers per host with Kubernetes orchestration {{ref:https://a.com}}.",
+                        "claims": [{"text": "C2", "source_urls": ["https://a.com"]}],
                     },
                     {
                         "id": "recommendation",
                         "title": "Rec",
-                        "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
+                        "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility {{ref:https://a.com}}.",
                         "claims": [{"text": "C3", "source_urls": ["https://a.com"], "verified": True}],
                     },
                     {

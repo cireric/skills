@@ -704,6 +704,130 @@ class TestCheckClaimDedup:
         assert "duplicate" in result.message.lower()
 
 
+class TestCheckRefMarkerValidity:
+    def test_passes_when_all_markers_in_collected(self, tmp_path):
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "snippet": "A", "fetched_content": "content"}],
+        )
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "content": "See {{ref:https://a.com}} for details.",
+                    "claims": [{"text": "C", "source_urls": ["https://a.com"]}],
+                }],
+            },
+        )
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "ref_marker_validity")
+        assert result.passed
+
+    def test_blocks_when_marker_url_not_in_collected(self, tmp_path):
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "snippet": "A", "fetched_content": "content"}],
+        )
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "content": "See {{ref:https://b.com}} for details.",
+                    "claims": [],
+                }],
+            },
+        )
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "ref_marker_validity")
+        assert not result.passed
+        assert result.level == "BLOCKER"
+
+    def test_warns_when_no_markers(self, tmp_path):
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "snippet": "A", "fetched_content": "content"}],
+        )
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "content": "No refs here.",
+                    "claims": [],
+                }],
+            },
+        )
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "ref_marker_validity")
+        assert result.passed
+        assert result.level == "WARN"
+
+
+class TestCheckClaimSourceRefCoverage:
+    def test_passes_when_all_claim_sources_in_content(self, tmp_path):
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "snippet": "A", "fetched_content": "content"}],
+        )
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "content": "See {{ref:https://a.com}} for details.",
+                    "claims": [{"text": "C", "source_urls": ["https://a.com"]}],
+                }],
+            },
+        )
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "claim_source_ref_coverage")
+        assert result.passed
+
+    def test_blocks_when_claim_source_not_in_content(self, tmp_path):
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "snippet": "A", "fetched_content": "content"}],
+        )
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "content": "No ref marker for this claim's source.",
+                    "claims": [{"text": "C", "source_urls": ["https://a.com"]}],
+                }],
+            },
+        )
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "claim_source_ref_coverage")
+        assert not result.passed
+        assert result.level == "BLOCKER"
+
+    def test_passes_when_shared_url_appears_once(self, tmp_path):
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://a.com", "snippet": "A", "fetched_content": "content"}],
+        )
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "content": "See {{ref:https://a.com}} for details.",
+                    "claims": [
+                        {"text": "C1", "source_urls": ["https://a.com"]},
+                        {"text": "C2", "source_urls": ["https://a.com"]},
+                    ],
+                }],
+            },
+        )
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "claim_source_ref_coverage")
+        assert result.passed
+
+
 class TestNumberNormalization:
     def test_dollar_amount_in_source(self):
         assert _number_found_in_source("revenue was $9.8 billion", "market estimated at $9.8B")

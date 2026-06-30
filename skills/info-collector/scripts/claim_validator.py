@@ -19,7 +19,7 @@ from .lib.constants import (
     _SINGLE_SOURCE_RATIO,
 )
 from .lib.exceptions import ArtifactError
-from .lib.utils import build_collected_by_url, normalize_url, read_json
+from .lib.utils import build_collected_by_url, build_collected_url_set, normalize_url, read_json
 
 _PRECISE_NUMBER_PATTERN = re.compile(
     r"(?<!\w)"
@@ -27,6 +27,8 @@ _PRECISE_NUMBER_PATTERN = re.compile(
     r"(\s*(%|ms|req/s|req\/sec|MB|GB|x|times faster))?"
     r"(?!\w)"
 )
+
+_REF_MARKER_RE = re.compile(r'\{\{ref:(.*?)\}\}')
 
 
 def _source_text(item: dict) -> str:
@@ -110,6 +112,7 @@ class ClaimValidator:
         self._analysis_err: CheckResult | None = None
         self._collected: list[dict] = []
         self._collected_by_url: dict[str, dict] = {}
+        self._collected_urls: set[str] = set()
         self._review_exists: bool = (workdir / ARTIFACT_REVIEW_REPORT).exists()
         self._sections: list[dict] = []
         self._all_claims: list[tuple[str, int, dict]] = []
@@ -133,6 +136,7 @@ class ClaimValidator:
             if isinstance(collected, list):
                 self._collected = collected
                 self._collected_by_url = build_collected_by_url(collected)
+                self._collected_urls = build_collected_url_set(collected)
         except ArtifactError:
             pass
 
@@ -147,6 +151,8 @@ class ClaimValidator:
             self._check_metric_type_homogeneity(),
             self._check_claim_dedup(),
             self._check_claim_source_relevance(),
+            self._check_ref_marker_validity(),
+            self._check_claim_source_ref_coverage(),
         ]
 
     def _check_claim_metadata(self) -> CheckResult:
@@ -330,3 +336,40 @@ class ClaimValidator:
                 msg += f"; ... and {len(warnings) - 5} more"
             return CheckResult("claim_source_relevance", "WARN", False, msg)
         return CheckResult("claim_source_relevance", "WARN", True, "all numeric claims traceable to sources")
+
+    def _check_ref_marker_validity(self) -> CheckResult:
+        all_refs = []
+        for sec in self._sections:
+            content = sec.get("content", "")
+            for match in _REF_MARKER_RE.finditer(content):
+                all_refs.append(normalize_url(match.group(1).strip()))
+        if not all_refs:
+            return CheckResult("ref_marker_validity", "WARN", True,
+                               "No {{ref:URL}} markers found in analysis content")
+        missing = [u for u in all_refs if u not in self._collected_urls]
+        if missing:
+            return CheckResult("ref_marker_validity", "BLOCKER", False,
+                               f"{len(missing)} {{ref:URL}} markers reference URLs not in collected.json: "
+                               f"{missing[:3]}{'...' if len(missing) > 3 else ''}")
+        return CheckResult("ref_marker_validity", "BLOCKER", True,
+                           f"All {len(all_refs)} {{ref:URL}} markers reference valid collected.json URLs")
+
+    def _check_claim_source_ref_coverage(self) -> CheckResult:
+        violations = []
+        for sec in self._sections:
+            sec_id = sec.get("id", "?")
+            content = sec.get("content", "")
+            content_urls = set()
+            for match in _REF_MARKER_RE.finditer(content):
+                content_urls.add(normalize_url(match.group(1).strip()))
+            for ci, claim in enumerate(sec.get("claims", [])):
+                for url in claim.get("source_urls", []):
+                    norm = normalize_url(url)
+                    if norm not in content_urls:
+                        violations.append(f"sections.{sec_id}.claims[{ci}]: {norm}")
+        if violations:
+            return CheckResult("claim_source_ref_coverage", "BLOCKER", False,
+                               f"{len(violations)} claim source_urls not referenced in content: "
+                               f"{violations[:3]}{'...' if len(violations) > 3 else ''}")
+        return CheckResult("claim_source_ref_coverage", "BLOCKER", True,
+                           "All claim source_urls are referenced in section content")
