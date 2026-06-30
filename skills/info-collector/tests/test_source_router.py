@@ -204,3 +204,131 @@ class TestRouteConfigIntegrity:
         """_get_config returns the injected test config directly."""
         cfg = {"test": True}
         assert _get_config(cfg) is cfg
+
+
+class TestNewSourcesInLiveConfig:
+    """Validate 10 new sources appear in recommend_sources against live config."""
+
+    @staticmethod
+    def _load_real_config() -> dict:
+        config_path = Path(__file__).parent.parent / "config.json"
+        with open(config_path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_tier1_has_acl_anthology(self):
+        config = self._load_real_config()
+        result = recommend_sources("academic_research", config)
+        tier1_names = [s["name"] for s in result["all_sources"][1]]
+        assert "ACL Anthology" in tier1_names
+
+    def test_tier1_has_semantic_scholar(self):
+        config = self._load_real_config()
+        result = recommend_sources("academic_research", config)
+        tier1_names = [s["name"] for s in result["all_sources"][1]]
+        assert "Semantic Scholar" in tier1_names
+
+    def test_tier2_has_hugging_face(self):
+        config = self._load_real_config()
+        result = recommend_sources("tech_selection", config)
+        tier2_names = [s["name"] for s in result["all_sources"][2]]
+        assert "Hugging Face" in tier2_names
+
+    def test_tier2_has_pypi(self):
+        config = self._load_real_config()
+        result = recommend_sources("tech_selection", config)
+        tier2_names = [s["name"] for s in result["all_sources"][2]]
+        assert "PyPI" in tier2_names
+
+    def test_tier2_has_readthedocs(self):
+        config = self._load_real_config()
+        result = recommend_sources("tech_selection", config)
+        tier2_names = [s["name"] for s in result["all_sources"][2]]
+        assert "ReadTheDocs" in tier2_names
+
+    def test_tier3_has_substack(self):
+        config = self._load_real_config()
+        result = recommend_sources("other", config)
+        tier3_names = [s["name"] for s in result["all_sources"][3]]
+        assert "Substack" in tier3_names
+
+    def test_tier3_has_towards_data_science(self):
+        config = self._load_real_config()
+        result = recommend_sources("other", config)
+        tier3_names = [s["name"] for s in result["all_sources"][3]]
+        assert "Towards Data Science" in tier3_names
+
+    def test_tier3_has_the_new_stack(self):
+        config = self._load_real_config()
+        result = recommend_sources("other", config)
+        tier3_names = [s["name"] for s in result["all_sources"][3]]
+        assert "The New Stack" in tier3_names
+
+    def test_tier4_has_hacker_news(self):
+        config = self._load_real_config()
+        result = recommend_sources("exploratory", config)
+        tier4_names = [s["name"] for s in result["all_sources"][4]]
+        assert "Hacker News" in tier4_names
+
+    def test_tier4_has_dev_to(self):
+        config = self._load_real_config()
+        result = recommend_sources("exploratory", config)
+        tier4_names = [s["name"] for s in result["all_sources"][4]]
+        assert "Dev.to" in tier4_names
+
+
+class TestSourceLanguageField:
+    """Validate language field on source entries in live config."""
+
+    @staticmethod
+    def _load_real_config() -> dict:
+        config_path = Path(__file__).parent.parent / "config.json"
+        with open(config_path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_cnki_has_language_zh(self):
+        config = self._load_real_config()
+        tier1 = config["sources"]["1"]["sources"]
+        cnki = next(s for s in tier1 if s["name"] == "CNKI")
+        assert cnki.get("language") == "zh"
+
+    def test_zhihu_has_language_zh(self):
+        config = self._load_real_config()
+        tier4 = config["sources"]["4"]["sources"]
+        zhihu = next(s for s in tier4 if s["name"] == "Zhihu")
+        assert zhihu.get("language") == "zh"
+
+    def test_arxiv_defaults_to_en(self):
+        config = self._load_real_config()
+        tier1 = config["sources"]["1"]["sources"]
+        arxiv = next(s for s in tier1 if s["name"] == "arXiv")
+        assert arxiv.get("language", "en") == "en"
+
+
+class TestRouteAdjustments:
+    """Validate updated routes for competitive_comparison, market_analysis, background_check."""
+
+    @staticmethod
+    def _load_real_config() -> dict:
+        config_path = Path(__file__).parent.parent / "config.json"
+        with open(config_path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_competitive_comparison_entry_tier(self):
+        config = self._load_real_config()
+        route = get_route("competitive_comparison", config)
+        assert route["entry_tier"] == 2
+
+    def test_competitive_comparison_path(self):
+        config = self._load_real_config()
+        route = get_route("competitive_comparison", config)
+        assert route["path"] == [2, 3, 4, 1]
+
+    def test_market_analysis_path(self):
+        config = self._load_real_config()
+        route = get_route("market_analysis", config)
+        assert route["path"] == [3, 1, 2]
+
+    def test_background_check_path(self):
+        config = self._load_real_config()
+        route = get_route("background_check", config)
+        assert route["path"] == [3, 4, 2, 1]

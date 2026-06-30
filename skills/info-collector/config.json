@@ -6,10 +6,12 @@
         {"name": "arXiv", "domain": "arxiv.org", "site_query": "arxiv.org"},
         {"name": "Google Scholar", "domain": "scholar.google.com", "site_query": "scholar.google.com"},
         {"name": "PubMed", "domain": "pubmed.ncbi.nlm.nih.gov", "site_query": "pubmed.ncbi.nlm.nih.gov"},
-        {"name": "CNKI", "domain": "cnki.net", "site_query": "cnki.net"},
+        {"name": "CNKI", "domain": "cnki.net", "site_query": "cnki.net", "language": "zh"},
         {"name": "W3C", "domain": "w3.org", "site_query": "w3.org"},
         {"name": "IETF", "domain": "ietf.org", "site_query": "ietf.org"},
-        {"name": "ISO", "domain": "iso.org", "site_query": "iso.org"}
+        {"name": "ISO", "domain": "iso.org", "site_query": "iso.org"},
+        {"name": "ACL Anthology", "domain": "aclanthology.org", "site_query": "aclanthology.org"},
+        {"name": "Semantic Scholar", "domain": "semanticscholar.org", "site_query": "semanticscholar.org"}
       ]
     },
     "2": {
@@ -17,7 +19,10 @@
       "sources": [
         {"name": "GitHub", "domain": "github.com", "site_query": "github.com"},
         {"name": "MDN Web Docs", "domain": "developer.mozilla.org", "site_query": "developer.mozilla.org"},
-        {"name": "Wikipedia", "domain": "en.wikipedia.org", "site_query": "en.wikipedia.org"}
+        {"name": "Wikipedia", "domain": "en.wikipedia.org", "site_query": "en.wikipedia.org"},
+        {"name": "Hugging Face", "domain": "huggingface.co", "site_query": "huggingface.co"},
+        {"name": "PyPI", "domain": "pypi.org", "site_query": "pypi.org"},
+        {"name": "ReadTheDocs", "domain": "readthedocs.io", "site_query": "readthedocs.io"}
       ]
     },
     "3": {
@@ -25,7 +30,10 @@
       "sources": [
         {"name": "Medium", "domain": "medium.com", "site_query": "medium.com"},
         {"name": "IEEE Spectrum", "domain": "spectrum.ieee.org", "site_query": "spectrum.ieee.org"},
-        {"name": "MIT Technology Review", "domain": "technologyreview.com", "site_query": "technologyreview.com"}
+        {"name": "MIT Technology Review", "domain": "technologyreview.com", "site_query": "technologyreview.com"},
+        {"name": "Substack", "domain": "substack.com", "site_query": "substack.com"},
+        {"name": "Towards Data Science", "domain": "towardsdatascience.com", "site_query": "towardsdatascience.com"},
+        {"name": "The New Stack", "domain": "thenewstack.io", "site_query": "thenewstack.io"}
       ]
     },
     "4": {
@@ -33,7 +41,9 @@
       "sources": [
         {"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com"},
         {"name": "Stack Overflow", "domain": "stackoverflow.com", "site_query": "stackoverflow.com"},
-        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com"}
+        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com", "language": "zh"},
+        {"name": "Hacker News", "domain": "news.ycombinator.com", "site_query": "news.ycombinator.com"},
+        {"name": "Dev.to", "domain": "dev.to", "site_query": "dev.to"}
       ]
     }
   },
@@ -42,11 +52,11 @@
     "panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]},
     "tech_selection": {"entry_tier": 2, "path": [2, 1]},
     "feasibility_assessment": {"entry_tier": 2, "path": [2, 1]},
-    "competitive_comparison": {"entry_tier": 4, "path": [4, 3]},
+    "competitive_comparison": {"entry_tier": 2, "path": [2, 3, 4, 1]},
     "academic_research": {"entry_tier": 1, "path": [1]},
     "fact_check": {"entry_tier": 1, "path": [1, 2, 4]},
-    "background_check": {"entry_tier": 3, "path": [3, 4, 1]},
-    "market_analysis": {"entry_tier": 3, "path": [3, 1]},
+    "background_check": {"entry_tier": 3, "path": [3, 4, 2, 1]},
+    "market_analysis": {"entry_tier": 3, "path": [3, 1, 2]},
     "other": {"entry_tier": 3, "path": [3, 2, 1]}
   },
   "output_dir": "./reports/",
