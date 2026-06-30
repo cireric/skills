@@ -683,6 +683,169 @@ class TestGateAnalysisChecksAllBlockers:
         assert any("content_concreteness" in e for e in errors)
 
 
+class TestSearchPlanLanguageSplit:
+    def test_mixed_en_zh_sources_creates_separate_tasks(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        scope = {
+            "topic": "t", "goal_type": "exploratory", "depth": "quick",
+            "audience": "engineer", "scope_description": "d",
+            "search_directions": ["AI"],
+        }
+        _write_json(workdir / "scope.json", scope)
+        config = {
+            "sources": {
+                "3": {
+                    "sources": [
+                        {"name": "Medium", "domain": "medium.com", "site_query": "medium.com AI", "language": "en"},
+                        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com AI", "language": "zh"},
+                    ]
+                },
+            },
+            "routes": {"exploratory": {"entry_tier": 3, "path": [3]}},
+        }
+        proceeds(workdir, "scope", "search", config)
+        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
+        en_tasks = [t for t in plan["tasks"] if t["query_language"] == "en"]
+        zh_tasks = [t for t in plan["tasks"] if t["query_language"] == "zh"]
+        assert len(en_tasks) == 1
+        assert len(zh_tasks) == 1
+        assert en_tasks[0]["site_queries"] == ["medium.com AI"]
+        assert zh_tasks[0]["site_queries"] == ["zhihu.com AI"]
+
+    def test_en_only_sources_creates_only_en_task(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        scope = {
+            "topic": "t", "goal_type": "exploratory", "depth": "quick",
+            "audience": "engineer", "scope_description": "d",
+            "search_directions": ["AI"],
+        }
+        _write_json(workdir / "scope.json", scope)
+        config = {
+            "sources": {
+                "3": {
+                    "sources": [
+                        {"name": "Medium", "domain": "medium.com", "site_query": "medium.com AI"},
+                        {"name": "Dev.to", "domain": "dev.to", "site_query": "dev.to AI"},
+                    ]
+                },
+            },
+            "routes": {"exploratory": {"entry_tier": 3, "path": [3]}},
+        }
+        proceeds(workdir, "scope", "search", config)
+        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
+        assert len(plan["tasks"]) == 1
+        assert plan["tasks"][0]["query_language"] == "en"
+        assert len(plan["tasks"][0]["site_queries"]) == 2
+
+    def test_zh_only_sources_creates_only_zh_task(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        scope = {
+            "topic": "t", "goal_type": "exploratory", "depth": "quick",
+            "audience": "engineer", "scope_description": "d",
+            "search_directions": ["AI"],
+        }
+        _write_json(workdir / "scope.json", scope)
+        config = {
+            "sources": {
+                "3": {
+                    "sources": [
+                        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com AI", "language": "zh"},
+                        {"name": "CSDN", "domain": "csdn.net", "site_query": "csdn.net AI", "language": "zh"},
+                    ]
+                },
+            },
+            "routes": {"exploratory": {"entry_tier": 3, "path": [3]}},
+        }
+        proceeds(workdir, "scope", "search", config)
+        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
+        assert len(plan["tasks"]) == 1
+        assert plan["tasks"][0]["query_language"] == "zh"
+        assert len(plan["tasks"][0]["site_queries"]) == 2
+
+    def test_fetch_hints_per_language_group(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        scope = {
+            "topic": "t", "goal_type": "academic_research", "depth": "quick",
+            "audience": "engineer", "scope_description": "d",
+            "search_directions": ["AI"],
+        }
+        _write_json(workdir / "scope.json", scope)
+        config = {
+            "sources": {
+                "1": {
+                    "sources": [
+                        {"name": "arXiv", "domain": "arxiv.org", "site_query": "arxiv.org AI", "language": "en"},
+                        {"name": "CNKI", "domain": "cnki.net", "site_query": "cnki.net AI", "language": "zh"},
+                    ]
+                },
+            },
+            "routes": {"academic_research": {"entry_tier": 1, "path": [1]}},
+        }
+        proceeds(workdir, "scope", "search", config)
+        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
+        en_task = next(t for t in plan["tasks"] if t["query_language"] == "en")
+        zh_task = next(t for t in plan["tasks"] if t["query_language"] == "zh")
+        assert "fetch_hints" in en_task
+        assert "full paper" in en_task["fetch_hints"].lower()
+        assert zh_task.get("fetch_hints", "") == ""
+
+    def test_multiple_directions_doubles_tasks(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        scope = {
+            "topic": "t", "goal_type": "exploratory", "depth": "quick",
+            "audience": "engineer", "scope_description": "d",
+            "search_directions": ["AI", "ML"],
+        }
+        _write_json(workdir / "scope.json", scope)
+        config = {
+            "sources": {
+                "3": {
+                    "sources": [
+                        {"name": "Medium", "domain": "medium.com", "site_query": "medium.com", "language": "en"},
+                        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com", "language": "zh"},
+                    ]
+                },
+            },
+            "routes": {"exploratory": {"entry_tier": 3, "path": [3]}},
+        }
+        proceeds(workdir, "scope", "search", config)
+        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
+        assert len(plan["tasks"]) == 4
+        en_tasks = [t for t in plan["tasks"] if t["query_language"] == "en"]
+        zh_tasks = [t for t in plan["tasks"] if t["query_language"] == "zh"]
+        assert len(en_tasks) == 2
+        assert len(zh_tasks) == 2
+
+    def test_no_is_chinese_tier_logic(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        scope = {
+            "topic": "t", "goal_type": "exploratory", "depth": "quick",
+            "audience": "engineer", "scope_description": "d",
+            "search_directions": ["AI"],
+        }
+        _write_json(workdir / "scope.json", scope)
+        config = {
+            "sources": {
+                "3": {
+                    "sources": [
+                        {"name": "SomeCN", "domain": "example.com.cn", "site_query": "example.com.cn AI", "language": "en"},
+                    ]
+                },
+            },
+            "routes": {"exploratory": {"entry_tier": 3, "path": [3]}},
+        }
+        proceeds(workdir, "scope", "search", config)
+        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
+        assert len(plan["tasks"]) == 1
+        assert plan["tasks"][0]["query_language"] == "en"
+
+
 class TestGateReviewOnlyChecksReviewItems:
     """L3: _gate_review only checks claim_verified and claim_source_relevance."""
 

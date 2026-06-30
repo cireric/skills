@@ -136,6 +136,15 @@ def _get_goal_type(workdir: Path) -> str:
         return "other"
 
 
+def _build_fetch_hints(sources: list[dict]) -> str:
+    tier_domains = [s.get("domain", "") for s in sources]
+    if any("arxiv.org" in d for d in tier_domains):
+        return "MUST fetch full paper content (not just abstract) using exa_web_fetch_exa; search-result snippets are insufficient for Tier 1 academic sources"
+    if any("github.com" in d for d in tier_domains):
+        return "Prefer fetching README, key source files, or documentation rather than just the repo listing"
+    return ""
+
+
 def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
     """Generate search_plan.json based on route × search_directions (ADR 0011)."""
     scope = read_json(workdir / ARTIFACT_SCOPE)
@@ -154,30 +163,28 @@ def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
     for direction in directions:
         for tier in route_path:
             tier_sources = recommended.get(tier, [])
-            site_queries = [s.get("site_query", s.get("domain", "")) for s in tier_sources]
-            is_chinese_tier = any(
-                s.get("domain", "").endswith((".cn", ".com.cn")) or "cnki" in s.get("domain", "")
-                for s in tier_sources
-            )
-            fetch_hint = ""
-            tier_domains = [s.get("domain", "") for s in tier_sources]
-            if any("arxiv.org" in d for d in tier_domains):
-                fetch_hint = "MUST fetch full paper content (not just abstract) using exa_web_fetch_exa; search-result snippets are insufficient for Tier 1 academic sources"
-            elif any("github.com" in d for d in tier_domains):
-                fetch_hint = "Prefer fetching README, key source files, or documentation rather than just the repo listing"
+            en_sources = [s for s in tier_sources if s.get("language", "en") == "en"]
+            zh_sources = [s for s in tier_sources if s.get("language", "en") == "zh"]
 
-            task = {
-                "direction": direction,
-                "tier": tier,
-                "query_language": "zh" if is_chinese_tier else "en",
-                "site_queries": site_queries,
-                "min_sources": min_per_direction,
-                "status": "pending",
-                "collected_count": 0,
-            }
-            if fetch_hint:
-                task["fetch_hint"] = fetch_hint
-            tasks.append(task)
+            if en_sources:
+                site_queries = [s.get("site_query", s.get("domain", "")) for s in en_sources]
+                fetch_hints = _build_fetch_hints(en_sources)
+                task = {
+                    "direction": direction, "tier": tier, "query_language": "en",
+                    "site_queries": site_queries, "fetch_hints": fetch_hints,
+                    "min_sources": min_per_direction, "status": "pending", "collected_count": 0,
+                }
+                tasks.append(task)
+
+            if zh_sources:
+                site_queries = [s.get("site_query", s.get("domain", "")) for s in zh_sources]
+                fetch_hints = _build_fetch_hints(zh_sources)
+                task = {
+                    "direction": direction, "tier": tier, "query_language": "zh",
+                    "site_queries": site_queries, "fetch_hints": fetch_hints,
+                    "min_sources": min_per_direction, "status": "pending", "collected_count": 0,
+                }
+                tasks.append(task)
 
     write_json({"goal_type": goal_type, "depth": depth, "route": route_path, "tasks": tasks}, workdir / ARTIFACT_SEARCH_PLAN)
 
