@@ -46,6 +46,16 @@ After collecting answers, write `skills/info-collector/config.json` and confirm 
 
 **Re-running the wizard**: User can request setup wizard at any time by saying "重新配置" or "run setup wizard". This overwrites the existing `skills/info-collector/config.json`.
 
+## Phase 0: Pre-check
+
+1. Check whether `<project_root>/.workdir/` exists.
+2. If it exists → ask the user: "A previous research `.workdir/` directory was detected. Delete it?"
+   - User chooses delete → remove `.workdir/` → proceed to Phase 1
+   - User chooses keep → **abort the pipeline** (user may manually inspect and re-run)
+3. If it does not exist → proceed to Phase 1
+
+**Rationale**: Residual files from a previous run (scope.json, collected.json) can silently pollute a new research session, causing gate misjudgments. This check ensures every info-collector session starts clean.
+
 ## Phase 1: Scope
 
 1. **Interview** the user to determine:
@@ -149,6 +159,26 @@ Read collected.json and scope.json. Decide the sections (id, title) based on goa
 
 Delegate an independent agent call per section. Follow the template in `references/subagent-template.md`.
 
+#### Step 2.5: Gate pre-check
+
+Before running `proceed --from analysis --to review`, verify analysis.json against
+the gate rules checklist below. Fix any violations, then run the gate.
+Do NOT use the gate as a spell-checker — get it right the first time.
+
+The checklist is the AI-readable version of gate rules. Gate code is the single source of truth;
+the checklist ensures you know the rules before the gate enforces them.
+
+| # | Rule | Check method | On failure |
+|---|------|-------------|------------|
+| 1 | `evidence_type` ∈ {`independent_benchmark`, `official_data`} → must have `source_metadata` with non-empty `test_conditions` string | iterate claims | fix and re-check |
+| 2 | `precision: exact` → `evidence_type` must be `official_data` or `independent_benchmark` | iterate claims | fix and re-check |
+| 3 | Every claim's `source_urls` URLs (normalized) must exist in collected.json | URL set comparison | fix and re-check |
+| 4 | Every section must have `id` and `title` | iterate sections | fix and re-check |
+| 5 | `panoramic_understanding` / `exploratory` must have `overview` section | section id check | fix and re-check |
+| 6 | `{{ref:URL}}` markers' URLs (normalized) must exist in collected.json | iterate ref markers | fix and re-check |
+| 7 | Quantitative `goal_type` must have `methodology` section | section id check | fix and re-check |
+| 8 | Every claim's `source_urls` URLs must appear as `{{ref:URL}}` in the same section's content | iterate claims + content | fix and re-check |
+
 #### Step 3: Assemble analysis.json
 
 Merge all sections into a single analysis.json. JSON merge only — never rewrite section content.
@@ -179,6 +209,35 @@ If user says **yes**:
 6. **After fixing analysis.json, re-run the gate**: `python -m scripts.cli proceed --from review --to review`
    - This self-loop re-validates analysis.json without requiring a phase reset.
    - If the gate still refuses, use `python -m scripts.cli reset --phase review` then `python -m scripts.cli proceed --from analysis --to review`.
+
+If the subagent fails to produce review_report.md (file missing or empty):
+1. Ask the user to choose one of:
+   a. **Retry subagent review** (max 2 retries; each failure re-asks the user)
+   b. **Degrade to inline review** — perform review yourself (same workload as subagent:
+      read scope.json, collected.json, analysis.json; verify each claim individually;
+      write verification summaries). Create `.workdir/review_fallback.log` with:
+      `<timestamp> | subagent failed (attempt N/2) | error: <error detail> | user chose: inline review`
+      Use `--quality degraded` when generating the report.
+   c. **Skip review** — use `--quality unreviewed`
+
+`degraded` means review independence was lost (same LLM wrote and verified claims).
+`unreviewed` means no review was performed at all.
+
+**CRITICAL**: Verify each claim individually. For EVERY claim:
+1. Find the corresponding entry in collected.json by matching source_urls
+2. Read its fetched_content
+3. Confirm the content actually supports the claim
+4. Set `verified: true` ONLY if confirmed; leave `verified: false` otherwise
+
+**NEVER** use replaceAll or batch operations on the `verified` field.
+Unverified claims will block the review→final gate — this is by design.
+If a claim cannot be verified, either fix the claim or find a better source.
+
+For each verified claim, write a verification summary in review_report.md:
+
+- **[Section: <section_id>] Claim <N>**: "<claim text>"
+  - Source: [<source_url>]
+  - Verified: ✅ Confirmed — <one sentence explaining how fetched_content supports the claim>
 
 If user says **no** → quality will be set to `unreviewed` at finalization.
 

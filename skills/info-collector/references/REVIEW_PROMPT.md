@@ -13,11 +13,14 @@ Read these files from the skill's .workdir/:
     **Also check**: Does the section content in analysis.json actually include source URLs
     or inline references adjacent to claims, not just the structured source_urls metadata?
 1.5. **Claim verification**: For EVERY claim in analysis.json:
-    - Read the claim's source_urls
-    - Find the corresponding entries in collected.json
-    - Verify that the fetched_content of those entries actually supports the claim text
-    - Set the claim's `verified` field to `true` if confirmed, or note the discrepancy in your review
+    - Find the corresponding entry in collected.json by matching source_urls
+    - Read its fetched_content
+    - Confirm the content actually supports the claim
+    - Set `verified: true` ONLY if confirmed; leave `verified: false` otherwise
     - If a source URL's content does NOT support the claim, flag it as a critical issue
+    - **NEVER** use replaceAll or batch operations on the `verified` field.
+      Unverified claims will block the review→final gate — this is by design.
+      If a claim cannot be verified, either fix the claim or find a better source.
 2. **Contradictions**: Do any claims within or across sections contradict each other?
 3. **Coverage gaps**: Are there search_directions in scope.json that have no
    corresponding analysis?
@@ -70,5 +73,11 @@ Write your review to .workdir/review_report.md (NOT the project root) with this 
 ```
 
 After completing your review, update analysis.json:
-- Set `verified: true` on every claim you have confirmed against its source
-- Do NOT set verified: true on claims you could not confirm
+- For each verified claim, set `verified: true` individually — never use replaceAll or batch operations
+- Leave `verified: false` on claims you could not confirm
+
+For each verified claim, include a verification summary in review_report.md:
+
+- **[Section: <section_id>] Claim <N>**: "<claim text>"
+  - Source: [<source_url>]
+  - Verified: ✅ Confirmed — <one sentence explaining how fetched_content supports the claim>

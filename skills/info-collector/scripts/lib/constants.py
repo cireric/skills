@@ -131,6 +131,7 @@ ARTIFACT_ANALYSIS = "analysis.json"
 ARTIFACT_SEARCH_PLAN = "search_plan.json"
 ARTIFACT_PIPELINE_STATE = "pipeline_state.json"
 ARTIFACT_REVIEW_REPORT = "review_report.md"
+ARTIFACT_REVIEW_FALLBACK_LOG = "review_fallback.log"
 ARTIFACT_CONFIG = "config.json"
 
 
