@@ -29,13 +29,13 @@ Before finalizing each section's content, verify:
 - Every number has context (not "70% accuracy" but "70% on MNIST, 65% on CIFAR-10 under 5-shot conditions")
 - Every entity has a specific name (not "a framework" but "LangChain v0.3")
 - Comparisons use tables, not paragraphs
-- Each claim has its source URL adjacent (inline or footnote within the content)
+- Each claim has its source referenced via `{{ref:URL}}` markers adjacent to the claim in content
 
 ## Source Traceability
 
 Content must ensure source traceability:
 
-- **Every quantified claim (benchmark numbers, percentages, etc.) must include a source identifier**: inline URL, reference number `[1]` mapped to appendix, or a direct link
+- **Every quantified claim (benchmark numbers, percentages, etc.) must include a source identifier**: use `{{ref:URL}}` format where URL matches an entry in collected.json. The reporter assigns reference numbers automatically. **DO NOT** use hardcoded reference numbers like `[1]` or `[8]`.
 - **Benchmark data must include a test environment summary**: at minimum hardware, OS, runtime version, test date
 - **Every source name in the report must have a corresponding full clickable URL**
 

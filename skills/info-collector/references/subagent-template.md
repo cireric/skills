@@ -100,3 +100,14 @@ Any claim containing a specific number (percentage, dollar amount, benchmark sco
 - ❌ Claim: "Agyn achieves 72.2% on SWE-bench 500" with `precision: "exact"` when the fetched_content only mentions "multi-agent system" without the 72.2% figure
 - ✅ Claim: "Agyn outperforms single-agent baselines on SWE-bench 500" with `precision: "qualitative"`
 - ✅ Claim: "Agyn achieves ~70-75% on SWE-bench 500" with `precision: "range"`
+
+## Citation format rule
+
+When referencing sources in section content, use `{{ref:URL}}` format where URL
+matches an entry in collected.json. Example: `domain knowledge can be classified{{ref:https://ar5iv.labs.arxiv.org/html/2212.00017}}`.
+
+**DO NOT** use hardcoded reference numbers like `[8]` or `[&#91;8&#93;](#refs)`.
+The reporter assigns reference numbers automatically based on first-appearance order.
+
+Every URL in a claim's `source_urls` MUST also appear as `{{ref:URL}}` in the same
+section's content. The gate will block if any claim source URL is not referenced in content.
