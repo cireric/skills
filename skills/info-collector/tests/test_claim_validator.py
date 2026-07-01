@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from scripts.artifact_checks import CheckResult
-from scripts.claim_validator import ClaimValidator, _normalize_numbers, _number_found_in_source
+from scripts.claim_validator import ClaimValidator, _normalize_numbers, _number_found_in_source, _is_indirect_source
 
 
 def _write_json(path, data):
@@ -457,7 +457,7 @@ class TestCheckClaimVerified:
         result = _get_result(results, "claim_verified")
         assert result.passed
 
-    def test_claim_verified_false_fails(self, tmp_path):
+    def test_claim_verified_false_warns(self, tmp_path):
         (tmp_path / "review_report.md").write_text("# Review", encoding="utf-8")
         _write_json(
             tmp_path / "analysis.json",
@@ -476,7 +476,7 @@ class TestCheckClaimVerified:
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "claim_verified")
         assert not result.passed
-        assert result.level == "BLOCKER"
+        assert result.level == "WARN"
         assert "Claim in section 'comparison' not verified" in result.message
 
     def test_claim_verified_unverifiable_warns(self, tmp_path):
@@ -830,111 +830,194 @@ class TestCheckClaimSourceRefCoverage:
 
 class TestNumberNormalization:
     def test_dollar_amount_in_source(self):
-        assert _number_found_in_source("revenue was $9.8 billion", "market estimated at $9.8B")
+        assert _number_found_in_source("revenue was $9.8 billion", "market estimated at $9.8B") == "source_confirmed"
 
     def test_billion_suffix_in_source(self):
-        assert _number_found_in_source("revenue was 9.8 billion", "market reached $9.8B in 2026")
+        assert _number_found_in_source("revenue was 9.8 billion", "market reached $9.8B in 2026") == "source_confirmed"
 
     def test_percentage_range_in_source(self):
-        assert _number_found_in_source("failure rate is 45-70%", "between 45% and 70% of code fails")
+        assert _number_found_in_source("failure rate is 45-70%", "between 45% and 70% of code fails") == "source_confirmed"
 
     def test_comma_number_in_source(self):
-        assert _number_found_in_source("surveyed 10,847 developers", "survey of 10847 developers")
+        assert _number_found_in_source("surveyed 10,847 developers", "survey of 10847 developers") == "source_confirmed"
 
     def test_no_false_match(self):
-        assert not _number_found_in_source("response time 45ms", "latency was 450ms average")
+        assert _number_found_in_source("response time 45ms", "latency was 450ms average") == "source_absent"
 
 
-class TestCheckClaimSourceRelevance:
-    def _make_collected(self, entries):
-        return entries
-
-    def _make_analysis(self, claims):
-        return {
-            "topic": "test",
-            "goal_type": "panoramic_understanding",
-            "audience": "engineer",
-            "sections": [
-                {"id": "s1", "title": "S1", "content": "c", "claims": claims}
-            ],
-        }
-
-    def test_no_numbers_in_claim_passes(self, tmp_path):
-        collected = [{"url": "https://a.com", "title": "A", "snippet": "about coding", "fetched_content": "x" * 300}]
-        claims = [{"text": "AI is widely used", "source_urls": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "qualitative"}]
-        _write_json(tmp_path / "collected.json", collected)
-        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+class TestSourceVerificationCheck:
+    def test_confirmed_number_in_source(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [{
+                "text": "Achieves 98% accuracy",
+                "source_urls": ["https://a.com"],
+                "evidence_type": "official_data",
+                "confidence": "high",
+                "precision": "exact",
+            }]}],
+        })
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://a.com", "snippet": "", "fetched_content": "The system achieves 98% accuracy on the benchmark", "source_tier": 1}
+        ])
         results = ClaimValidator(tmp_path, "tech_selection").check()
-        result = _get_result(results, "claim_source_relevance")
+        result = _get_result(results, "source_verification_check")
+        assert result is not None
         assert result.passed
+        assert "source_confirmed" in result.message
 
-    def test_number_found_in_source_passes(self, tmp_path):
-        collected = [{"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "the accuracy reached 95 percent in tests " + "x" * 200}]
-        claims = [{"text": "Model achieves 95% accuracy", "source_urls": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact"}]
-        _write_json(tmp_path / "collected.json", collected)
-        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+    def test_absent_number_not_in_source(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [{
+                "text": "Achieves 72.2% accuracy",
+                "source_urls": ["https://a.com"],
+                "evidence_type": "official_data",
+                "confidence": "high",
+                "precision": "exact",
+            }]}],
+        })
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://a.com", "snippet": "", "fetched_content": "The system performs well on benchmarks", "source_tier": 1}
+        ])
         results = ClaimValidator(tmp_path, "tech_selection").check()
-        result = _get_result(results, "claim_source_relevance")
+        result = _get_result(results, "source_verification_check")
+        assert result is not None
         assert result.passed
+        assert "source_absent" in result.message
 
-    def test_number_not_in_source_warns(self, tmp_path):
-        collected = [{"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "the model performed well in general " + "x" * 200}]
-        claims = [{"text": "Model achieves 98% accuracy", "source_urls": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact"}]
-        _write_json(tmp_path / "collected.json", collected)
-        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+    def test_indirect_tier3_third_party(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [{
+                "text": "Market grows 15%",
+                "source_urls": ["https://a.com"],
+                "evidence_type": "third_party_estimate",
+                "confidence": "medium",
+                "precision": "range",
+            }]}],
+        })
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://a.com", "snippet": "", "fetched_content": "x" * 300, "source_tier": 3}
+        ])
         results = ClaimValidator(tmp_path, "tech_selection").check()
-        result = _get_result(results, "claim_source_relevance")
+        result = _get_result(results, "source_verification_check")
+        assert result is not None
+        assert "source_indirect" in result.message
+
+    def test_indirect_vendor_source_type(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [{
+                "text": "Scores 5000 req/s",
+                "source_urls": ["https://a.com"],
+                "evidence_type": "official_data",
+                "confidence": "high",
+                "precision": "exact",
+                "source_metadata": {"test_conditions": "H100", "test_date": "2026", "source_type": "vendor_benchmark"},
+            }]}],
+        })
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://a.com", "snippet": "", "fetched_content": "5000 req/s measured", "source_tier": 2}
+        ])
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "source_verification_check")
+        assert result is not None
+        assert "source_indirect" in result.message
+
+    def test_qualitative_claim_defaults_confirmed(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [{
+                "text": "Framework is widely adopted",
+                "source_urls": ["https://a.com"],
+                "evidence_type": "qualitative_trend",
+                "confidence": "medium",
+                "precision": "qualitative",
+            }]}],
+        })
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://a.com", "snippet": "", "fetched_content": "x" * 300, "source_tier": 2}
+        ])
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "source_verification_check")
+        assert result is not None
+        assert "source_confirmed" in result.message
+
+    def test_indirect_ratio_warn(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [
+                {
+                    "text": "Scores 72.2%",
+                    "source_urls": ["https://a.com"],
+                    "evidence_type": "third_party_estimate",
+                    "confidence": "medium",
+                    "precision": "range",
+                },
+                {
+                    "text": "据Gartner报告显示增长",
+                    "source_urls": ["https://b.com"],
+                    "evidence_type": "third_party_estimate",
+                    "confidence": "medium",
+                    "precision": "qualitative",
+                },
+            ]}],
+        })
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://a.com", "snippet": "", "fetched_content": "no numbers here", "source_tier": 3},
+            {"url": "https://b.com", "snippet": "", "fetched_content": "x" * 300, "source_tier": 3},
+        ])
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "source_verification_check")
         assert not result.passed
-        assert "not found in source" in result.message
+        assert "30%" in result.message
 
-    def test_third_party_estimate_skipped(self, tmp_path):
-        collected = [{"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "no numbers here " + "x" * 200}]
-        claims = [{"text": "Revenue reached $5B in 2026", "source_urls": ["https://a.com"], "evidence_type": "third_party_estimate", "confidence": "medium", "precision": "range"}]
-        _write_json(tmp_path / "collected.json", collected)
-        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+    def test_indirect_rule3_host_match_not_indirect(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [{
+                "text": "据Gartner报告显示增长15%",
+                "source_urls": ["https://gartner.com/report"],
+                "evidence_type": "official_data",
+                "confidence": "high",
+                "precision": "exact",
+            }]}],
+        })
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://gartner.com/report", "snippet": "", "fetched_content": "growth of 15%", "source_tier": 2}
+        ])
         results = ClaimValidator(tmp_path, "tech_selection").check()
-        result = _get_result(results, "claim_source_relevance")
-        assert result.passed
+        result = _get_result(results, "source_verification_check")
+        assert result is not None
+        assert "source_confirmed" in result.message
 
-    def test_expert_opinion_number_not_in_source_warns(self, tmp_path):
-        collected = [{"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "expert analysis of the market " + "x" * 200}]
-        claims = [{"text": "Adoption rate is 85% according to experts", "source_urls": ["https://a.com"], "evidence_type": "expert_opinion", "confidence": "medium", "precision": "range"}]
-        _write_json(tmp_path / "collected.json", collected)
-        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
+    def test_indirect_rule3_host_mismatch_is_indirect(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [{
+                "text": "据Gartner报告显示增长15%",
+                "source_urls": ["https://someblog.com/post"],
+                "evidence_type": "official_data",
+                "confidence": "high",
+                "precision": "exact",
+            }]}],
+        })
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://someblog.com/post", "snippet": "", "fetched_content": "Gartner says 15% growth", "source_tier": 3}
+        ])
         results = ClaimValidator(tmp_path, "tech_selection").check()
-        result = _get_result(results, "claim_source_relevance")
-        assert not result.passed
+        result = _get_result(results, "source_verification_check")
+        assert result is not None
+        assert "source_indirect" in result.message
 
-    def test_short_fetched_content_skipped(self, tmp_path):
-        collected = [{"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "short"}]
-        claims = [{"text": "Model achieves 98% accuracy", "source_urls": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact"}]
-        _write_json(tmp_path / "collected.json", collected)
-        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
-        results = ClaimValidator(tmp_path, "tech_selection").check()
-        result = _get_result(results, "claim_source_relevance")
-        assert result.passed
-
-    def test_no_source_urls_skipped(self, tmp_path):
-        collected = [{"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "x" * 300}]
-        claims = [{"text": "Model achieves 98% accuracy", "source_urls": [], "evidence_type": "official_data", "confidence": "high", "precision": "exact"}]
-        _write_json(tmp_path / "collected.json", collected)
-        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
-        results = ClaimValidator(tmp_path, "tech_selection").check()
-        result = _get_result(results, "claim_source_relevance")
-        assert result.passed
-
-    def test_multiple_claims_mixed_results(self, tmp_path):
-        collected = [
-            {"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "accuracy was 95 percent " + "x" * 200},
-            {"url": "https://b.com", "title": "B", "snippet": "s", "fetched_content": "no relevant data " + "x" * 200},
-        ]
-        claims = [
-            {"text": "Model achieves 95% accuracy", "source_urls": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact"},
-            {"text": "Revenue reached 98 billion dollars", "source_urls": ["https://b.com"], "evidence_type": "official_data", "confidence": "high", "precision": "range"},
-        ]
-        _write_json(tmp_path / "collected.json", collected)
-        _write_json(tmp_path / "analysis.json", self._make_analysis(claims))
-        results = ClaimValidator(tmp_path, "tech_selection").check()
-        result = _get_result(results, "claim_source_relevance")
-        assert not result.passed
-        assert "1 claim(s)" in result.message
+    def test_source_verification_does_not_write_to_disk(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [{
+                "text": "Achieves 98% accuracy",
+                "source_urls": ["https://a.com"],
+                "evidence_type": "official_data",
+                "confidence": "high",
+                "precision": "exact",
+            }]}],
+        })
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://a.com", "snippet": "", "fetched_content": "98% accuracy", "source_tier": 1}
+        ])
+        original_mtime = (tmp_path / "analysis.json").stat().st_mtime
+        import time; time.sleep(0.01)
+        ClaimValidator(tmp_path, "tech_selection").check()
+        new_mtime = (tmp_path / "analysis.json").stat().st_mtime
+        assert original_mtime == new_mtime

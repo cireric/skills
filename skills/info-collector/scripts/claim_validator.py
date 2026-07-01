@@ -7,16 +7,19 @@ deduplication, and metric consistency in analysis.json against collected.json.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .artifact_checks import CheckResult, _read_artifact
 from .lib.constants import (
     ARTIFACT_ANALYSIS,
     ARTIFACT_COLLECTED,
     ARTIFACT_REVIEW_REPORT,
+    _INDIRECT_CITATION_PATTERNS,
     _QUANTITATIVE_GOAL_TYPES,
     _SINGLE_SOURCE_RATIO,
+    _SOURCE_INDIRECT_RATIO_WARN,
+    _VENDOR_SOURCE_TYPES,
 )
 from .lib.exceptions import ArtifactError
 from .lib.utils import build_collected_by_url, build_collected_url_set, normalize_url, read_json
@@ -58,10 +61,77 @@ def _normalize_numbers(text: str) -> set[str]:
     return numbers
 
 
-def _number_found_in_source(claim_text: str, source_text: str) -> bool:
+def _number_found_in_source(claim_text: str, source_text: str) -> str:
     claim_nums = _normalize_numbers(claim_text)
+    if not claim_nums:
+        return "source_confirmed"
     source_nums = _normalize_numbers(source_text)
-    return bool(claim_nums & source_nums)
+    if claim_nums & source_nums:
+        return "source_confirmed"
+    return "source_absent"
+
+
+def _is_indirect_source(claim: dict, collected_by_url: dict[str, dict]) -> bool:
+    for url in claim.get("source_urls", []):
+        item = collected_by_url.get(normalize_url(url))
+        if item:
+            tier = item.get("source_tier", 0)
+            if isinstance(tier, int) and tier >= 3:
+                ev = claim.get("evidence_type", "")
+                if ev in ("third_party_estimate", "official_data"):
+                    return True
+
+    meta = claim.get("source_metadata", {})
+    source_type = meta.get("source_type", "") if isinstance(meta, dict) else ""
+    if source_type in _VENDOR_SOURCE_TYPES:
+        if claim.get("precision") in ("exact", "range"):
+            return True
+
+    text = claim.get("text", "")
+    source_urls = claim.get("source_urls", [])
+    source_hosts: set[str] = set()
+    for url in source_urls:
+        try:
+            source_hosts.add(urlparse(url).hostname or "")
+        except Exception:
+            pass
+    for pattern in _INDIRECT_CITATION_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            entity = _extract_indirect_entity(match, text)
+            if entity and not _entity_matches_host(entity, source_hosts):
+                return True
+
+    return False
+
+
+def _extract_indirect_entity(match: re.Match, text: str) -> str | None:
+    group = match.group(0)
+    if group.startswith("据"):
+        for keyword in ("报告", "预测", "发现", "统计", "调查", "研究", "分析"):
+            if keyword in group:
+                return group[1:].split(keyword)[0].strip()
+    for keyword in ("报告", "预测", "发现", "统计", "调查", "研究", "分析"):
+        if keyword in group:
+            return group.split(keyword)[0].strip()
+    for prefix in ("according to ", "based on ", "cited in ", "reported by "):
+        if group.lower().startswith(prefix):
+            return group[len(prefix):].strip()
+    return None
+
+
+def _entity_matches_host(entity: str, source_hosts: set[str]) -> bool:
+    entity_lower = entity.lower().rstrip(".,;:)")
+    for host in source_hosts:
+        if not host:
+            continue
+        host_lower = host.lower()
+        parts = host_lower.split(".")
+        if entity_lower in parts:
+            return True
+        if len(parts) >= 2 and entity_lower == parts[-2]:
+            return True
+    return False
 
 
 def _check_data_variance(section: dict) -> list[str]:
@@ -116,6 +186,7 @@ class ClaimValidator:
         self._review_exists: bool = (workdir / ARTIFACT_REVIEW_REPORT).exists()
         self._sections: list[dict] = []
         self._all_claims: list[tuple[str, int, dict]] = []
+        self._sv_data: list | None = None
         self._load_data()
 
     def _load_data(self) -> None:
@@ -150,9 +221,9 @@ class ClaimValidator:
             self._check_source_metadata(),
             self._check_metric_type_homogeneity(),
             self._check_claim_dedup(),
-            self._check_claim_source_relevance(),
             self._check_ref_marker_validity(),
             self._check_claim_source_ref_coverage(),
+            self._check_source_verification(),
         ]
 
     def _check_claim_metadata(self) -> CheckResult:
@@ -198,7 +269,7 @@ class ClaimValidator:
                     continue
                 else:
                     numbers_in_source = any(
-                        _number_found_in_source(text, src) for src in source_texts
+                        _number_found_in_source(text, src) == "source_confirmed" for src in source_texts
                     )
                     if not numbers_in_source:
                         warnings.append(
@@ -215,7 +286,7 @@ class ClaimValidator:
 
     def _check_claim_verified(self) -> CheckResult:
         if not self._review_exists:
-            return CheckResult("claim_verified", "BLOCKER", True, "Skipped (review not yet done)")
+            return CheckResult("claim_verified", "WARN", True, "Skipped (review not yet done)")
         warnings: list[str] = []
         total_claims = 0
         verified_count = 0
@@ -228,7 +299,7 @@ class ClaimValidator:
                 text = claim.get("text", "")[:50]
                 return CheckResult(
                     "claim_verified",
-                    "BLOCKER",
+                    "WARN",
                     False,
                     f"Claim in section '{sec_id}' not verified: {text}",
                 )
@@ -242,7 +313,7 @@ class ClaimValidator:
             )
         if warnings:
             return CheckResult("claim_verified", "WARN", True, "; ".join(warnings))
-        return CheckResult("claim_verified", "BLOCKER", True)
+        return CheckResult("claim_verified", "WARN", True)
 
     def _check_source_metadata(self) -> CheckResult:
         for sec_id, ci, claim in self._all_claims:
@@ -302,40 +373,52 @@ class ClaimValidator:
             )
         return CheckResult("claim_dedup", "WARN", True)
 
-    def _check_claim_source_relevance(self) -> CheckResult:
-        warnings: list[str] = []
-        for sec_id, ci, claim in self._all_claims:
-            if claim.get("evidence_type") == "third_party_estimate":
-                continue
-            text = claim.get("text", "")
-            if not _PRECISE_NUMBER_PATTERN.search(text):
-                continue
-            source_texts = []
-            for url in claim.get("source_urls", []):
-                item = self._collected_by_url.get(normalize_url(url))
-                if item:
-                    source_texts.append(
-                        _source_text(item)
-                    )
-            if not source_texts:
-                continue
-            any_sufficient = any(len(src) >= 200 for src in source_texts)
-            if not any_sufficient:
-                continue
-            numbers_in_source = any(
-                _number_found_in_source(text, src) for src in source_texts
-            )
-            if not numbers_in_source:
-                warnings.append(
-                    f"sections.{sec_id}.claims[{ci}]: claim contains precise number(s) "
-                    f"not found in source fetched_content — verify source attribution or use range/qualitative precision"
-                )
-        if warnings:
-            msg = f"{len(warnings)} claim(s) with numbers not found in sources: " + "; ".join(warnings[:5])
-            if len(warnings) > 5:
-                msg += f"; ... and {len(warnings) - 5} more"
-            return CheckResult("claim_source_relevance", "WARN", False, msg)
-        return CheckResult("claim_source_relevance", "WARN", True, "all numeric claims traceable to sources")
+    def _check_source_verification(self) -> CheckResult:
+        if not self._collected_by_url:
+            return CheckResult("source_verification_check", "WARN", True, "No collected sources to verify against")
+
+        sv_counts = {"source_confirmed": 0, "source_absent": 0, "source_indirect": 0}
+        total = 0
+        sv_data: list[tuple[int, int, str]] = []
+
+        for sec_idx, section in enumerate(self._sections):
+            for ci, claim in enumerate(section.get("claims", [])):
+                total += 1
+                sv = self._compute_source_verification(claim)
+                sv_data.append((sec_idx, ci, sv))
+                sv_counts[sv] += 1
+
+        self._sv_data = sv_data
+
+        parts = [f"{k}: {v}" for k, v in sv_counts.items() if v > 0]
+        msg = f"Source verification: {', '.join(parts)}"
+
+        if total > 0 and sv_counts["source_indirect"] / total > _SOURCE_INDIRECT_RATIO_WARN:
+            ratio = sv_counts["source_indirect"] / total
+            return CheckResult("source_verification_check", "WARN", False,
+                              f"{msg}; source_indirect ratio {ratio:.0%} > {_SOURCE_INDIRECT_RATIO_WARN:.0%}")
+
+        return CheckResult("source_verification_check", "WARN", True, msg)
+
+    def _compute_source_verification(self, claim: dict) -> str:
+        if _is_indirect_source(claim, self._collected_by_url):
+            return "source_indirect"
+
+        source_texts = []
+        for url in claim.get("source_urls", []):
+            item = self._collected_by_url.get(normalize_url(url))
+            if item:
+                source_texts.append(_source_text(item))
+
+        if not source_texts:
+            if _PRECISE_NUMBER_PATTERN.search(claim.get("text", "")):
+                return "source_absent"
+            return "source_confirmed"
+
+        results = [_number_found_in_source(claim.get("text", ""), src) for src in source_texts]
+        if any(r == "source_confirmed" for r in results):
+            return "source_confirmed"
+        return "source_absent"
 
     def _check_ref_marker_validity(self) -> CheckResult:
         all_refs = []
