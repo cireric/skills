@@ -20,3 +20,4 @@
 - 来源归属错误在 gate 层面被阻断，不再依赖 AI 自律
 - 审查工作量增加（逐个验证），但质量提升
 - url_traceability 仍保留（检查 URL 存在性），verified 检查是更严格的补充
+- 执行方式已强化：逐条验证 + 验证摘要写入 review_report.md，禁止 replaceAll 批量操作。详见 ADR 0027
