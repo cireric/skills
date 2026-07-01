@@ -537,7 +537,7 @@ class TestGateFinalOnlyBlocksBlocker:
     """BUG-1 fix: _gate_final only blocks on BLOCKER-level failures, not WARN."""
 
     def test_warn_does_not_block_final_to_cleanup(self, tmp_path, monkeypatch):
-        report = "---\ntopic: T\ngoal_type: exploratory\ndate: 2026-06-26\nquality: draft\n---\n## Overview\nContent with cite [&#91;1&#93;](#refs).\n\n## References\n- **[1]** Title — [URL](https://a.com)\n"
+        report = "---\ntopic: T\ngoal_type: exploratory\ndate: 2026-06-26\nreview_status: draft\n---\n## Overview\nContent with cite [&#91;1&#93;](#refs).\n\n## References\n- **[1]** Title — [URL](https://a.com)\n"
         report_path = tmp_path / "report.md"
         report_path.write_text(report, encoding="utf-8")
         monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)

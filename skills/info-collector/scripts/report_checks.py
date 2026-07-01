@@ -11,7 +11,7 @@ from .lib.constants import _OVERLONG_LINE_THRESHOLD
 
 _HIDDEN_REF_DEF = re.compile(r'^\[\d+\]:\s+https?://\S')
 _VISIBLE_REF_ITEM = re.compile(r'^-\s+\*\*\[\d+\]\*\*')
-_INLINE_CITATION = re.compile(r'\[&#91;(\d+)&#93;\]\([^)]*\)|\[\\?\[(\d+)\\?\]\]\([^)]*\)')
+_INLINE_CITATION = re.compile(r'\[&#91;(\d+)[†‡]?&#93;\]\([^)]*\)|\[\\?\[(\d+)[†‡]?\\?\]\]\([^)]*\)')
 _REF_DEF_NUM = re.compile(r'^\[(\d+)\]:\s+https?://\S')
 _FENCED_CODE = re.compile(r'^```')
 _HEADING = re.compile(r'^(#{1,6})\s+(.+)$')
@@ -45,7 +45,7 @@ def _extract_cited_nums(body: str) -> set[int]:
         num = m.group(1) or m.group(2)
         if num:
             cited_nums.add(int(num))
-    for m in re.finditer(r'\[(\d{1,2})\]\[\]', body):
+    for m in re.finditer(r'\[(\d{1,2})[†‡]?\]\[\]', body):
         cited_nums.add(int(m.group(1)))
     return cited_nums
 
@@ -155,7 +155,7 @@ def check_report_front_matter(report_path: Path) -> CheckResult:
     if not end_match:
         return CheckResult("report_front_matter", "BLOCKER", False, "YAML front matter not properly closed")
     yaml_text = content[3:3 + end_match.start()]
-    required_fields = {"topic", "goal_type", "date", "quality"}
+    required_fields = {"topic", "goal_type", "date", "review_status"}
     missing = []
     for field in required_fields:
         if not re.search(rf'^{field}\s*:', yaml_text, re.MULTILINE):

@@ -68,7 +68,7 @@ def cmd_report(args: argparse.Namespace) -> None:
     from .lib.utils import read_json
     from .lib.exceptions import ArtifactError
 
-    quality = args.quality or _detect_quality()
+    review_status = args.review_status or _detect_review_status()
     try:
         scope_data = read_json(scope_path)
     except ArtifactError as e:
@@ -80,7 +80,7 @@ def cmd_report(args: argparse.Namespace) -> None:
     report = generate_report(
         analysis_path,
         scope_path,
-        quality=quality,
+        review_status=review_status,
         search_rounds=args.search_rounds or 1,
         source_count=args.source_count or _count_sources(),
         report_language=report_language,
@@ -136,7 +136,7 @@ def cmd_reset(args: argparse.Namespace) -> None:
         print(f"Reset from phase '{phase}': nothing to remove")
 
 
-def _detect_quality() -> str:
+def _detect_review_status() -> str:
     review_path = WORKDIR / ARTIFACT_REVIEW_REPORT
     if not review_path.exists():
         return "unreviewed"
@@ -214,7 +214,7 @@ def main() -> None:
     p_gateway.set_defaults(func=cmd_gateway)
 
     p_report = sub.add_parser("report", help="Generate report from analysis.json")
-    p_report.add_argument("--quality", choices=["passed", "degraded", "unreviewed"])
+    p_report.add_argument("--review-status", choices=["passed", "degraded", "unreviewed"], dest="review_status")
     p_report.add_argument("--search-rounds", type=int)
     p_report.add_argument("--source-count", type=int)
     p_report.add_argument("--output")

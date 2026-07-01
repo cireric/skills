@@ -15,15 +15,64 @@ def _label(key: str, lang: str) -> str:
 
 _REF_MARKER_RE = re.compile(r'\{\{ref:(.*?)\}\}')
 
+_SV_MARKER = {"source_absent": "†", "source_indirect": "‡"}
 
-def _resolve_ref_markers(content: str, ref_map: dict[str, int]) -> str:
+_SV_ORDER = {"source_confirmed": 0, "source_indirect": 1, "source_absent": 2}
+
+
+def _resolve_ref_markers(content: str, ref_map: dict[str, int], sv_map: dict[str, str] | None = None) -> str:
     def _replacer(match: re.Match) -> str:
         url = match.group(1).strip()
         norm = normalize_url(url)
         if norm not in ref_map:
             ref_map[norm] = len(ref_map) + 1
-        return f"[&#91;{ref_map[norm]}&#93;](#refs)"
+        num = ref_map[norm]
+        marker = ""
+        if sv_map is not None:
+            sv = sv_map.get(norm, "source_confirmed")
+            marker = _SV_MARKER.get(sv, "")
+        return f"[&#91;{num}{marker}&#93;](#refs)"
     return _REF_MARKER_RE.sub(_replacer, content)
+
+
+def _build_sv_map(analysis: dict) -> dict[str, str]:
+    url_worst: dict[str, str] = {}
+    for section in analysis.get("sections", []):
+        for claim in section.get("claims", []):
+            sv = claim.get("source_verification", "source_confirmed")
+            for url in claim.get("source_urls", []):
+                norm = normalize_url(url)
+                current = url_worst.get(norm, "source_confirmed")
+                if _SV_ORDER.get(sv, 0) > _SV_ORDER.get(current, 0):
+                    url_worst[norm] = sv
+    return url_worst
+
+
+def _render_verification_summary(analysis: dict, lang: str = "en") -> str:
+    sv_counts = {"source_confirmed": 0, "source_absent": 0, "source_indirect": 0}
+    total = 0
+    for section in analysis.get("sections", []):
+        for claim in section.get("claims", []):
+            sv = claim.get("source_verification")
+            if sv and sv in sv_counts:
+                sv_counts[sv] += 1
+                total += 1
+    if total == 0:
+        return ""
+    lines = [
+        "",
+        "> **Verification note**: This report is a research starting point, not a citable authority.",
+        "> † = data not found in cited source; ‡ = data from indirect source.",
+        "",
+        f"| Status | Count | Ratio |",
+        f"|--------|-------|-------|",
+    ]
+    for status in ("source_confirmed", "source_indirect", "source_absent"):
+        count = sv_counts[status]
+        ratio = f"{count/total:.0%}" if total else "0%"
+        label = {"source_confirmed": "Confirmed", "source_indirect": "Indirect ‡", "source_absent": "Absent †"}[status]
+        lines.append(f"| {label} | {count} | {ratio} |")
+    return "\n".join(lines)
 
 
 def _render_references(reference_map: dict[str, int], collected: list[dict], lang: str = "en") -> str:
@@ -79,7 +128,7 @@ def build_front_matter(
     topic: str,
     goal_type: str,
     scope: str,
-    quality: str,
+    review_status: str,
     search_rounds: int,
     source_count: int,
     audience: str | None = None,
@@ -94,7 +143,8 @@ def build_front_matter(
     if report_language:
         lines.append(f"report_language: {report_language}")
     lines.append(f"scope: {scope}")
-    lines.append(f"quality: {quality}")
+    lines.append(f"review_status: {review_status}")
+    lines.append(f"verification_required: true")
     lines.append(f"search_rounds: {search_rounds}")
     lines.append(f"source_count: {source_count}")
     lines.append("---")
@@ -151,13 +201,18 @@ def sections_to_markdown(analysis: dict, collected: list[dict] | None = None, la
     goal_type = analysis.get("goal_type", "")
     compact = goal_type in _EXPLORATORY_GOAL_TYPES
 
+    sv_map = _build_sv_map(analysis)
+    verification_summary = _render_verification_summary(analysis, lang=lang)
+    if verification_summary:
+        parts.append(verification_summary)
+
     resolved_contents: dict[int, str] = {}
     for idx, sec in enumerate(analysis.get("sections", [])):
         content = sec.get("content", "")
         heading = f"## {sec.get('title', sec.get('id', ''))}"
         if content.startswith(heading):
             content = content[len(heading):].lstrip("\n")
-        resolved_contents[idx] = _resolve_ref_markers(content, ref_map)
+        resolved_contents[idx] = _resolve_ref_markers(content, ref_map, sv_map)
 
     for idx, sec in enumerate(analysis.get("sections", [])):
         title = sec.get("title", sec.get("id", ""))
@@ -186,7 +241,7 @@ def sections_to_markdown(analysis: dict, collected: list[dict] | None = None, la
 def generate_report(
     analysis_path: Path,
     scope_path: Path,
-    quality: str,
+    review_status: str,
     search_rounds: int,
     source_count: int,
     report_language: str | None = None,
@@ -203,7 +258,7 @@ def generate_report(
         topic,
         goal_type,
         scope_desc,
-        quality,
+        review_status,
         search_rounds,
         source_count,
         audience,

@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts.cli import _detect_quality, _build_report_filename, cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_reset, cmd_source, main, WORKDIR
+from scripts.cli import _detect_review_status, _build_report_filename, cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_reset, cmd_source, main, WORKDIR
 from scripts.lib.exceptions import InfoCollectorError
 
 
@@ -23,7 +23,7 @@ def _make_namespace(**kwargs):
     return argparse.Namespace(**kwargs)
 
 
-class TestDetectQuality:
+class TestDetectReviewStatus:
     def test_verdict_pass(self, tmp_path):
         workdir = tmp_path / ".workdir"
         workdir.mkdir()
@@ -31,7 +31,7 @@ class TestDetectQuality:
             "## Overall Verdict\n**pass**\n", encoding="utf-8"
         )
         with patch("scripts.cli.WORKDIR", workdir):
-            assert _detect_quality() == "passed"
+            assert _detect_review_status() == "passed"
 
     def test_verdict_pass_with_issues(self, tmp_path):
         workdir = tmp_path / ".workdir"
@@ -40,7 +40,7 @@ class TestDetectQuality:
             "## Overall Verdict\n**pass_with_issues**\n", encoding="utf-8"
         )
         with patch("scripts.cli.WORKDIR", workdir):
-            assert _detect_quality() == "degraded"
+            assert _detect_review_status() == "degraded"
 
     def test_verdict_fail_exits(self, tmp_path):
         workdir = tmp_path / ".workdir"
@@ -49,7 +49,7 @@ class TestDetectQuality:
             "## Overall Verdict\n**fail**\n", encoding="utf-8"
         )
         with patch("scripts.cli.WORKDIR", workdir), pytest.raises(SystemExit) as exc:
-            _detect_quality()
+            _detect_review_status()
         assert exc.value.code == 1
 
     def test_verdict_unparseable_fallback(self, tmp_path):
@@ -59,13 +59,13 @@ class TestDetectQuality:
             "## Overall Verdict\n**unknown_verdict**\n", encoding="utf-8"
         )
         with patch("scripts.cli.WORKDIR", workdir):
-            assert _detect_quality() == "degraded"
+            assert _detect_review_status() == "degraded"
 
     def test_no_review_report(self, tmp_path):
         workdir = tmp_path / ".workdir"
         workdir.mkdir()
         with patch("scripts.cli.WORKDIR", workdir):
-            assert _detect_quality() == "unreviewed"
+            assert _detect_review_status() == "unreviewed"
 
 
 class TestCmdProceed:
@@ -211,7 +211,7 @@ class TestCmdReport:
         with patch("scripts.cli.WORKDIR", workdir), patch("sys.exit"):
             cmd_report(
                 _make_namespace(
-                    quality="passed",
+                    review_status="passed",
                     search_rounds=1,
                     source_count=1,
                     output=str(output_dir),
@@ -241,7 +241,7 @@ class TestCmdReport:
             with patch("scripts.reporter.generate_report", return_value=""):
                 cmd_report(
                     _make_namespace(
-                        quality="passed",
+                        review_status="passed",
                         search_rounds=1,
                         source_count=1,
                         output=None,
@@ -305,7 +305,7 @@ class TestCmdReport:
         with patch("scripts.cli.WORKDIR", workdir), patch("sys.exit"):
             cmd_report(
                 _make_namespace(
-                    quality="passed",
+                    review_status="passed",
                     search_rounds=1,
                     source_count=1,
                     output=str(output_dir),

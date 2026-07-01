@@ -5,9 +5,11 @@ from pathlib import Path
 
 from scripts.reporter import (
     _TIER_LABELS,
+    _build_sv_map,
     _label,
     _render_references,
     _render_test_conditions,
+    _render_verification_summary,
     _resolve_ref_markers,
     build_front_matter,
     generate_report,
@@ -131,11 +133,11 @@ class TestBuildFrontMatter:
         assert fm.startswith("---")
         assert fm.endswith("---")
         assert "topic: Test Topic" in fm
-        assert "quality: passed" in fm
+        assert "review_status: passed" in fm
+        assert "quality:" not in fm
         assert "version:" not in fm
 
     def test_no_parent_field(self):
-        """ADR 0009: cross-session iteration removed, no parent in front matter."""
         fm = build_front_matter("T", "fact_check", "S", "passed", 1, 3)
         assert "parent:" not in fm
 
@@ -560,12 +562,12 @@ class TestGenerateReport:
         report = generate_report(
             tmp_path / "analysis.json",
             tmp_path / "scope.json",
-            quality="passed",
+            review_status="passed",
             search_rounds=2,
             source_count=5,
         )
         assert "topic: AI Frameworks" in report
-        assert "quality: passed" in report
+        assert "review_status: passed" in report
         assert "## Comparison" in report
         assert "PyTorch vs TensorFlow" in report
         assert "PyTorch is popular." in report
@@ -576,7 +578,7 @@ class TestGenerateReport:
         report = generate_report(
             tmp_path / "analysis.json",
             tmp_path / "scope.json",
-            quality="passed",
+            review_status="passed",
             search_rounds=1,
             source_count=1,
             report_language="fr",
@@ -597,7 +599,7 @@ class TestGenerateReport:
         report = generate_report(
             tmp_path / "analysis.json",
             tmp_path / "scope.json",
-            quality="passed",
+            review_status="passed",
             search_rounds=1,
             source_count=1,
         )
@@ -609,7 +611,7 @@ class TestGenerateReport:
         report = generate_report(
             tmp_path / "analysis.json",
             tmp_path / "scope.json",
-            quality="passed",
+            review_status="passed",
             search_rounds=1,
             source_count=1,
         )
@@ -645,7 +647,7 @@ class TestI18nLabels:
         _write_json(tmp_path / "analysis.json", self._BASIC_ANALYSIS)
         _write_json(tmp_path / "scope.json", self._BASIC_SCOPE)
         kwargs = dict(
-            quality="passed",
+            review_status="passed",
             search_rounds=1,
             source_count=1,
         )
@@ -705,6 +707,72 @@ class TestI18nLabels:
         # Unknown key returns the key itself
         assert _label("nonexistent", "en") == "nonexistent"
         assert _label("nonexistent", "zh") == "nonexistent"
+
+
+class TestResolveRefMarkersWithVerification:
+    def test_confirmed_url_no_marker(self):
+        ref_map = {}
+        sv_map = {"https://a.com/": "source_confirmed"}
+        result = _resolve_ref_markers("See {{ref:https://a.com}}", ref_map, sv_map)
+        assert "[&#91;1&#93;](#refs)" in result
+        assert "†" not in result
+        assert "‡" not in result
+
+    def test_absent_url_dagger_marker(self):
+        ref_map = {}
+        sv_map = {"https://a.com/": "source_absent"}
+        result = _resolve_ref_markers("See {{ref:https://a.com}}", ref_map, sv_map)
+        assert "[&#91;1†&#93;](#refs)" in result
+
+    def test_indirect_url_double_dagger_marker(self):
+        ref_map = {}
+        sv_map = {"https://a.com/": "source_indirect"}
+        result = _resolve_ref_markers("See {{ref:https://a.com}}", ref_map, sv_map)
+        assert "[&#91;1‡&#93;](#refs)" in result
+
+    def test_no_sv_map_backwards_compatible(self):
+        ref_map = {}
+        result = _resolve_ref_markers("See {{ref:https://a.com}}", ref_map)
+        assert "[&#91;1&#93;](#refs)" in result
+
+
+class TestBuildSvMap:
+    def test_worst_status_per_url(self):
+        analysis = {
+            "sections": [{
+                "claims": [
+                    {"source_urls": ["https://a.com"], "source_verification": "source_confirmed"},
+                    {"source_urls": ["https://a.com"], "source_verification": "source_absent"},
+                ]
+            }]
+        }
+        sv_map = _build_sv_map(analysis)
+        assert sv_map["https://a.com/"] == "source_absent"
+
+
+class TestFrontMatterRepositioning:
+    def test_review_status_replaces_quality(self):
+        fm = build_front_matter("T", "other", "S", "passed", 1, 3)
+        assert "review_status: passed" in fm
+        assert "quality:" not in fm
+
+    def test_verification_required_field(self):
+        fm = build_front_matter("T", "other", "S", "passed", 1, 3)
+        assert "verification_required: true" in fm
+
+
+class TestVerificationSummary:
+    def test_summary_includes_disclaimer(self):
+        analysis = {"sections": [{"claims": [{"source_verification": "source_confirmed", "source_urls": []}]}]}
+        result = _render_verification_summary(analysis)
+        assert "research starting point" in result
+        assert "†" in result
+        assert "‡" in result
+
+    def test_no_summary_when_no_verification(self):
+        analysis = {"sections": [{"claims": [{"source_urls": []}]}]}
+        result = _render_verification_summary(analysis)
+        assert result == ""
 
 
 def _write_json(path, data):

@@ -14,6 +14,7 @@ from pathlib import Path
 
 from scripts.artifact_checks import CheckResult
 from scripts.report_checks import (
+    _extract_cited_nums,
     check_report_dangling_refs,
     check_report_duplicate_headings,
     check_report_empty_sections,
@@ -267,7 +268,7 @@ class TestCheckReportFrontMatter:
 topic: AI Coding Tools
 goal_type: tech_selection
 date: 2026-06-19
-quality: draft
+review_status: draft
 ---
 """
 
@@ -294,7 +295,7 @@ quality: draft
         result = check_report_front_matter(tmp_path / "report.md")
         assert not result.passed
         assert "missing required fields" in result.message
-        assert "date" in result.message or "quality" in result.message
+        assert "date" in result.message or "review_status" in result.message
 
     def test_empty_front_matter_warns(self, tmp_path):
         _write_md(tmp_path / "report.md", "---\n---\nBody.")
@@ -397,7 +398,7 @@ code
 topic: AI
 goal_type: tech_selection
 date: 2026-01-01
-quality: draft
+review_status: draft
 ---
 Some text.
 """
@@ -490,7 +491,7 @@ class TestRunReportChecks:
 topic: AI
 goal_type: tech_selection
 date: 2026-01-01
-quality: draft
+review_status: draft
 ---
 ## Section
 Content with cite [&#91;1&#93;](#refs).
@@ -509,12 +510,11 @@ Content with cite [&#91;1&#93;](#refs).
             assert isinstance(r, CheckResult)
 
     def test_levels_are_warn_or_blocker(self, tmp_path):
-        """Report checks return WARN or BLOCKER level depending on check type."""
         md = """---
 topic: AI
 goal_type: tech_selection
 date: 2026-01-01
-quality: draft
+review_status: draft
 ---
 ## Section
 Content.
@@ -576,7 +576,7 @@ class TestF1F2F9BlockerUpgrade:
 topic: AI
 goal_type: tech_selection
 date: 2026-01-01
-quality: draft
+review_status: draft
 ---
 Text cites [&#91;99&#93;](#refs).
 
@@ -588,3 +588,31 @@ Text cites [&#91;99&#93;](#refs).
         dangling = next(r for r in results if r.name == "report_dangling_refs")
         assert not dangling.passed
         assert dangling.level == "BLOCKER"
+
+
+class TestInlineCitationWithMarkers:
+    def test_dagger_marker_citation_extracted(self, tmp_path):
+        body = "See [&#91;1†&#93;](#refs) for details."
+        nums = _extract_cited_nums(body)
+        assert 1 in nums
+
+    def test_double_dagger_marker_citation_extracted(self, tmp_path):
+        body = "See [&#91;2‡&#93;](#refs) for details."
+        nums = _extract_cited_nums(body)
+        assert 2 in nums
+
+    def test_no_marker_citation_still_works(self, tmp_path):
+        body = "See [&#91;3&#93;](#refs) for details."
+        nums = _extract_cited_nums(body)
+        assert 3 in nums
+
+    def test_dangling_refs_with_markers(self, tmp_path):
+        report = (
+            "---\ntopic: T\ngoal_type: other\ndate: 2026-07-01\nreview_status: passed\n---\n"
+            "## Overview\nSee [&#91;1†&#93;](#refs).\n\n"
+            "## References\n- **[1]** Title — [URL](https://a.com)\n"
+        )
+        path = tmp_path / "report.md"
+        path.write_text(report, encoding="utf-8")
+        result = check_report_dangling_refs(path)
+        assert result.passed
