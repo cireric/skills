@@ -1,6 +1,6 @@
 # Info-Collector
 
-Structured research pipeline that collects, organizes, and synthesizes information from web sources into a quality-gated report.
+Structured research pipeline that produces a panoramic map with traceable sources — a starting point for deep research, not a citable authority.
 
 ## Language
 
@@ -33,7 +33,7 @@ Language for the final report output (e.g., "zh", "en"). Stored in scope.json, f
 _Avoid_: output language
 
 **gate phase responsibility**:
-Each pipeline gate checks only its own phase's concerns. `_gate_analysis` (analysis→review) checks analysis-phase BLOCKERs only, excluding `claim_verified` and `claim_source_relevance`. `_gate_review` (review→review, review→final) checks only `claim_verified` and `claim_source_relevance`. `_gate_final` (final→cleanup) runs report checks; only BLOCKER-level failures block, WARN are advisory. See ADR 0025.
+Each pipeline gate checks only its own phase's concerns. `_gate_analysis` (analysis→review) checks analysis-phase BLOCKERs only (including `ref_marker_validity`, `claim_source_ref_coverage`), excluding `claim_verified` and `claim_source_relevance`. Also runs `source_verification_check` (WARN only, never BLOCKER). `_gate_review` (review→review, review→final) is advisory-only — `claim_verified` is now WARN level and `claim_source_relevance` has been replaced by `source_verification_check` in the analysis phase. The `verified` field is set deterministically by `source_verification_check()` code, not by the review subagent. `_gate_final` (final→cleanup) runs report checks; only BLOCKER-level failures block, WARN are advisory. See ADR 0025, ADR 0027, ADR 0028.
 _Avoid_: gate scope, gate coverage, per-gate filtering
 
 **report_checks**:
@@ -69,12 +69,24 @@ What kind of measurement a claim represents: swe_bench_verified, swe_bench_pro, 
 _Avoid_: measurement type, benchmark type
 
 **verified**:
-Boolean (default false) on a Claim. Set to true by review subagent after confirming source_url content actually supports the claim. Required for review→final gate.
+Boolean (default false) on a Claim. Mapped from `source_verification` by deterministic code in `source_verification_check()`: source_confirmed → true, source_indirect → true, source_absent → false. No longer set by review subagent. Retained for backward compatibility with gate logic.
 _Avoid_: confirmed, validated
+
+**source_verification**:
+Three-level classification of a claim's source traceability: source_confirmed (number found in fetched_content or qualitative claim), source_absent (number not found in fetched_content), source_indirect (indirect source: Tier 3+ with non-official evidence, vendor source_type with exact/range precision, or indirect citation pattern in claim text where cited entity is not the source host). Computed deterministically by `source_verification_check()` in claim_validator.py, never by LLM. Indirect takes priority over confirmed/absent — even if a number is found, an indirect source deserves scrutiny.
+_Avoid_: verification level, trust level
 
 **source_metadata**:
 Metadata about a claim's source testing conditions: test_conditions (hardware, OS, runtime), test_date, source_type (vendor_benchmark, independent_test, production_case, survey). Rendered as a structured table in the report.
 _Avoid_: test metadata, benchmark metadata
+
+**review_status**:
+Renamed from `quality`. Front matter field in the final report indicating the review outcome: passed, degraded, or unreviewed. The rename avoids implying that "passed" means all content is verified.
+_Avoid_: quality, report quality
+
+**verification_required**:
+Front matter boolean field (always true) indicating the report contains claims that need source verification before citation. Tools/agents reading the report can use this flag to automatically identify reports requiring follow-up verification.
+_Avoid_: requires verification, needs verification
 
 **Test conditions**:
 The testing environment behind benchmark claims. Includes hardware, OS, runtime version, and test date. Stored in claim's source_metadata, validated by gateway, rendered by reporter.py.
@@ -85,7 +97,7 @@ A required section (id="methodology") for quantitative goal_types. Describes: da
 _Avoid_: method section, approach section
 
 **Reference numbering**:
-[N] citation system in the final report. Global numbering across all sections, assigned by first-appearance order. In-text citations use CommonMark/GFM-compatible link syntax (e.g., `[&#91;N&#93;](#refs)` or `[\[N\]](#refs)`). The References appendix uses a visible list format (e.g., `- **[N]** Title — [URL](URL)`) with an explicit anchor (`<a id="refs"></a>`) for in-text link targets. Pure `[N]: URL` hidden definitions are not rendered by most Markdown renderers and must not be the sole format in the References section.
+[N] citation system in the final report. Global numbering across all sections, assigned by first-appearance order. In analysis.json content, sources are referenced via `{{ref:URL}}` markers (URL must match collected.json entry). reporter.py resolves markers to `[&#91;N&#93;](#refs)` links, owning the sole numbering authority. Hardcoded reference numbers in content (e.g., `[8]`) are prohibited. The References appendix uses a visible list format (e.g., `- **[N]** Title — [URL](URL)`) with an explicit anchor (`<a id="refs"></a>`) for in-text link targets. Pure `[N]: URL` hidden definitions are not rendered by most Markdown renderers and must not be the sole format in the References section.
 _Avoid_: citation numbering, footnote numbering
 
 **topic_coverage**:
@@ -105,11 +117,11 @@ The deep module that validates whether the search phase produced sufficient mate
 _Avoid_: search validator, search quality checker, search gate checks
 
 **ClaimValidator**:
-The deep module that validates claim quality in analysis.json against collected.json. Owns claim_metadata, precision_inflation, claim_verified, source_metadata, metric_type_homogeneity, claim_dedup, and claim_source_relevance checks. Interface: `ClaimValidator(workdir, goal_type).check() → list[CheckResult]`. Reads analysis.json + collected.json once; shared helpers (number normalization, source text matching, data variance) are private to its implementation.
+The deep module that validates claim quality in analysis.json against collected.json. Owns claim_metadata, precision_inflation, claim_verified, source_metadata, metric_type_homogeneity, claim_dedup, claim_source_relevance, ref_marker_validity, claim_source_ref_coverage, and source_verification_check checks. Interface: `ClaimValidator(workdir, goal_type).check() → list[CheckResult]`. Reads analysis.json + collected.json once; shared helpers (number normalization, source text matching, data variance) are private to its implementation. See ADR 0027, ADR 0028.
 _Avoid_: claim checker, claim gate, claim quality checker
 
 **search plan**:
-Auto-generated plan (`.workdir/search_plan.json`) produced after scope→search gate passes. Based on goal_type route and search_directions, generates specific search tasks per direction × tier. AI executes the plan rather than free-form searching.
+Auto-generated plan (`.workdir/search_plan.json`) produced after scope→search gate passes. Based on goal_type route and search_directions, generates specific search tasks per direction × tier × source language. AI executes the plan rather than free-form searching.
 _Avoid_: search strategy, search outline
 
 **project root**:
@@ -121,7 +133,7 @@ _Avoid_: repo root, workspace root
 - **collected.json** — Phase 2 output: array of {url, title, snippet, source_tier, fetched_content, covered_directions?}
 - **analysis.json** — Phase 3a output: topic, goal_type, audience, sections (each with id, title, content, claims)
 - **review_report.md** — Phase 3b output: subagent review findings
-- **config.json** — Skill configuration: sources (4 tiers), routes (10 goal_types), output_dir, default_report_language, default_depth, goal_type_defaults
+- **config.json** — Skill configuration: sources (4 tiers, each with language field), routes (10 goal_types), output_dir, default_report_language, default_depth, goal_type_defaults
 
 ## Relationships
 
@@ -132,3 +144,6 @@ _Avoid_: repo root, workspace root
 - **precision: exact** requires **evidence_type: official_data** or **independent_benchmark**
 - A **gate phase responsibility** determines which checks run at each pipeline transition; BLOCKERs caught at earliest stage
 - **BLOCKER report checks** block final→cleanup; the 7 WARN report checks are advisory
+- **Reference numbering** uses `{{ref:URL}}` markers in analysis.json; claim.source_urls must be a subset of content `{{ref:URL}}` markers in the same section
+- **ref_marker_validity** and **claim_source_ref_coverage** are analysis-phase BLOCKERs ensuring URL consistency between analysis.json content and collected.json
+- Source **language** field in config.json drives search plan task splitting (per source, not per tier)

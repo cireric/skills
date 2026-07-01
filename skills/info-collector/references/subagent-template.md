@@ -49,6 +49,18 @@ When delegating section writing to independent agent calls in Phase 3a, follow t
    - Do NOT add fields like "word_count", "language", etc.
    ```
 
+## Source Content Summary Injection
+
+When constructing each subagent prompt, the orchestrator MUST inject fetched_content summaries for URLs relevant to that section:
+
+1. Identify which URLs are relevant to the section (from section plan)
+2. For each relevant URL, generate a summary:
+   - First 300 characters of fetched_content
+   - Plus sentences containing numbers (percentages, dollar amounts, benchmark scores) — up to 500 additional characters
+   - Total per URL: ≤ 800 characters
+3. Include summaries in the subagent prompt under a "## Source Content" heading
+4. This gives the subagent actual source data to write from, reducing fabrication tendency
+
 ## Assembly Step
 
 Merge all sections into a single analysis.json. **This step is JSON merge only — never rewrite or rephrase section content.** Each section's `content` and `claims` fields are taken verbatim from the subagent outputs. If content needs improvement, go back and re-delegate that section.
@@ -95,6 +107,9 @@ Any claim containing a specific number (percentage, dollar amount, benchmark sco
    - Remove the claim entirely.
 
 **Rationale**: The review subagent cross-checks every exact number against `fetched_content`. Numbers not present in the fetched source will be flagged as precision inflation and may block the review gate.
+
+**NEVER infer or calculate exact numbers from ratios, percentages, or other derived data.**
+If the source says "revenue grew 15%" and you want to state the dollar amount, you MUST find the actual dollar figure in fetched_content. Calculating "$4.2B from 15% growth" is fabrication, not analysis.
 
 **Example violations to avoid**:
 - ❌ Claim: "Agyn achieves 72.2% on SWE-bench 500" with `precision: "exact"` when the fetched_content only mentions "multi-agent system" without the 72.2% figure

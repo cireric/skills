@@ -1,18 +1,17 @@
 ---
 name: info-collector
 description: >
-  Structured research pipeline: scope → search → analyze → review → report.
-  Triggers on 调研, research, 技术选型, tech selection, 竞品分析, competitive analysis,
-  市场分析, market research, 可行性评估, feasibility assessment, 事实核查, fact-check.
+  Structured research pipeline that produces a panoramic map with traceable sources —
+  a starting point for deep research, not a citable authority.
+  Invoked via /info-collector only.
 ---
 
 # Info-Collector Skill
 
-Structured research pipeline that collects, organizes, and synthesizes information from web sources into a quality-gated report.
+Structured research pipeline that produces a panoramic map with traceable sources — a starting point for deep research, not a citable authority.
 
 ## Usage
 
-- **Trigger phrases**: 调研, research, 技术选型, tech selection, 竞品分析, competitive analysis, 市场分析, market research, 可行性评估, feasibility assessment, 事实核查, fact-check
 - **Slash command**: `/info-collector`
 - **Output**: Markdown report in `<project_root>/<config.json:output_dir>` with YAML front matter
 
@@ -194,7 +193,7 @@ Merge all sections into a single analysis.json. JSON merge only — never rewrit
 
 Run: `python -m scripts.cli proceed --from analysis --to review`
 
-- Runs all gateway checks but filters to **analysis-phase only** (excludes `claim_verified` and `claim_source_relevance`). Checks schema validation + 14 analysis-phase BLOCKERs including url_traceability, section_coverage, content_concreteness, claim_metadata, precision_inflation, source_metadata, metric_type_homogeneity, claim_dedup, etc. (ADR 0025)
+- Runs all gateway checks but filters to **analysis-phase only** (excludes `claim_verified` and `claim_source_relevance`). Checks schema validation + 14 analysis-phase BLOCKERs including url_traceability, section_coverage, content_concreteness, claim_metadata, precision_inflation, source_metadata, metric_type_homogeneity, claim_dedup, etc. (ADR 0025). Also runs `source_verification_check` (WARN only, never BLOCKER) which computes the three-level source_verification classification and writes `verified` on each claim deterministically.
 - **YOU MUST ASK THE USER** whether to launch an independent review (adapt language to user).
 
 ### 3b: Review
@@ -214,32 +213,24 @@ If the subagent fails to produce review_report.md (file missing or empty):
 1. Ask the user to choose one of:
    a. **Retry subagent review** (max 2 retries; each failure re-asks the user)
    b. **Degrade to inline review** — perform review yourself (same workload as subagent:
-      read scope.json, collected.json, analysis.json; verify each claim individually;
-      write verification summaries). Create `.workdir/review_fallback.log` with:
+      read scope.json, collected.json, analysis.json; run semantic checks for
+      context_twist, cross_section_inconsistency, vendor_bias_undisclosed, tier_misattribution;
+      write findings). Create `.workdir/review_fallback.log` with:
       `<timestamp> | subagent failed (attempt N/2) | error: <error detail> | user chose: inline review`
-      Use `--quality degraded` when generating the report.
-   c. **Skip review** — use `--quality unreviewed`
+      Use `--review-status degraded` when generating the report.
+   c. **Skip review** — use `--review-status unreviewed`
 
-`degraded` means review independence was lost (same LLM wrote and verified claims).
+`degraded` means review independence was lost (same LLM wrote and reviewed).
 `unreviewed` means no review was performed at all.
 
-**CRITICAL**: Verify each claim individually. For EVERY claim:
-1. Find the corresponding entry in collected.json by matching source_urls
-2. Read its fetched_content
-3. Confirm the content actually supports the claim
-4. Set `verified: true` ONLY if confirmed; leave `verified: false` otherwise
+The review subagent performs semantic checks only — context twist, cross-section inconsistency,
+vendor bias undisclosed, and tier misattribution. The `verified` field on claims is set
+deterministically by `source_verification_check()` code, not by the review subagent.
 
-**NEVER** use replaceAll or batch operations on the `verified` field.
-Unverified claims will block the review→final gate — this is by design.
-If a claim cannot be verified, either fix the claim or find a better source.
+For each issue found, the subagent writes findings in review_report.md following
+the format in `references/REVIEW_PROMPT.md`.
 
-For each verified claim, write a verification summary in review_report.md:
-
-- **[Section: <section_id>] Claim <N>**: "<claim text>"
-  - Source: [<source_url>]
-  - Verified: ✅ Confirmed — <one sentence explaining how fetched_content supports the claim>
-
-If user says **no** → quality will be set to `unreviewed` at finalization.
+If user says **no** → review_status will be set to `unreviewed` at finalization.
 
 ### 3c: User confirmation + Final report
 
@@ -247,12 +238,15 @@ Show the review report (or degradation notice) to user and ask:
 
 - User confirms approval (adapt language to user) → Run: `python -m scripts.cli proceed --from review --to final`
 
-  This runs only 2 review-phase checks: `claim_verified` (BLOCKER) and `claim_source_relevance` (WARN). Only unverified claims block the transition. (ADR 0025)
+  The review gate is advisory-only. It runs `run_all()` but never blocks — `claim_verified`
+  is now WARN level and `claim_source_relevance` has been replaced by `source_verification_check`
+  in the analysis phase. The `verified` field is set deterministically by
+  `source_verification_check()` code, not by the review subagent.
 
   Then generate final report:
 
   ```
-  python -m scripts.cli report --quality <passed|degraded|unreviewed> --search-rounds N --source-count N [--output DIR]
+  python -m scripts.cli report --review-status <passed|degraded|unreviewed> --search-rounds N --source-count N [--output DIR]
   ```
 
   Report filename: `{english_title_or_topic}.md`. If file already exists, appends date suffix: `{name}_{YYYY-MM-DD}.md`.

@@ -61,6 +61,8 @@ Different source tiers require different language in body text to accurately ref
 
 Never present Tier 3 or Tier 4 findings with the same authority as Tier 1 or Tier 2. The citations in body text must let readers assess evidentiary weight at a glance.
 
+**Note**: The †/‡ verification markers in the final report are injected automatically by `reporter.py` based on `source_verification_check()` results. You do not need to add them manually in content. Tier-aware citation language (e.g., "according to a blog post") is still your responsibility as the writer.
+
 ## Precision Rules for Claims
 
 - `evidence_type: "third_party_estimate"` or `"qualitative_trend"` → MUST NOT use `precision: "exact"` (gate BLOCKER)

@@ -23,15 +23,15 @@
 - Runs `run_all` filtered to analysis-phase checks only (excludes `claim_verified` and `claim_source_relevance`, which are review-phase concerns)
 - Schema validation + 14 analysis-phase BLOCKER checks: url_traceability, section_coverage, content_concreteness, claim_metadata, precision_inflation, metric_type_homogeneity, source_metadata, methodology_depth, recommendation_structure, source_tier_balance, claim_dedup, quality_heuristics, analysis_schema, artifact_exists
 - Analysis-phase BLOCKERs are caught here, not deferred to later gates (ADR 0025)
+- Also runs `source_verification_check` (WARN only, never BLOCKER) — computes three-level source_verification classification and writes `verified` on each claim deterministically
 - **Agent MUST ask user**: "启动独立审查？"
 
 ## Gate 4: `proceed --from review --to final`
 
-- Runs `run_all` filtered to review-phase checks only: `claim_verified` and `claim_source_relevance`
-- **claim_verified (BLOCKER)**: unverified claims block the transition
-- **claim_source_relevance (WARN)**: advisory only
-- Always runs, even if user skipped subagent review
-- No re-checking of analysis-phase concerns (ADR 0025)
+Review gate is advisory-only. Runs `run_all()` but never blocks — `claim_verified`
+is now WARN level and `claim_source_relevance` has been replaced by `source_verification_check`
+in the analysis phase. The `verified` field is set deterministically by
+`source_verification_check()` code, not by the review subagent.
 
 ## Gate 5: `proceed --from final --to cleanup`
 
@@ -42,12 +42,12 @@
 - **Note**: This gate skips phase detection — it passes regardless of the current detected phase. This allows cleanup to run at any point, but also means accidental invocation won't produce a phase-mismatch error.
 - Transitions to cleanup phase
 
-## Quality Determination
+## Review Status Determination
 
 Set during finalization after gate 4:
 
 ```
-if gateway.heuristics_fired:  quality = "degraded"
-elif user_skipped_review:    quality = "unreviewed"
-else:                        quality = "passed"
+if gateway.heuristics_fired:  review_status = "degraded"
+elif user_skipped_review:    review_status = "unreviewed"
+else:                        review_status = "passed"
 ```
