@@ -18,6 +18,7 @@ from .constants import (
     _VALID_DEPTHS,
     _VALID_GOAL_TYPES,
     _VALID_METRIC_TYPES,
+    _VALID_SOURCE_VERIFICATIONS,
 )
 from .exceptions import ValidationError
 
@@ -42,6 +43,7 @@ class ClaimDict(TypedDict, total=False):
     metric_type: str
     source_metadata: dict
     verified: bool
+    source_verification: str
 
 
 class SectionDict(TypedDict, total=False):
@@ -196,6 +198,8 @@ def _validate_claims(sec_idx: int, claims: list, errors: list[ValidationError]) 
                 errors.append(_err(f"{prefix}.source_urls", "source_urls must contain only strings"))
         if "metric_type" in claim and claim["metric_type"] not in _VALID_METRIC_TYPES:
             errors.append(_err(f"{prefix}.metric_type", f"invalid metric_type '{claim['metric_type']}'"))
+        if "source_verification" in claim and claim["source_verification"] not in _VALID_SOURCE_VERIFICATIONS:
+            errors.append(_err(f"{prefix}.source_verification", f"invalid source_verification '{claim['source_verification']}'"))
 
 
 def validate_collected(data: list) -> list[ValidationError]:

@@ -388,3 +388,20 @@ class TestValidateCollectedCoveredDirections:
         data = [{"url": "https://a.com", "title": "A", "snippet": "S"}]
         errors = validate_collected(data)
         assert not any("covered_directions" in e.field for e in errors)
+
+
+class TestClaimSourceVerification:
+    def test_source_verification_valid_value(self):
+        claim = {"text": "T", "source_urls": ["https://a.com"], "source_verification": "source_confirmed"}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [{"id": "s1", "title": "S", "content": "C", "claims": [claim]}]})
+        assert not any("source_verification" in e.field for e in errors)
+
+    def test_source_verification_invalid_value(self):
+        claim = {"text": "T", "source_urls": ["https://a.com"], "source_verification": "invalid_value"}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [{"id": "s1", "title": "S", "content": "C", "claims": [claim]}]})
+        assert any("source_verification" in e.field for e in errors)
+
+    def test_source_verification_optional(self):
+        claim = {"text": "T", "source_urls": ["https://a.com"]}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [{"id": "s1", "title": "S", "content": "C", "claims": [claim]}]})
+        assert not any("source_verification" in e.field for e in errors)

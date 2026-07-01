@@ -6,6 +6,8 @@ When adding a new goal_type or metric_type, only this file needs updating.
 
 from __future__ import annotations
 
+import re
+
 
 # ── Stop words ──
 
@@ -55,6 +57,17 @@ _VALID_CONFIDENCE = frozenset({"high", "medium", "low"})
 _VALID_PRECISION = frozenset({"exact", "range", "qualitative"})
 
 _NON_EXACT_EVIDENCE_TYPES = frozenset({"third_party_estimate", "qualitative_trend", "expert_opinion"})
+
+_VALID_SOURCE_VERIFICATIONS = frozenset({"source_confirmed", "source_absent", "source_indirect"})
+_SOURCE_INDIRECT_RATIO_WARN = 0.30
+_INDIRECT_CITATION_PATTERNS = (
+    re.compile(r"据\s*\S+\s*(报告|预测|发现|统计|调查|研究|分析)"),
+    re.compile(r"\S+\s*(报告|预测|发现|统计|调查|研究|分析)\s*(显示|指出|表明|称)"),
+    re.compile(r"(according to|based on|cited in|reported by)\s+\S+", re.IGNORECASE),
+)
+_VENDOR_SOURCE_TYPES = frozenset({
+    "analyst_forecast", "vendor_benchmark", "vendor_survey", "vendor_blog",
+})
 
 
 # ── Goal-type classifications ──
