@@ -456,3 +456,29 @@ class ClaimValidator:
                                f"{violations[:3]}{'...' if len(violations) > 3 else ''}")
         return CheckResult("claim_source_ref_coverage", "BLOCKER", True,
                            "All claim source_urls are referenced in section content")
+
+
+def apply_source_verification(workdir: Path) -> None:
+    from .lib.constants import ARTIFACT_SCOPE
+    from .lib.utils import read_json as _rj, write_json as _wj
+    goal_type = "other"
+    try:
+        scope = _rj(workdir / ARTIFACT_SCOPE)
+        goal_type = scope.get("goal_type", "other")
+    except Exception:
+        pass
+    validator = ClaimValidator(workdir, goal_type)
+    validator._check_source_verification()
+    if validator._sv_data is None:
+        return
+    try:
+        analysis = _rj(workdir / ARTIFACT_ANALYSIS)
+    except ArtifactError:
+        return
+    for sec_idx, ci, sv in validator._sv_data:
+        try:
+            analysis["sections"][sec_idx]["claims"][ci]["source_verification"] = sv
+            analysis["sections"][sec_idx]["claims"][ci]["verified"] = (sv != "source_absent")
+        except (IndexError, KeyError):
+            pass
+    _wj(analysis, workdir / ARTIFACT_ANALYSIS)

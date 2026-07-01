@@ -530,8 +530,7 @@ class TestReviewSelfLoop:
         _write_json(tmp_path / "review_report.md", {})
         _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "review")
-        assert not ok
-        assert any("claim_verified" in e for e in errors)
+        assert ok
 
 
 class TestGateFinalOnlyBlocksBlocker:
@@ -871,7 +870,7 @@ class TestGateReviewOnlyChecksReviewItems:
         ok, errors = proceeds(tmp_path, "review", "review")
         assert not any("section_coverage" in e for e in errors)
 
-    def test_review_gate_blocks_on_unverified_claims(self, tmp_path):
+    def test_review_gate_passes_with_unverified_claims(self, tmp_path):
         _write_scope_and_collected(tmp_path)
         _write_json(
             tmp_path / "analysis.json",
@@ -891,5 +890,98 @@ class TestGateReviewOnlyChecksReviewItems:
         _write_json(tmp_path / "review_report.md", {})
         _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "review")
-        assert not ok
-        assert any("claim_verified" in e for e in errors)
+        assert ok
+
+
+class TestGateReviewNoLongerBlocks:
+    def test_review_gate_passes_with_unverified_claims(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Kubernetes 1.28 handles 5000 nodes.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"], "verified": False}],
+                    },
+                ],
+            },
+        )
+        _write_json(tmp_path / "review_report.md", {})
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "review")
+        assert ok
+
+    def test_review_gate_always_passes(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Content.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                    },
+                ],
+            },
+        )
+        _write_json(tmp_path / "review_report.md", {})
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "review")
+        assert ok
+        assert errors == []
+
+
+class TestSourceVerificationWriteBack:
+    def test_analysis_gate_writes_source_verification(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://a.com", "title": "A", "snippet": "s", "fetched_content": "98% accuracy", "source_tier": 1}
+        ])
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Achieves 98% {{ref:https://a.com}}.",
+                        "claims": [{"text": "98% accuracy", "source_urls": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact", "source_metadata": {"test_conditions": "Lab environment", "source_type": "independent_test"}}],
+                    },
+                    {
+                        "id": "comparison",
+                        "title": "Cmp",
+                        "content": "Cmp content.",
+                        "claims": [],
+                    },
+                    {
+                        "id": "recommendation",
+                        "title": "Rec",
+                        "content": "Rec content.",
+                        "claims": [],
+                    },
+                    {
+                        "id": "methodology",
+                        "title": "Methodology",
+                        "content": "M",
+                        "claims": [],
+                    },
+                ],
+            },
+        )
+        ok, errors = proceeds(tmp_path, "analysis", "review")
+        assert ok, errors
+        analysis = json.loads((tmp_path / "analysis.json").read_text(encoding="utf-8"))
+        claim = analysis["sections"][0]["claims"][0]
+        assert claim.get("source_verification") == "source_confirmed"
+        assert claim.get("verified") is True

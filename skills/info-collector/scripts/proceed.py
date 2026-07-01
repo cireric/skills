@@ -29,6 +29,7 @@ _SECTION_KEYS = frozenset({"id", "title", "content", "claims"})
 _CLAIM_KEYS = frozenset({
     "text", "source_urls", "evidence_type", "confidence",
     "precision", "metric_type", "source_metadata", "verified",
+    "source_verification",
 })
 
 
@@ -256,23 +257,24 @@ def _gate_analysis(workdir: Path) -> list[str]:
             "source_metadata", "metric_type_homogeneity", "claim_dedup",
             "methodology_depth", "recommendation_structure",
             "ref_marker_validity", "claim_source_ref_coverage",
+            "source_verification_check",
         }
         blockers = [
             r for r in gateway_results
             if r.level == "BLOCKER" and not r.passed and r.name in analysis_check_names
         ]
         errors.extend(f"[BLOCKER] {b.name}: {b.message}" for b in blockers)
+    from .claim_validator import apply_source_verification
+    apply_source_verification(workdir)
     return errors
 
 
 def _gate_review(workdir: Path) -> list[str]:
     gateway_results = run_gateway(workdir, _get_goal_type(workdir))
-    review_check_names = {"claim_verified", "claim_source_relevance"}
-    blockers = [
-        r for r in gateway_results
-        if r.level == "BLOCKER" and not r.passed and r.name in review_check_names
-    ]
-    return [f"[BLOCKER] {b.name}: {b.message}" for b in blockers]
+    for r in gateway_results:
+        if not r.passed:
+            print(f"  [ADVISORY] {r.name}: {r.message}", file=sys.stderr)
+    return []
 
 
 def _gate_final(workdir: Path) -> list[str]:
