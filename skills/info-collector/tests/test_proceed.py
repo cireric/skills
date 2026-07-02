@@ -671,15 +671,18 @@ class TestGateAnalysisChecksAllBlockers:
         assert not ok
         assert any("section_coverage" in e for e in errors)
 
-    def test_content_concreteness_blocker_caught(self, tmp_path):
+    def test_content_concreteness_no_longer_blocks(self, tmp_path):
+        """content_concreteness is WARN after gate philosophy shift — does not block."""
         self._make_passing_analysis(tmp_path)
         analysis = json.loads((tmp_path / "analysis.json").read_text(encoding="utf-8"))
-        analysis["sections"][0]["content"] = "Some vague text without numbers or names."
-        analysis["sections"][0]["claims"] = [{"text": "vague claim", "source_urls": ["https://a.com"]}]
+        for sec in analysis["sections"]:
+            if sec.get("claims"):
+                sec["content"] = "Some vague text without numbers or names. {{ref:https://a.com}}"
+                sec["claims"] = [{"text": "vague claim", "source_urls": ["https://a.com"]}]
         _write_json(tmp_path / "analysis.json", analysis)
         ok, errors = proceeds(tmp_path, "analysis", "review")
-        assert not ok
-        assert any("content_concreteness" in e for e in errors)
+        assert ok, "content_concreteness WARN should not block"
+        assert not any("content_concreteness" in e for e in errors)
 
 
 class TestSearchPlanLanguageSplit:

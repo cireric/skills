@@ -84,9 +84,6 @@ _EXPLORATORY_GOAL_TYPES = frozenset({
     "exploratory", "panoramic_understanding", "background_check", "other",
 })
 
-_CONCRETENESS_STRICT_GOAL_TYPES = frozenset({
-    "tech_selection", "competitive_comparison",
-})
 
 
 # ── Thresholds ──

@@ -96,7 +96,7 @@ class TestVaguePhraseDetection:
 
 
 class TestNumberAbsence:
-    def test_tech_selection_without_numbers_blocker(self, tmp_path):
+    def test_tech_selection_without_numbers_warn(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
             {
@@ -114,7 +114,7 @@ class TestNumberAbsence:
         )
         result = check_content_concreteness(tmp_path, "tech_selection")
         assert not result.passed
-        assert result.level == "BLOCKER"
+        assert result.level == "WARN"
         assert "no valid numbers" in result.message.lower()
 
     def test_with_numbers_pass(self, tmp_path):
@@ -173,7 +173,7 @@ class TestNumberAbsence:
         )
         result = check_content_concreteness(tmp_path, "tech_selection")
         assert not result.passed
-        assert result.level == "BLOCKER"
+        assert result.level == "WARN"
         assert "no valid numbers" in result.message.lower()
 
     def test_version_exclusion(self, tmp_path):
@@ -194,12 +194,12 @@ class TestNumberAbsence:
         )
         result = check_content_concreteness(tmp_path, "tech_selection")
         assert not result.passed
-        assert result.level == "BLOCKER"
+        assert result.level == "WARN"
         assert "no valid numbers" in result.message.lower()
 
 
 class TestNameAbsence:
-    def test_no_concrete_names_blocker_strict(self, tmp_path):
+    def test_no_concrete_names_warn_strict(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
             {
@@ -217,7 +217,7 @@ class TestNameAbsence:
         )
         result = check_content_concreteness(tmp_path, "tech_selection")
         assert not result.passed
-        assert result.level == "BLOCKER"
+        assert result.level == "WARN"
         assert "no concrete names" in result.message.lower()
 
     def test_no_concrete_names_warn_others(self, tmp_path):
@@ -324,7 +324,7 @@ class TestMultipleIssues:
         )
         result = check_content_concreteness(tmp_path, "tech_selection")
         assert not result.passed
-        assert result.level == "BLOCKER"
+        assert result.level == "WARN"
         assert "overview" in result.message.lower()
 
 

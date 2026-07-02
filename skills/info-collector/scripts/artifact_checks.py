@@ -11,7 +11,6 @@ from .lib.constants import (
     ARTIFACT_COLLECTED,
     ARTIFACT_SCOPE,
     _CHINESE_STOP_WORDS,
-    _CONCRETENESS_STRICT_GOAL_TYPES,
     _EXPLORATORY_GOAL_TYPES,
     _METHODOLOGY_MIN_WORDS,
     _MIN_SOURCES,
@@ -237,34 +236,13 @@ def check_content_concreteness(workdir: Path, goal_type: str) -> CheckResult:
             vague_issues.append(f"Section '{sec_id}': vague phrase density {vague_count / total_words:.0%} exceeds threshold")
         if has_claims:
             if not _has_valid_number(content):
-                if goal_type in _CONCRETENESS_STRICT_GOAL_TYPES:
-                    number_issues.append(f"Section '{sec_id}': no valid numbers found")
-                else:
-                    number_issues.append(f"Section '{sec_id}': no valid numbers found (advisory)")
+                number_issues.append(f"Section '{sec_id}': no valid numbers found")
             if not _has_concrete_name(content):
-                if goal_type in _CONCRETENESS_STRICT_GOAL_TYPES:
-                    name_issues.append(f"Section '{sec_id}': no concrete names found")
-                else:
-                    name_issues.append(f"Section '{sec_id}': no concrete names found (advisory)")
-    blockers = []
-    warnings = []
-    if vague_issues:
-        warnings.extend(vague_issues)
-    if goal_type in _CONCRETENESS_STRICT_GOAL_TYPES:
-        if number_issues:
-            blockers.extend(number_issues)
-        if name_issues:
-            blockers.extend(name_issues)
-    else:
-        if number_issues:
-            warnings.extend(number_issues)
-        if name_issues:
-            warnings.extend(name_issues)
-    if blockers:
-        return CheckResult("content_concreteness", "BLOCKER", False, "; ".join(blockers + warnings))
+                name_issues.append(f"Section '{sec_id}': no concrete names found")
+    warnings = vague_issues + number_issues + name_issues
     if warnings:
         return CheckResult("content_concreteness", "WARN", False, "; ".join(warnings))
-    return CheckResult("content_concreteness", "BLOCKER", True)
+    return CheckResult("content_concreteness", "WARN", True)
 
 
 def check_methodology_depth(workdir: Path, goal_type: str) -> CheckResult:
