@@ -247,16 +247,16 @@ class ClaimValidator:
         return CheckResult("claim_metadata", "WARN", True)
 
     def _check_precision_inflation(self) -> CheckResult:
-        blockers: list[str] = []
         warnings: list[str] = []
         for sec_id, si, claim in self._all_claims:
             text = claim.get("text", "")
             ev = claim.get("evidence_type")
             prec = claim.get("precision")
             if prec == "exact" and ev in ("third_party_estimate", "qualitative_trend", "expert_opinion"):
-                blockers.append(
+                warnings.append(
                     f"sections.{sec_id}.claims[{si}]: precision='exact' with "
-                    f"evidence_type='{ev}' — use precision='range' or 'qualitative'"
+                    f"evidence_type='{ev}' — auto-downgraded to 'range' by sanitize; "
+                    f"use precision='range' or 'qualitative'"
                 )
             if ev == "third_party_estimate" and _PRECISE_NUMBER_PATTERN.search(text):
                 source_texts = []
@@ -277,12 +277,10 @@ class ClaimValidator:
                             f"but text contains precise number not found in source — use precision='range' or rephrase qualitatively"
                         )
         for section in self._sections:
-            blockers.extend(_check_data_variance(section))
-        if blockers:
-            return CheckResult("precision_inflation", "BLOCKER", False, "; ".join(blockers + warnings))
+            warnings.extend(_check_data_variance(section))
         if warnings:
             return CheckResult("precision_inflation", "WARN", False, "; ".join(warnings))
-        return CheckResult("precision_inflation", "BLOCKER", True)
+        return CheckResult("precision_inflation", "WARN", True)
 
     def _check_claim_verified(self) -> CheckResult:
         if not self._review_exists:

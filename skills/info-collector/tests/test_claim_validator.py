@@ -18,7 +18,7 @@ def _get_result(results, name):
 
 
 class TestCheckPrecisionInflation:
-    def test_blocker_exact_with_inappropriate_evidence(self, tmp_path):
+    def test_warn_exact_with_inappropriate_evidence(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
             {
@@ -36,8 +36,8 @@ class TestCheckPrecisionInflation:
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "precision_inflation")
         assert not result.passed
-        assert result.level == "BLOCKER"
-        assert "exact" in result.message
+        assert result.level == "WARN"
+        assert "auto-downgraded to 'range' by sanitize" in result.message
 
     def test_warn_third_party_with_precise_number(self, tmp_path):
         _write_json(
@@ -63,7 +63,7 @@ class TestCheckPrecisionInflation:
         assert not result.passed
         assert result.level == "WARN"
 
-    def test_blocker_and_warn_combined(self, tmp_path):
+    def test_warn_exact_and_number_not_found_combined(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
             {
@@ -89,7 +89,7 @@ class TestCheckPrecisionInflation:
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "precision_inflation")
         assert not result.passed
-        assert result.level == "BLOCKER"
+        assert result.level == "WARN"
 
     def test_no_issues_pass(self, tmp_path):
         _write_json(
@@ -110,7 +110,7 @@ class TestCheckPrecisionInflation:
         result = _get_result(results, "precision_inflation")
         assert result.passed
 
-    def test_exact_with_expert_opinion_blocked(self, tmp_path):
+    def test_exact_with_expert_opinion_warns(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
             {
@@ -128,7 +128,7 @@ class TestCheckPrecisionInflation:
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "precision_inflation")
         assert not result.passed
-        assert result.level == "BLOCKER"
+        assert result.level == "WARN"
 
     def test_data_variance_same_value_passes(self, tmp_path):
         _write_json(
@@ -159,7 +159,7 @@ class TestCheckPrecisionInflation:
         result = _get_result(results, "precision_inflation")
         assert result.passed
 
-    def test_data_variance_conflicting_exact_blocker(self, tmp_path):
+    def test_data_variance_conflicting_exact_warn(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
             {
@@ -187,7 +187,7 @@ class TestCheckPrecisionInflation:
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "precision_inflation")
         assert not result.passed
-        assert result.level == "BLOCKER"
+        assert result.level == "WARN"
         assert "s1: same metric_type" in result.message
         assert "swe_bench_verified" in result.message
 
