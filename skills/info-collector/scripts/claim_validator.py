@@ -18,7 +18,6 @@ from .lib.constants import (
     _INDIRECT_CITATION_PATTERNS,
     _QUANTITATIVE_GOAL_TYPES,
     _SINGLE_SOURCE_RATIO,
-    _SOURCE_INDIRECT_RATIO_WARN,
     _VENDOR_SOURCE_TYPES,
 )
 from .lib.exceptions import ArtifactError
