@@ -548,7 +548,7 @@ class TestCheckClaimVerified:
 
 
 class TestCheckSourceMetadata:
-    def test_official_data_without_source_metadata_blocker(self, tmp_path):
+    def test_official_data_without_source_metadata_warn(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
             {
@@ -569,10 +569,10 @@ class TestCheckSourceMetadata:
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "source_metadata")
         assert not result.passed
-        assert result.level == "BLOCKER"
-        assert "requires source_metadata" in result.message
+        assert result.level == "WARN"
+        assert "missing source_metadata" in result.message
 
-    def test_independent_benchmark_without_source_metadata_blocker(self, tmp_path):
+    def test_independent_benchmark_without_source_metadata_warn(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
             {
@@ -593,10 +593,10 @@ class TestCheckSourceMetadata:
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "source_metadata")
         assert not result.passed
-        assert result.level == "BLOCKER"
-        assert "requires source_metadata" in result.message
+        assert result.level == "WARN"
+        assert "missing source_metadata" in result.message
 
-    def test_official_data_without_test_conditions_blocker(self, tmp_path):
+    def test_official_data_without_test_conditions_warn(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
             {
@@ -621,8 +621,8 @@ class TestCheckSourceMetadata:
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "source_metadata")
         assert not result.passed
-        assert result.level == "BLOCKER"
-        assert "test_conditions" in result.message
+        assert result.level == "WARN"
+        assert "empty source_metadata.test_conditions" in result.message
 
     def test_official_data_with_source_metadata_passes(self, tmp_path):
         _write_json(

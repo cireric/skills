@@ -314,22 +314,24 @@ class ClaimValidator:
         return CheckResult("claim_verified", "WARN", True)
 
     def _check_source_metadata(self) -> CheckResult:
+        warnings: list[str] = []
         for sec_id, ci, claim in self._all_claims:
             ev = claim.get("evidence_type")
             if ev in ("official_data", "independent_benchmark"):
                 meta = claim.get("source_metadata")
                 if not meta or not isinstance(meta, dict):
-                    return CheckResult(
-                        "source_metadata", "BLOCKER", False,
-                        f"sections.{sec_id}.claims[{ci}]: evidence_type='{ev}' requires source_metadata",
+                    warnings.append(
+                        f"sections.{sec_id}.claims[{ci}]: evidence_type='{ev}' missing source_metadata"
                     )
+                    continue
                 tc = meta.get("test_conditions", "")
                 if not tc or (isinstance(tc, str) and not tc.strip()):
-                    return CheckResult(
-                        "source_metadata", "BLOCKER", False,
-                        f"sections.{sec_id}.claims[{ci}]: evidence_type='{ev}' requires non-empty source_metadata.test_conditions",
+                    warnings.append(
+                        f"sections.{sec_id}.claims[{ci}]: evidence_type='{ev}' has empty source_metadata.test_conditions"
                     )
-        return CheckResult("source_metadata", "BLOCKER", True)
+        if warnings:
+            return CheckResult("source_metadata", "WARN", False, "; ".join(warnings))
+        return CheckResult("source_metadata", "WARN", True)
 
     def _check_metric_type_homogeneity(self) -> CheckResult:
         for section in self._sections:
