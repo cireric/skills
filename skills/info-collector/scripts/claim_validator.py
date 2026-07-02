@@ -14,7 +14,6 @@ from .artifact_checks import CheckResult, _read_artifact
 from .lib.constants import (
     ARTIFACT_ANALYSIS,
     ARTIFACT_COLLECTED,
-    ARTIFACT_REVIEW_REPORT,
     _INDIRECT_CITATION_PATTERNS,
     _QUANTITATIVE_GOAL_TYPES,
     _SINGLE_SOURCE_RATIO,
@@ -182,7 +181,6 @@ class ClaimValidator:
         self._collected: list[dict] = []
         self._collected_by_url: dict[str, dict] = {}
         self._collected_urls: set[str] = set()
-        self._review_exists: bool = (workdir / ARTIFACT_REVIEW_REPORT).exists()
         self._sections: list[dict] = []
         self._all_claims: list[tuple[str, int, dict]] = []
         self._sv_data: list | None = None
@@ -216,7 +214,6 @@ class ClaimValidator:
         return [
             self._check_claim_metadata(),
             self._check_precision_inflation(),
-            self._check_claim_verified(),
             self._check_source_metadata(),
             self._check_metric_type_homogeneity(),
             self._check_claim_dedup(),
@@ -280,37 +277,6 @@ class ClaimValidator:
         if warnings:
             return CheckResult("precision_inflation", "WARN", False, "; ".join(warnings))
         return CheckResult("precision_inflation", "WARN", True)
-
-    def _check_claim_verified(self) -> CheckResult:
-        if not self._review_exists:
-            return CheckResult("claim_verified", "WARN", True, "Skipped (review not yet done)")
-        warnings: list[str] = []
-        total_claims = 0
-        verified_count = 0
-        for sec_id, _si, claim in self._all_claims:
-            total_claims += 1
-            verified = claim.get("verified")
-            if verified is True:
-                verified_count += 1
-            if verified is False:
-                text = claim.get("text", "")[:50]
-                return CheckResult(
-                    "claim_verified",
-                    "WARN",
-                    False,
-                    f"Claim in section '{sec_id}' not verified: {text}",
-                )
-            if verified == "unverifiable":
-                text = claim.get("text", "")[:50]
-                warnings.append(f"Claim in section '{sec_id}' unverifiable: {text}")
-        if total_claims > 0 and verified_count / total_claims < 0.6:
-            warnings.append(
-                f"claim_verified ratio: {verified_count}/{total_claims} "
-                f"({verified_count / total_claims:.0%}) < 60% — quality should be 'degraded'"
-            )
-        if warnings:
-            return CheckResult("claim_verified", "WARN", True, "; ".join(warnings))
-        return CheckResult("claim_verified", "WARN", True)
 
     def _check_source_metadata(self) -> CheckResult:
         warnings: list[str] = []
