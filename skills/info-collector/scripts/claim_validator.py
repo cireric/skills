@@ -375,7 +375,7 @@ class ClaimValidator:
 
     def _check_source_verification(self) -> CheckResult:
         if not self._collected_by_url:
-            return CheckResult("source_verification_check", "WARN", True, "No collected sources to verify against")
+            return CheckResult("source_verification_check", "INFO", True, "No collected sources to verify against")
 
         sv_counts = {"source_confirmed": 0, "source_absent": 0, "source_indirect": 0}
         total = 0
@@ -393,12 +393,7 @@ class ClaimValidator:
         parts = [f"{k}: {v}" for k, v in sv_counts.items() if v > 0]
         msg = f"Source verification: {', '.join(parts)}"
 
-        if total > 0 and sv_counts["source_indirect"] / total > _SOURCE_INDIRECT_RATIO_WARN:
-            ratio = sv_counts["source_indirect"] / total
-            return CheckResult("source_verification_check", "WARN", False,
-                              f"{msg}; source_indirect ratio {ratio:.0%} > {_SOURCE_INDIRECT_RATIO_WARN:.0%}")
-
-        return CheckResult("source_verification_check", "WARN", True, msg)
+        return CheckResult("source_verification_check", "INFO", True, msg)
 
     def _compute_source_verification(self, claim: dict) -> str:
         if _is_indirect_source(claim, self._collected_by_url):

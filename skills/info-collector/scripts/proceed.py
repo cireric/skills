@@ -264,6 +264,9 @@ def _gate_analysis(workdir: Path) -> list[str]:
             if r.level == "BLOCKER" and not r.passed and r.name in analysis_check_names
         ]
         errors.extend(f"[BLOCKER] {b.name}: {b.message}" for b in blockers)
+        for r in gateway_results:
+            if r.level == "INFO":
+                print(f"  [INFO] {r.message}", file=sys.stderr)
     from .claim_validator import apply_source_verification
     apply_source_verification(workdir)
     return errors

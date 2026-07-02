@@ -30,7 +30,7 @@ _YEAR_PATTERN = re.compile(r'\b(20[0-9]{2})\b')
 @dataclass
 class CheckResult:
     name: str
-    level: str  # "BLOCKER" | "WARN"
+    level: str  # "BLOCKER" | "WARN" | "INFO"
     passed: bool
     message: str = ""
 

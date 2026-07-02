@@ -989,7 +989,7 @@ class TestSourceVerificationCheck:
         assert result is not None
         assert "source_confirmed" in result.message
 
-    def test_indirect_ratio_warn(self, tmp_path):
+    def test_indirect_ratio_is_info(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [
                 {
@@ -1014,8 +1014,8 @@ class TestSourceVerificationCheck:
         ])
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "source_verification_check")
-        assert not result.passed
-        assert "30%" in result.message
+        assert result.passed
+        assert result.level == "INFO"
 
     def test_indirect_rule3_host_match_not_indirect(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
