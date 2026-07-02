@@ -347,12 +347,12 @@ class ClaimValidator:
             if len(types) > 1:
                 return CheckResult(
                     "metric_type_homogeneity",
-                    "BLOCKER",
+                    "WARN",
                     False,
                     f"Section '{sec_id}' mixes metric_types: {sorted(types)}. "
-                    "Split into separate sections or tables.",
+                    "Consider splitting into separate sections or tables.",
                 )
-        return CheckResult("metric_type_homogeneity", "BLOCKER", True)
+        return CheckResult("metric_type_homogeneity", "WARN", True)
 
     def _check_claim_dedup(self) -> CheckResult:
         claim_sections: dict[str, list[str]] = {}

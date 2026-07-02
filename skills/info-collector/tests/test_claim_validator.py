@@ -829,6 +829,55 @@ class TestCheckClaimSourceRefCoverage:
         assert result.passed
 
 
+class TestCheckMetricTypeHomogeneity:
+    def test_mixed_metric_types_is_warn(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [
+                        {
+                            "text": "A",
+                            "source_urls": ["https://a.com"],
+                            "evidence_type": "official_data",
+                            "metric_type": "swe_bench_verified",
+                        },
+                        {
+                            "text": "B",
+                            "source_urls": ["https://b.com"],
+                            "evidence_type": "independent_benchmark",
+                            "metric_type": "swe_bench_pro",
+                        },
+                    ],
+                }],
+            },
+        )
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "metric_type_homogeneity")
+        assert not result.passed
+        assert result.level == "WARN"
+
+    def test_single_metric_type_passes(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "A",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "official_data",
+                        "metric_type": "swe_bench_verified",
+                    }],
+                }],
+            },
+        )
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "metric_type_homogeneity")
+        assert result.passed
+
+
 class TestNumberNormalization:
     def test_dollar_amount_in_source(self):
         assert _number_found_in_source("revenue was $9.8 billion", "market estimated at $9.8B") == "source_confirmed"
