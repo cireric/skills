@@ -153,7 +153,6 @@ _VALID_TRANSITIONS_SET = {
     ("analysis", "review"),
     ("review", "final"),
     ("review", "review"),
-    ("final", "cleanup"),
 }
 
 _PHASE_ARTIFACTS: dict[str, list[str]] = {
@@ -162,7 +161,6 @@ _PHASE_ARTIFACTS: dict[str, list[str]] = {
     "analysis": [ARTIFACT_ANALYSIS, ARTIFACT_REVIEW_REPORT],
     "review": [ARTIFACT_REVIEW_REPORT],
     "final": [ARTIFACT_PIPELINE_STATE],
-    "cleanup": [ARTIFACT_SCOPE, ARTIFACT_SEARCH_PLAN, ARTIFACT_COLLECTED, ARTIFACT_ANALYSIS, ARTIFACT_REVIEW_REPORT, ARTIFACT_PIPELINE_STATE],
 }
 
 

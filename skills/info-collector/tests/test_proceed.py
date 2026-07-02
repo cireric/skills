@@ -6,6 +6,7 @@ from pathlib import Path
 from scripts.lib.exceptions import ArtifactError
 from scripts.proceed import (
     _check_scope_schema,
+    _gate_final,
     _sanitize_sections,
     write_phase_state,
     detect_current_phase,
@@ -534,24 +535,34 @@ class TestReviewSelfLoop:
 
 
 class TestGateFinalOnlyBlocksBlocker:
-    """BUG-1 fix: _gate_final only blocks on BLOCKER-level failures, not WARN."""
+    """_gate_final only blocks on BLOCKER-level failures, not WARN."""
 
-    def test_warn_does_not_block_final_to_cleanup(self, tmp_path, monkeypatch):
+    def test_warn_does_not_block_final(self, tmp_path, monkeypatch):
         report = "---\ntopic: T\ngoal_type: exploratory\ndate: 2026-06-26\nreview_status: draft\n---\n## Overview\nContent with cite [&#91;1&#93;](#refs).\n\n## References\n- **[1]** Title — [URL](https://a.com)\n"
         report_path = tmp_path / "report.md"
         report_path.write_text(report, encoding="utf-8")
         monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
-        ok, errors = proceeds(tmp_path, "final", "cleanup")
-        assert ok, f"WARN-only failures should not block: {errors}"
+        errors = _gate_final(tmp_path)
+        assert errors == [], f"WARN-only failures should not block: {errors}"
 
-    def test_blocker_blocks_final_to_cleanup(self, tmp_path, monkeypatch):
+    def test_blocker_blocks_final(self, tmp_path, monkeypatch):
         report = "No front matter, no references."
         report_path = tmp_path / "report.md"
         report_path.write_text(report, encoding="utf-8")
         monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
+        errors = _gate_final(tmp_path)
+        assert len(errors) > 0
+        assert any("report_front_matter" in e for e in errors)
+
+
+class TestCleanupTransitionRejected:
+    def test_cleanup_transition_rejected(self, tmp_path):
+        """Phase 4 (cleanup) has been removed; final→cleanup should be rejected."""
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_final"})
         ok, errors = proceeds(tmp_path, "final", "cleanup")
         assert not ok
-        assert any("report_front_matter" in e for e in errors)
+        assert "Invalid transition" in errors[0]
+
 
 class TestSearchPlanStatus:
     def test_search_plan_includes_status_field(self, tmp_path):

@@ -89,7 +89,7 @@ def write_phase_state(workdir: Path, phase: str) -> None:
 def detect_current_phase(workdir: Path) -> str:
     """Return current phase string based on state file or artifact presence.
 
-    Returns one of: pre_scope, post_scope, post_search, post_analysis, post_review
+    Returns one of: pre_scope, post_scope, post_search, post_analysis, post_review, post_final
     """
     if not workdir.exists():
         return "pre_scope"
@@ -98,7 +98,7 @@ def detect_current_phase(workdir: Path) -> str:
         try:
             state = read_json(state_path)
             phase = state.get("current_phase", "")
-            if phase in ("pre_scope", "post_scope", "post_search", "post_analysis", "post_review"):
+            if phase in ("pre_scope", "post_scope", "post_search", "post_analysis", "post_review", "post_final"):
                 return phase
         except (ArtifactError, OSError):
             pass
@@ -296,7 +296,7 @@ def proceeds(
     ensure_dir(workdir)
     current = detect_current_phase(workdir)
     expected_from = f"post_{from_phase}"
-    if from_phase != "final" and current != expected_from:
+    if current != expected_from:
         return False, [
             f"Phase mismatch: current={current}, expected={expected_from} for --from {from_phase}"
         ]

@@ -280,9 +280,7 @@ If any check fails → directly edit the `.md` file to fix → re-run this step.
 
 #### Step 2: Gateway check
 
-Run: `python -m scripts.cli proceed --from final --to cleanup`
-
-This runs 10 automated report checks on the `.md` file. Only BLOCKER-level failures block the transition; WARN-level failures are advisory and do not block. (ADR 0026)
+Run report checks on the generated `.md` file. Only BLOCKER-level failures need fixing; WARN-level failures are advisory and do not block. (ADR 0026)
 
 **BLOCKER** (must fix):
 
@@ -304,14 +302,9 @@ This runs 10 automated report checks on the `.md` file. Only BLOCKER-level failu
 | 15 | Empty section | Section heading exists but has no content |
 | 16 | Overlong line | Single line exceeds 500 characters |
 
-If any check fails → fix the `.md` file → re-run `proceed --from final --to cleanup`.
+If any check fails → fix the `.md` file → re-run `proceed --from review --to final`.
 
-## Phase 4: Cleanup
-
-1. Run: `python -m scripts.cli proceed --from final --to cleanup`
-2. Ask user whether to clean up intermediate files (adapt language to user).
-   - Yes -> `python scripts/cli.py clean`
-   - No -> `<project_root>/.workdir/` remains
+Pipeline terminates at `post_final`. To clean up intermediate files manually, run `python -m scripts.cli clean`.
 
 ## CLI Commands Reference
 
