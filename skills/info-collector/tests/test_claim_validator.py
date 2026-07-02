@@ -941,3 +941,25 @@ class TestSourceVerificationCheck:
         ClaimValidator(tmp_path, "tech_selection").check()
         new_mtime = (tmp_path / "analysis.json").stat().st_mtime
         assert original_mtime == new_mtime
+
+
+class TestRefMarkerSuggestion:
+    def test_suggestion_in_message_when_prefix_match(self, tmp_path):
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://example.com/long-path-name/article", "snippet": "A", "fetched_content": "content"}],
+        )
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "content": "See {{ref:https://example.com/long-path-name/arti}} for details.",
+                    "claims": [],
+                }],
+            },
+        )
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "ref_marker_validity")
+        assert not result.passed
+        assert "did you mean" in result.message

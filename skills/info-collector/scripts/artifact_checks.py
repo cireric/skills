@@ -27,6 +27,17 @@ from .lib.utils import build_collected_by_url, build_collected_url_set, normaliz
 
 _YEAR_PATTERN = re.compile(r'\b(20[0-9]{2})\b')
 
+def _suggest_similar_urls(url: str, known_urls: set[str], max_suggestions: int = 3) -> list[str]:
+    """Find URLs in known_urls that are prefix-matches or have small edit distance."""
+    norm = normalize_url(url)
+    suggestions = []
+    for known in known_urls:
+        if known.startswith(norm[:40]) or norm.startswith(known[:40]):
+            suggestions.append(known)
+            if len(suggestions) >= max_suggestions:
+                break
+    return suggestions
+
 @dataclass
 class CheckResult:
     name: str
@@ -74,7 +85,11 @@ def check_url_traceability(workdir: Path) -> CheckResult:
             for url in claim.get("source_urls", []):
                 norm = normalize_url(url)
                 if norm not in collected_urls:
-                    untraceable.append(f"sections.{sec_id}.claims[{ci}]: {url}")
+                    detail = f"sections.{sec_id}.claims[{ci}]: {url}"
+                    suggestions = _suggest_similar_urls(url, collected_urls)
+                    if suggestions:
+                        detail += f" (did you mean {suggestions[0]}?)"
+                    untraceable.append(detail)
     if untraceable:
         count = len(untraceable)
         if count <= 5:

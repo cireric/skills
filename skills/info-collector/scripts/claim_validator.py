@@ -391,9 +391,20 @@ class ClaimValidator:
                                "No {{ref:URL}} markers found in analysis content")
         missing = [u for u in all_refs if u not in self._collected_urls]
         if missing:
+            details = []
+            for u in missing[:3]:
+                msg = u
+                suggestions = []
+                for known in self._collected_urls:
+                    if known.startswith(u[:40]) or u.startswith(known[:40]):
+                        suggestions.append(known)
+                        break
+                if suggestions:
+                    msg += f" (did you mean {suggestions[0]}?)"
+                details.append(msg)
             return CheckResult("ref_marker_validity", "BLOCKER", False,
                                f"{len(missing)} {{ref:URL}} markers reference URLs not in collected.json: "
-                               f"{missing[:3]}{'...' if len(missing) > 3 else ''}")
+                               f"{'; '.join(details)}{'...' if len(missing) > 3 else ''}")
         return CheckResult("ref_marker_validity", "BLOCKER", True,
                            f"All {len(all_refs)} {{ref:URL}} markers reference valid collected.json URLs")
 
