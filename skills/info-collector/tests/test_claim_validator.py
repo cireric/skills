@@ -109,6 +109,7 @@ class TestCheckPrecisionInflation:
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "precision_inflation")
         assert result.passed
+        assert result.level == "WARN"
 
     def test_exact_with_expert_opinion_warns(self, tmp_path):
         _write_json(
