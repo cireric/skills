@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import string
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .artifact_checks import CheckResult, _read_artifact
 from .lib.constants import (
@@ -59,6 +60,9 @@ class SearchGate:
         except ArtifactError:
             pass
 
+    _DOMAIN_CONCENTRATION_WARN = 0.50
+    _TIER_COMPLETED_WARN_RATIO = 0.50
+
     def check(self) -> list[CheckResult]:
         """Run all search-gate checks. Returns list of CheckResult."""
         return [
@@ -69,6 +73,8 @@ class SearchGate:
             self._check_topic_coverage(),
             self._check_fetched_content_depth(),
             self._check_search_plan_compliance(),
+            self._check_domain_concentration(),
+            self._check_tier_task_completion(),
         ]
 
     @property
@@ -299,6 +305,62 @@ class SearchGate:
             "search_plan_compliance", "WARN", True,
             f"{len(completed)}/{len(tasks)} tasks completed, {len(skipped)} skipped",
         )
+
+    def _check_domain_concentration(self) -> CheckResult:
+        if self._collected is None:
+            return CheckResult("domain_concentration", "WARN", True, "Skipped (no collected.json)")
+        domain_counts: dict[str, int] = {}
+        for entry in self._collected:
+            url = entry.get("url", "")
+            try:
+                domain = urlparse(url).hostname or ""
+            except Exception:
+                domain = ""
+            if domain:
+                domain_counts[domain] = domain_counts.get(domain, 0) + 1
+        if not domain_counts:
+            return CheckResult("domain_concentration", "WARN", True, "No domains found")
+        total = sum(domain_counts.values())
+        top_domain = max(domain_counts, key=domain_counts.get)
+        top_ratio = domain_counts[top_domain] / total
+        if top_ratio > self._DOMAIN_CONCENTRATION_WARN:
+            return CheckResult(
+                "domain_concentration", "WARN", False,
+                f"{domain_counts[top_domain]}/{total} sources ({top_ratio:.0%}) from {top_domain} "
+                f"— consider diversifying sources across domains",
+            )
+        return CheckResult("domain_concentration", "WARN", True)
+
+    def _check_tier_task_completion(self) -> CheckResult:
+        if self._search_plan is None:
+            return CheckResult("tier_task_completion", "WARN", True, "search_plan.json not found")
+        tasks = self._search_plan.get("tasks", [])
+        if not tasks:
+            return CheckResult("tier_task_completion", "WARN", True, "No tasks in search_plan.json")
+        tier_stats: dict[int, dict[str, int]] = {}
+        for task in tasks:
+            tier = task.get("tier", 0)
+            status = task.get("status", "pending")
+            stats = tier_stats.setdefault(tier, {"completed": 0, "total": 0})
+            stats["total"] += 1
+            if status == "completed":
+                stats["completed"] += 1
+        low_completion: list[str] = []
+        for tier in sorted(tier_stats):
+            stats = tier_stats[tier]
+            if stats["total"] > 0:
+                ratio = stats["completed"] / stats["total"]
+                if ratio < self._TIER_COMPLETED_WARN_RATIO and tier <= 2:
+                    low_completion.append(
+                        f"Tier {tier}: {stats['completed']}/{stats['total']} tasks completed ({ratio:.0%})"
+                    )
+        if low_completion:
+            return CheckResult(
+                "tier_task_completion", "WARN", False,
+                f"Low Tier 1-2 task completion: {'; '.join(low_completion)} — "
+                f"consider retrying with alternative search queries or platform-native APIs",
+            )
+        return CheckResult("tier_task_completion", "WARN", True)
 
     @staticmethod
     def _is_stop_word(token: str) -> bool:

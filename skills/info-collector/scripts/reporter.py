@@ -86,16 +86,20 @@ def _render_references(reference_map: dict[str, int], collected: list[dict], lan
         item = collected_by_url.get(norm_url)
         title = item.get("title", norm_url) if item else norm_url
         tier_str = ""
+        vendor_str = ""
         if item is not None:
             tier = item.get("source_tier")
             tier_key = str(tier) if tier is not None else None
             if tier_key and tier_key in _TIER_LABELS:
                 tier_str = f" ({_TIER_LABELS[tier_key]})"
+            va = item.get("vendor_affiliation", "")
+            if isinstance(va, str) and va.strip():
+                vendor_str = f" [vendor: {va.strip()}]"
         clean_url = _clean_url(norm_url)
         if title and title != clean_url:
-            parts.append(f"- **[{num}]** {title}{tier_str} — [{clean_url}]({clean_url})")
+            parts.append(f"- **[{num}]** {title}{tier_str}{vendor_str} — [{clean_url}]({clean_url})")
         else:
-            parts.append(f"- **[{num}]** [{clean_url}]({clean_url})")
+            parts.append(f"- **[{num}]** [{clean_url}]({clean_url}){vendor_str}")
     return "\n".join(parts)
 
 

@@ -22,6 +22,9 @@ from .lib.constants import (
     ARTIFACT_SEARCH_PLAN,
     _DEPTH_MIN_SOURCES_PER_DIRECTION,
     _NON_EXACT_EVIDENCE_TYPES,
+    _VALID_CONFIDENCE,
+    _VALID_EVIDENCE_TYPES,
+    _VALID_PRECISION,
     _VALID_TRANSITIONS_SET,
 )
 
@@ -60,7 +63,17 @@ def _sanitize_sections(analysis: dict, collected_urls: set[str] | None = None) -
                 cl = dict(claim)
                 if "sources" in cl and "source_urls" not in cl:
                     cl["source_urls"] = cl.pop("sources")
+                # Auto-fix invalid evidence_type: downgrade to closest valid value
+                if "evidence_type" in cl and cl["evidence_type"] not in _VALID_EVIDENCE_TYPES:
+                    cl["evidence_type"] = "qualitative_trend"
+                # Auto-fix invalid confidence: downgrade to medium
+                if "confidence" in cl and cl["confidence"] not in _VALID_CONFIDENCE:
+                    cl["confidence"] = "medium"
+                # Auto-fix invalid precision: downgrade to qualitative
+                if "precision" in cl and cl["precision"] not in _VALID_PRECISION:
+                    cl["precision"] = "qualitative"
                 # Auto-fix precision inflation: downgrade exact -> range for non-official evidence
+                # Must run AFTER evidence_type sanitization so it sees the corrected type
                 if (
                     cl.get("precision") == "exact"
                     and cl.get("evidence_type") in _NON_EXACT_EVIDENCE_TYPES

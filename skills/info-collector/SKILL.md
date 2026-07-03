@@ -89,6 +89,12 @@ Use `exa_web_search_exa` for discovery. Use `site:` queries from recommended sou
 
 **Tier 4 search strategy**: Tier 4 sources are not pre-configured in config.json. When deep research requires Tier 4 coverage, search broadly on Reddit, Hacker News, Dev.to, and personal blogs. All Tier 4 findings must use strong qualifier language in the report.
 
+**Tier 1-2 fallback strategy**: When `site:` queries on Tier 1-2 domains (arxiv.org, huggingface.co, pypi.org, etc.) return few or no results, do NOT skip silently. Instead:
+1. Broaden the query — remove restrictive terms, use synonyms or broader categories (e.g., "AI agent framework" instead of "agentic coding tool 2026")
+2. Use platform-native search — fetch arXiv listing pages, Hugging Face model/dataset search, PyPI package search directly via URL
+3. Accept partial matches — a Tier 2 source that covers a sub-topic is still valuable
+4. If all Tier 1-2 searches for a direction fail, note this as a coverage gap when writing analysis
+
 **Search strategy**: Follow the tier-based search order in `references/search-strategy.md`.
 
 ### Step 2.3: Full-content fetch (MANDATORY — do NOT skip)
@@ -118,13 +124,16 @@ Add each result to `<project_root>/.workdir/collected.json`:
 	"source_tier": 2,
 	"fetched_content": "...",
 	"covered_directions": ["direction 1", "direction 2"],
-	"fetch_failed": false
+	"fetch_failed": false,
+	"vendor_affiliation": ""
 }
 ```
 
 **`covered_directions`** (optional, ADR 0017): Declares which search_directions this source covers. Use when title/snippet token overlap is below threshold. Constraints: subset of scope.json's search_directions, max 3 per entry, invalid values ignored with WARN.
 
 **`fetch_failed`** (optional, default false): Set to `true` only when the URL could not be fetched after attempting. Exempts the entry from depth checks but imposes claim restrictions.
+
+**`vendor_affiliation`** (optional): When the source belongs to or is published by a company with commercial interest in the topic, record the company name (e.g., `"Anthropic"`, `"Microsoft (GitHub)"`). The reporter will render this as `[vendor: X]` in the References section, providing automatic vendor bias disclosure.
 
 ### Step 2.5: Run gate
 

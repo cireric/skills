@@ -14,6 +14,7 @@ from .artifact_checks import CheckResult, _read_artifact
 from .lib.constants import (
     ARTIFACT_ANALYSIS,
     ARTIFACT_COLLECTED,
+    _ENGLISH_STOP_WORDS,
     _INDIRECT_CITATION_PATTERNS,
     _QUANTITATIVE_GOAL_TYPES,
     _SINGLE_SOURCE_RATIO,
@@ -217,6 +218,7 @@ class ClaimValidator:
             self._check_source_metadata(),
             self._check_metric_type_homogeneity(),
             self._check_claim_dedup(),
+            self._check_entity_number_conflict(),
             self._check_ref_marker_validity(),
             self._check_claim_source_ref_coverage(),
             self._check_source_verification(),
@@ -278,6 +280,14 @@ class ClaimValidator:
             return CheckResult("precision_inflation", "WARN", False, "; ".join(warnings))
         return CheckResult("precision_inflation", "WARN", True)
 
+    _GENERIC_TEST_CONDITIONS = frozenset({
+        "various environments and survey methodologies",
+        "various environments",
+        "n/a",
+        "not specified",
+        "see source",
+    })
+
     def _check_source_metadata(self) -> CheckResult:
         warnings: list[str] = []
         for sec_id, ci, claim in self._all_claims:
@@ -293,6 +303,14 @@ class ClaimValidator:
                 if not tc or (isinstance(tc, str) and not tc.strip()):
                     warnings.append(
                         f"sections.{sec_id}.claims[{ci}]: evidence_type='{ev}' has empty source_metadata.test_conditions"
+                    )
+                elif isinstance(tc, str) and tc.strip().lower() in self._GENERIC_TEST_CONDITIONS:
+                    warnings.append(
+                        f"sections.{sec_id}.claims[{ci}]: evidence_type='{ev}' has generic placeholder test_conditions '{tc.strip()}'"
+                    )
+                elif isinstance(tc, str) and len(tc.strip()) < 10:
+                    warnings.append(
+                        f"sections.{sec_id}.claims[{ci}]: evidence_type='{ev}' has suspiciously short test_conditions '{tc.strip()}'"
                     )
         if warnings:
             return CheckResult("source_metadata", "WARN", False, "; ".join(warnings))
@@ -337,6 +355,46 @@ class ClaimValidator:
                 f"{len(duplicates)} duplicate claims across sections: " + "; ".join(issues),
             )
         return CheckResult("claim_dedup", "WARN", True)
+
+    _ENTITY_NUMBER_PATTERN = re.compile(
+        r"([\w\u4e00-\u9fff][\w\s\u4e00-\u9fff\-\.]{1,40}?)"
+        r"\s+"
+        r"(\$?\d[\d,]*\.?\d*\s*(?:%|ms|req/s|req/sec|MB|GB|B|x|times|K|万|亿)?)"
+    )
+
+    _ENTITY_STOP_WORDS = _ENGLISH_STOP_WORDS | frozenset({
+        "an", "been", "being", "could", "does", "have", "its",
+        "might", "shall", "should", "these", "those", "were", "would",
+    })
+
+    def _check_entity_number_conflict(self) -> CheckResult:
+        entity_numbers: dict[str, dict[str, list[str]]] = {}
+        for sec_id, _si, claim in self._all_claims:
+            text = claim.get("text", "")
+            for match in self._ENTITY_NUMBER_PATTERN.finditer(text):
+                entity = match.group(1).strip()
+                number = match.group(2).strip()
+                if len(entity) < 3 or len(number) < 2:
+                    continue
+                if entity.lower() in self._ENTITY_STOP_WORDS:
+                    continue
+                entity_numbers.setdefault(entity, {}).setdefault(number, []).append(sec_id)
+        conflicts: list[str] = []
+        for entity, numbers in entity_numbers.items():
+            if len(numbers) > 1:
+                parts = [f"{num} (in {', '.join(secs)})" for num, secs in numbers.items()]
+                conflicts.append(f"Entity '{entity}' has conflicting numbers: {'; '.join(parts)}")
+        if conflicts:
+            shown = conflicts[:5]
+            return CheckResult(
+                "entity_number_conflict",
+                "WARN",
+                False,
+                f"{len(conflicts)} entity-number conflicts found: "
+                + "; ".join(shown)
+                + ("..." if len(conflicts) > 5 else ""),
+            )
+        return CheckResult("entity_number_conflict", "WARN", True)
 
     def _check_source_verification(self) -> CheckResult:
         if not self._collected_by_url:

@@ -15,9 +15,12 @@ from typing import TypedDict
 from .constants import (
     _MAX_COVERED_DIRECTIONS,
     _VALID_AUDIENCES,
+    _VALID_CONFIDENCE,
     _VALID_DEPTHS,
+    _VALID_EVIDENCE_TYPES,
     _VALID_GOAL_TYPES,
     _VALID_METRIC_TYPES,
+    _VALID_PRECISION,
     _VALID_SOURCE_VERIFICATIONS,
 )
 from .exceptions import ValidationError
@@ -66,6 +69,7 @@ class CollectedEntryDict(TypedDict, total=False):
     source_tier: int
     fetched_content: str
     covered_directions: list[str]
+    vendor_affiliation: str
 
 
 _SCOPE_REQUIRED_FIELDS = (
@@ -196,6 +200,12 @@ def _validate_claims(sec_idx: int, claims: list, errors: list[ValidationError]) 
                 errors.append(_err(f"{prefix}.source_urls", "source_urls is empty"))
             elif not all(isinstance(u, str) for u in urls):
                 errors.append(_err(f"{prefix}.source_urls", "source_urls must contain only strings"))
+        if "evidence_type" in claim and claim["evidence_type"] not in _VALID_EVIDENCE_TYPES:
+            errors.append(_err(f"{prefix}.evidence_type", f"invalid evidence_type '{claim['evidence_type']}'"))
+        if "confidence" in claim and claim["confidence"] not in _VALID_CONFIDENCE:
+            errors.append(_err(f"{prefix}.confidence", f"invalid confidence '{claim['confidence']}'"))
+        if "precision" in claim and claim["precision"] not in _VALID_PRECISION:
+            errors.append(_err(f"{prefix}.precision", f"invalid precision '{claim['precision']}'"))
         if "metric_type" in claim and claim["metric_type"] not in _VALID_METRIC_TYPES:
             errors.append(_err(f"{prefix}.metric_type", f"invalid metric_type '{claim['metric_type']}'"))
         if "source_verification" in claim and claim["source_verification"] not in _VALID_SOURCE_VERIFICATIONS:
@@ -229,4 +239,8 @@ def validate_collected(data: list) -> list[ValidationError]:
                 for k, direction in enumerate(cd):
                     if not isinstance(direction, str) or not direction:
                         errors.append(_err(f"{prefix}.covered_directions[{k}]", "each item must be a non-empty string"))
+        if "vendor_affiliation" in entry:
+            va = entry["vendor_affiliation"]
+            if not isinstance(va, str) or not va.strip():
+                errors.append(_err(f"{prefix}.vendor_affiliation", "must be a non-empty string if present"))
     return errors
