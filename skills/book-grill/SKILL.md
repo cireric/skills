@@ -1,6 +1,8 @@
 ---
 name: book-grill
-description: Post-reading deep reflection with type-adaptive questioning, automatic note generation, and reading history accumulation. Use when /book-grill, "grill me on this book", "book reflection", "读后反思", or "读书笔记".
+description: >
+  Post-reading deep reflection with type-adaptive questioning, automatic note
+  generation, and reading history accumulation. Invoke via /book-grill only.
 ---
 
 <what-to-do>
