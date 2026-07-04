@@ -97,9 +97,9 @@ def _render_references(reference_map: dict[str, int], collected: list[dict], lan
                 vendor_str = f" [vendor: {va.strip()}]"
         clean_url = _clean_url(norm_url)
         if title and title != clean_url:
-            parts.append(f"- **[{num}]** {title}{tier_str}{vendor_str} — [{clean_url}]({clean_url})")
+            parts.append(f"- [{num}] [{title}{tier_str}{vendor_str}]({clean_url})")
         else:
-            parts.append(f"- **[{num}]** [{clean_url}]({clean_url}){vendor_str}")
+            parts.append(f"- [{num}] [{clean_url}]({clean_url})")
     return "\n".join(parts)
 
 

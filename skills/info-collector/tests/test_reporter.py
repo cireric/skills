@@ -60,13 +60,13 @@ class TestRenderReferences:
         ]
         md = _render_references(ref_map, collected)
         assert "## References" in md
-        assert '- **[1]** Source A — [https://a.com/](https://a.com/)' in md
-        assert '- **[2]** Source B — [https://b.com/](https://b.com/)' in md
+        assert '- [1] [Source A](https://a.com/)' in md
+        assert '- [2] [Source B](https://b.com/)' in md
 
     def test_url_without_collected_entry(self):
         ref_map = {"https://unknown.com/": 1}
         md = _render_references(ref_map, [])
-        assert '- **[1]** [https://unknown.com/](https://unknown.com/)' in md
+        assert '- [1] [https://unknown.com/](https://unknown.com/)' in md
 
     def test_empty_map(self):
         md = _render_references({}, [])
@@ -78,31 +78,31 @@ class TestRenderReferencesWithTier:
         ref_map = {"https://a.com/": 1}
         collected = [{"url": "https://a.com", "title": "Source A", "source_tier": "1"}]
         md = _render_references(ref_map, collected)
-        assert '- **[1]** Source A (★★★☆ Tier 1) — [https://a.com/](https://a.com/)' in md
+        assert '- [1] [Source A (★★★☆ Tier 1)](https://a.com/)' in md
 
     def test_tier_2_reference(self):
         ref_map = {"https://b.com/": 1}
         collected = [{"url": "https://b.com", "title": "Source B", "source_tier": "2"}]
         md = _render_references(ref_map, collected)
-        assert '- **[1]** Source B (★★☆☆ Tier 2) — [https://b.com/](https://b.com/)' in md
+        assert '- [1] [Source B (★★☆☆ Tier 2)](https://b.com/)' in md
 
     def test_tier_3_reference(self):
         ref_map = {"https://c.com/": 1}
         collected = [{"url": "https://c.com", "title": "Source C", "source_tier": "3"}]
         md = _render_references(ref_map, collected)
-        assert '- **[1]** Source C (★☆☆☆ Tier 3) — [https://c.com/](https://c.com/)' in md
+        assert '- [1] [Source C (★☆☆☆ Tier 3)](https://c.com/)' in md
 
     def test_tier_4_reference(self):
         ref_map = {"https://d.com/": 1}
         collected = [{"url": "https://d.com", "title": "Source D", "source_tier": "4"}]
         md = _render_references(ref_map, collected)
-        assert '- **[1]** Source D (☆☆☆☆ Tier 4) — [https://d.com/](https://d.com/)' in md
+        assert '- [1] [Source D (☆☆☆☆ Tier 4)](https://d.com/)' in md
 
     def test_no_tier_no_label(self):
         ref_map = {"https://e.com/": 1}
         collected = [{"url": "https://e.com", "title": "Source E"}]
         md = _render_references(ref_map, collected)
-        assert '- **[1]** Source E — [https://e.com/](https://e.com/)' in md
+        assert '- [1] [Source E](https://e.com/)' in md
         assert "Tier" not in md
 
     def test_mixed_tier_references(self):
@@ -113,11 +113,11 @@ class TestRenderReferencesWithTier:
             {"url": "https://c.com", "title": "Source C", "source_tier": "3"},
         ]
         md = _render_references(ref_map, collected)
-        assert '- **[1]** Source A (★★★☆ Tier 1) — [https://a.com/](https://a.com/)' in md
-        assert '- **[2]** Source B — [https://b.com/](https://b.com/)' in md
-        assert '- **[3]** Source C (★☆☆☆ Tier 3) — [https://c.com/](https://c.com/)' in md
+        assert '- [1] [Source A (★★★☆ Tier 1)](https://a.com/)' in md
+        assert '- [2] [Source B](https://b.com/)' in md
+        assert '- [3] [Source C (★☆☆☆ Tier 3)](https://c.com/)' in md
         lines = md.splitlines()
-        ref_lines = [l for l in lines if l.startswith("- **[")]
+        ref_lines = [l for l in lines if l.startswith("- [")]
         assert len(ref_lines) == 3
 
     def test_tier_labels_dict(self):

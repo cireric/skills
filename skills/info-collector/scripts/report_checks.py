@@ -10,7 +10,7 @@ from .lib.constants import _OVERLONG_LINE_THRESHOLD
 
 
 _HIDDEN_REF_DEF = re.compile(r'^\[\d+\]:\s+https?://\S')
-_VISIBLE_REF_ITEM = re.compile(r'^-\s+\*\*\[\d+\]\*\*')
+_VISIBLE_REF_ITEM = re.compile(r'^-\s+\[\d+\]')
 _INLINE_CITATION = re.compile(r'\[&#91;(\d+)[†‡]?&#93;\]\([^)]*\)|\[\\?\[(\d+)[†‡]?\\?\]\]\([^)]*\)')
 _REF_DEF_NUM = re.compile(r'^\[(\d+)\]:\s+https?://\S')
 _FENCED_CODE = re.compile(r'^```')
@@ -35,7 +35,7 @@ def _find_references_section(content: str) -> int:
 
 def _extract_defined_nums(ref_section: str) -> set[int]:
     defined_nums = set(int(m.group(1)) for m in _REF_DEF_NUM.finditer(ref_section))
-    visible_nums = set(int(m.group(1)) for m in re.finditer(r'\*\*\[(\d+)\]\*\*', ref_section))
+    visible_nums = set(int(m.group(1)) for m in re.finditer(r'\[(\d+)\]', ref_section))
     return defined_nums | visible_nums
 
 

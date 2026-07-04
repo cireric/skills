@@ -39,14 +39,14 @@ class TestCheckReportDanglingRefs:
 
     NOTE: _REF_DEF_NUM regex lacks re.MULTILINE, so hidden [N]: URL definitions
     in the References section are not matched. Only visible list items
-    (- **[N]** ...) are detected. Tests use visible list format.
+    (- [N] ...) are detected. Tests use visible list format.
     """
 
     def test_all_refs_defined_pass(self, tmp_path):
         md = """Some text with a citation [&#91;1&#93;](#refs).
 
 ## References
-- **[1]** Title — [URL](https://example.com)
+- [1] [Title](https://example.com)
 """
         _write_md(tmp_path / "report.md", md)
         result = check_report_dangling_refs(tmp_path / "report.md")
@@ -76,7 +76,7 @@ class TestCheckReportDanglingRefs:
         md = """Inline cite [&#91;1&#93;](#refs).
 
 ## References
-- **[1]** Title — [URL](https://example.com)
+- [1] [Title](https://example.com)
 """
         _write_md(tmp_path / "report.md", md)
         result = check_report_dangling_refs(tmp_path / "report.md")
@@ -91,8 +91,8 @@ class TestCheckReportDanglingRefs:
         md = """Cite with [&#91;2&#93;](#ref) and [\\[3\\]](#ref) style.
 
 ## References
-- **[2]** Title — [URL](https://example.com)
-- **[3]** Title — [URL](https://other.com)
+- [2] [Title](https://example.com)
+- [3] [Title](https://other.com)
 """
         _write_md(tmp_path / "report.md", md)
         result = check_report_dangling_refs(tmp_path / "report.md")
@@ -121,7 +121,7 @@ class TestCheckReportOrphanedDefs:
         md = """Nothing cited in body.
 
 ## References
-- **[1]** Title — [URL](https://example.com)
+- [1] [Title](https://example.com)
 """
         _write_md(tmp_path / "report.md", md)
         result = check_report_orphaned_defs(tmp_path / "report.md")
@@ -138,7 +138,7 @@ class TestCheckReportOrphanedDefs:
         md = """Body with no citations.
 
 ## References
-- **[2]** Some title
+- [2] Some title
 """
         _write_md(tmp_path / "report.md", md)
         result = check_report_orphaned_defs(tmp_path / "report.md")
@@ -149,9 +149,9 @@ class TestCheckReportOrphanedDefs:
         md = """Cite [&#91;1&#93;](#refs) but not 2 or 3.
 
 ## References
-- **[1]** Title — [URL](https://example.com)
-- **[2]** Title — [URL](https://other.com)
-- **[3]** Title — [URL](https://another.com)
+- [1] [Title](https://example.com)
+- [2] [Title](https://other.com)
+- [3] [Title](https://another.com)
 """
         _write_md(tmp_path / "report.md", md)
         result = check_report_orphaned_defs(tmp_path / "report.md")
@@ -164,7 +164,7 @@ class TestCheckReportRefsVisibility:
 
     def test_visible_list_passes(self, tmp_path):
         md = """## References
-- **[1]** Title — [URL](https://example.com)
+- [1] [Title](https://example.com)
 """
         _write_md(tmp_path / "report.md", md)
         result = check_report_refs_visibility(tmp_path / "report.md")
@@ -184,7 +184,7 @@ class TestCheckReportRefsVisibility:
     def test_both_hidden_and_visible_passes(self, tmp_path):
         md = """## References
 [1]: https://example.com
-- **[1]** Title — [URL](https://example.com)
+- [1] [Title](https://example.com)
 """
         _write_md(tmp_path / "report.md", md)
         result = check_report_refs_visibility(tmp_path / "report.md")
@@ -198,8 +198,8 @@ class TestCheckReportRefsVisibility:
 
     def test_multiple_visible_items_passes(self, tmp_path):
         md = """## References
-- **[1]** First — [URL](https://a.com)
-- **[2]** Second — [URL](https://b.com)
+- [1] [First](https://a.com)
+- [2] [Second](https://b.com)
 """
         _write_md(tmp_path / "report.md", md)
         result = check_report_refs_visibility(tmp_path / "report.md")
@@ -501,7 +501,7 @@ Content with cite [&#91;1&#93;](#refs).
 | 1 | 2 |
 
 ## References
-- **[1]** Title
+- [1] Title
 """
         _write_md(tmp_path / "report.md", md)
         results = run_report_checks(tmp_path / "report.md")
@@ -549,7 +549,7 @@ class TestF1F2F9BlockerUpgrade:
         md = """No citations.
 
 ## References
-- **[1]** Title — [URL](https://example.com)
+- [1] [Title](https://example.com)
 """
         _write_md(tmp_path / "report.md", md)
         result = check_report_orphaned_defs(tmp_path / "report.md")
@@ -581,7 +581,7 @@ review_status: draft
 Text cites [&#91;99&#93;](#refs).
 
 ## References
-- **[1]** Title — [URL](https://example.com)
+- [1] [Title](https://example.com)
 """
         _write_md(tmp_path / "report.md", md)
         results = run_report_checks(tmp_path / "report.md")
@@ -610,7 +610,7 @@ class TestInlineCitationWithMarkers:
         report = (
             "---\ntopic: T\ngoal_type: other\ndate: 2026-07-01\nreview_status: passed\n---\n"
             "## Overview\nSee [&#91;1†&#93;](#refs).\n\n"
-            "## References\n- **[1]** Title — [URL](https://a.com)\n"
+            "## References\n- [1] [Title](https://a.com)\n"
         )
         path = tmp_path / "report.md"
         path.write_text(report, encoding="utf-8")
