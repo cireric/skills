@@ -155,13 +155,13 @@ If BLOCKER → fix the issue (fetch missing content, search more) before proceed
 
 Synthesize findings from `<project_root>/.workdir/collected.json` into `<project_root>/.workdir/analysis.json`.
 
-**Writing guide**: See `references/writing-guide.md` for content quality requirements, source traceability rules, tier-aware citations, precision rules, methodology section requirements, recommendation structure, and anti-patterns.
+**Writing guide**: See `references/writing-guide.md` for content quality requirements, source traceability rules, tier-aware citations, precision rules, methodology section requirements, recommendation structure, anti-patterns, depth strategy rules, deep-dive anchor requirements, synthesis guard, and false depth prohibition.
 
 **Subagent delegation**: See `references/subagent-template.md` for the exact prompt template, JSON schema, and assembly instructions.
 
 #### Step 1: Plan sections
 
-Read collected.json and scope.json. Decide the sections (id, title) based on goal_type requirements (see section_coverage check in gateway.py). Write the section plan but do NOT write content yet.
+Read collected.json and scope.json. Decide the sections (id, title) based on goal_type requirements (see section_coverage check in gateway.py). For each section, determine the **depth strategy** from the implicit mapping table (see writing-guide.md "Depth Strategy" section). For overview/deep_dive strategy sections in panoramic/exploratory goal_types, identify **≥ 2 deep-dive topics** per section — key findings worth arguing with 3+ sources, selected by tension/impact/mechanism criteria. For each deep-dive topic, list **source_hints** (URLs from collected.json likely relevant to that topic). Write the section plan as `{id, title, deep_dive_topics: [{topic, source_hints}], depth_strategy}` but do NOT write content yet.
 
 #### Step 2: Write each section's content independently (parallel)
 

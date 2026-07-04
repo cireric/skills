@@ -13,6 +13,7 @@ from .lib.constants import (
     _CHINESE_STOP_WORDS,
     _EXPLORATORY_GOAL_TYPES,
     _METHODOLOGY_MIN_WORDS,
+    _MIN_KEY_INSIGHTS_PANORAMIC,
     _MIN_SOURCES,
     _QUANTITATIVE_GOAL_TYPES,
     _REQUIRED_SECTION_IDS,
@@ -362,6 +363,33 @@ def check_source_tier_balance(workdir: Path, goal_type: str) -> CheckResult:
     return CheckResult("source_tier_balance", "WARN", True)
 
 
+def check_key_insights_coverage(workdir: Path, goal_type: str) -> CheckResult:
+    if goal_type not in _EXPLORATORY_GOAL_TYPES:
+        return CheckResult("key_insights_coverage", "WARN", True, "Skipped (non-exploratory goal type)")
+    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "key_insights_coverage", "WARN")
+    if err:
+        return err
+    issues = []
+    for section in analysis.get("sections", []):
+        sec_id = section.get("id", "?")
+        insights = section.get("key_insights")
+        if insights is None:
+            issues.append(f"Section '{sec_id}': missing key_insights")
+        elif not isinstance(insights, list) or len(insights) < _MIN_KEY_INSIGHTS_PANORAMIC:
+            count = len(insights) if isinstance(insights, list) else 0
+            issues.append(f"Section '{sec_id}': {count} key_insights (min {_MIN_KEY_INSIGHTS_PANORAMIC})")
+        elif isinstance(insights, list):
+            for j, insight in enumerate(insights):
+                if isinstance(insight, dict):
+                    urls = insight.get("source_urls")
+                    if not isinstance(urls, list) or len(urls) < _MIN_SOURCES:
+                        count = len(urls) if isinstance(urls, list) else 0
+                        issues.append(f"Section '{sec_id}' key_insights[{j}]: {count} source_urls (min {_MIN_SOURCES})")
+    if issues:
+        return CheckResult("key_insights_coverage", "WARN", False, "; ".join(issues))
+    return CheckResult("key_insights_coverage", "WARN", True)
+
+
 def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
     from .claim_validator import ClaimValidator
     claim_results = ClaimValidator(workdir, goal_type).check()
@@ -375,4 +403,5 @@ def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
         check_methodology_depth(workdir, goal_type),
         check_recommendation_structure(workdir, goal_type),
         check_source_tier_balance(workdir, goal_type),
+        check_key_insights_coverage(workdir, goal_type),
     ] + claim_results

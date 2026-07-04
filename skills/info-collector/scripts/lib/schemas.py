@@ -16,6 +16,7 @@ from .constants import (
     _MAX_COVERED_DIRECTIONS,
     _VALID_AUDIENCES,
     _VALID_CONFIDENCE,
+    _VALID_DEPTH_STRATEGIES,
     _VALID_DEPTHS,
     _VALID_EVIDENCE_TYPES,
     _VALID_GOAL_TYPES,
@@ -54,6 +55,9 @@ class SectionDict(TypedDict, total=False):
     title: str
     content: str
     claims: list[ClaimDict]
+    depth_strategy: str
+    key_insights: list[dict]
+    tensions: list[dict]
 
 
 class AnalysisDict(TypedDict, total=False):
@@ -175,6 +179,24 @@ def _validate_sections(sections: list, errors: list[ValidationError]) -> None:
             errors.append(_err(f"sections[{i}].title", f"expected str, got {type(sec['title']).__name__}"))
         if "content" in sec and not isinstance(sec["content"], str):
             errors.append(_err(f"sections[{i}].content", f"expected str, got {type(sec['content']).__name__}"))
+        if "depth_strategy" in sec:
+            ds = sec["depth_strategy"]
+            if not isinstance(ds, str):
+                errors.append(_err(f"sections[{i}].depth_strategy", f"expected str, got {type(ds).__name__}"))
+            elif ds not in _VALID_DEPTH_STRATEGIES:
+                errors.append(_err(f"sections[{i}].depth_strategy", f"invalid depth_strategy '{ds}' (must be one of {', '.join(sorted(_VALID_DEPTH_STRATEGIES))})"))
+        if "key_insights" in sec:
+            ki = sec["key_insights"]
+            if not isinstance(ki, list):
+                errors.append(_err(f"sections[{i}].key_insights", f"expected list, got {type(ki).__name__}"))
+            else:
+                _validate_key_insights(i, ki, errors)
+        if "tensions" in sec:
+            tn = sec["tensions"]
+            if not isinstance(tn, list):
+                errors.append(_err(f"sections[{i}].tensions", f"expected list, got {type(tn).__name__}"))
+            else:
+                _validate_tensions(i, tn, errors)
         claims = sec.get("claims")
         if claims is not None:
             if not isinstance(claims, list):
@@ -210,6 +232,42 @@ def _validate_claims(sec_idx: int, claims: list, errors: list[ValidationError]) 
             errors.append(_err(f"{prefix}.metric_type", f"invalid metric_type '{claim['metric_type']}'"))
         if "source_verification" in claim and claim["source_verification"] not in _VALID_SOURCE_VERIFICATIONS:
             errors.append(_err(f"{prefix}.source_verification", f"invalid source_verification '{claim['source_verification']}'"))
+
+
+def _validate_key_insights(sec_idx: int, insights: list, errors: list[ValidationError]) -> None:
+    for j, insight in enumerate(insights):
+        prefix = f"sections[{sec_idx}].key_insights[{j}]"
+        if not isinstance(insight, dict):
+            errors.append(_err(prefix, f"expected dict, got {type(insight).__name__}"))
+            continue
+        if "text" not in insight:
+            errors.append(_err(f"{prefix}.text", "missing required field: text"))
+        elif not isinstance(insight["text"], str):
+            errors.append(_err(f"{prefix}.text", f"expected str, got {type(insight['text']).__name__}"))
+        if "source_urls" in insight:
+            urls = insight["source_urls"]
+            if not isinstance(urls, list):
+                errors.append(_err(f"{prefix}.source_urls", f"expected list, got {type(urls).__name__}"))
+            elif not all(isinstance(u, str) for u in urls):
+                errors.append(_err(f"{prefix}.source_urls", "source_urls must contain only strings"))
+
+
+def _validate_tensions(sec_idx: int, tensions: list, errors: list[ValidationError]) -> None:
+    for j, tension in enumerate(tensions):
+        prefix = f"sections[{sec_idx}].tensions[{j}]"
+        if not isinstance(tension, dict):
+            errors.append(_err(prefix, f"expected dict, got {type(tension).__name__}"))
+            continue
+        if "description" not in tension:
+            errors.append(_err(f"{prefix}.description", "missing required field: description"))
+        elif not isinstance(tension["description"], str):
+            errors.append(_err(f"{prefix}.description", f"expected str, got {type(tension['description']).__name__}"))
+        if "sources" in tension:
+            srcs = tension["sources"]
+            if not isinstance(srcs, list):
+                errors.append(_err(f"{prefix}.sources", f"expected list, got {type(srcs).__name__}"))
+            elif not all(isinstance(s, str) for s in srcs):
+                errors.append(_err(f"{prefix}.sources", "sources must contain only strings"))
 
 
 def validate_collected(data: list) -> list[ValidationError]:

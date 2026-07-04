@@ -405,3 +405,121 @@ class TestClaimSourceVerification:
         claim = {"text": "T", "source_urls": ["https://a.com"]}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [{"id": "s1", "title": "S", "content": "C", "claims": [claim]}]})
         assert not any("source_verification" in e.field for e in errors)
+
+
+class TestValidateAnalysisDepthStrategy:
+    def test_valid_depth_strategy(self):
+        for ds in ("overview", "deep_dive", "comparison", "methodology"):
+            sec = {"id": "s1", "title": "S", "content": "C", "depth_strategy": ds}
+            errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+            assert not any("depth_strategy" in e.field for e in errors), f"depth_strategy={ds} should be valid"
+
+    def test_invalid_depth_strategy(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "depth_strategy": "shallow"}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("depth_strategy" in e.field and "invalid" in e.message for e in errors)
+
+    def test_depth_strategy_not_str(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "depth_strategy": 42}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("depth_strategy" in e.field and "expected str" in e.message for e in errors)
+
+    def test_depth_strategy_optional(self):
+        sec = {"id": "s1", "title": "S", "content": "C"}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert not any("depth_strategy" in e.field for e in errors)
+
+
+class TestValidateAnalysisKeyInsights:
+    def test_valid_key_insights(self):
+        sec = {
+            "id": "s1", "title": "S", "content": "C",
+            "key_insights": [
+                {"text": "Finding A", "source_urls": ["https://a.com"]},
+                {"text": "Finding B"},
+            ],
+        }
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert not any("key_insights" in e.field for e in errors)
+
+    def test_key_insights_not_list(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": "bad"}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("key_insights" in e.field and "expected list" in e.message for e in errors)
+
+    def test_key_insight_not_dict(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": ["not a dict"]}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("key_insights[0]" in e.field and "expected dict" in e.message for e in errors)
+
+    def test_key_insight_missing_text(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": [{"source_urls": ["https://a.com"]}]}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("key_insights[0].text" in e.field and "missing" in e.message for e in errors)
+
+    def test_key_insight_text_not_str(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": [{"text": 42}]}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("key_insights[0].text" in e.field and "expected str" in e.message for e in errors)
+
+    def test_key_insight_source_urls_not_list(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": [{"text": "T", "source_urls": "bad"}]}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("key_insights[0].source_urls" in e.field and "expected list" in e.message for e in errors)
+
+    def test_key_insight_source_urls_non_str(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": [{"text": "T", "source_urls": [42]}]}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("key_insights[0].source_urls" in e.field and "only strings" in e.message for e in errors)
+
+    def test_key_insights_optional(self):
+        sec = {"id": "s1", "title": "S", "content": "C"}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert not any("key_insights" in e.field for e in errors)
+
+
+class TestValidateAnalysisTensions:
+    def test_valid_tensions(self):
+        sec = {
+            "id": "s1", "title": "S", "content": "C",
+            "tensions": [
+                {"description": "Source A says X, Source B says Y", "sources": ["https://a.com", "https://b.com"]},
+            ],
+        }
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert not any("tensions" in e.field for e in errors)
+
+    def test_tensions_not_list(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "tensions": "bad"}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("tensions" in e.field and "expected list" in e.message for e in errors)
+
+    def test_tension_not_dict(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "tensions": ["not a dict"]}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("tensions[0]" in e.field and "expected dict" in e.message for e in errors)
+
+    def test_tension_missing_description(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "tensions": [{"sources": ["https://a.com"]}]}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("tensions[0].description" in e.field and "missing" in e.message for e in errors)
+
+    def test_tension_description_not_str(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "tensions": [{"description": 42}]}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("tensions[0].description" in e.field and "expected str" in e.message for e in errors)
+
+    def test_tension_sources_not_list(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "tensions": [{"description": "T", "sources": "bad"}]}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("tensions[0].sources" in e.field and "expected list" in e.message for e in errors)
+
+    def test_tension_sources_non_str(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "tensions": [{"description": "T", "sources": [42]}]}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert any("tensions[0].sources" in e.field and "only strings" in e.message for e in errors)
+
+    def test_tensions_optional(self):
+        sec = {"id": "s1", "title": "S", "content": "C"}
+        errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
+        assert not any("tensions" in e.field for e in errors)

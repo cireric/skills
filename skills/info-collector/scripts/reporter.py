@@ -222,6 +222,32 @@ def sections_to_markdown(analysis: dict, collected: list[dict] | None = None, la
         title = sec.get("title", sec.get("id", ""))
         parts.append(f"\n## {title}\n")
         parts.append(resolved_contents[idx])
+        key_insights = sec.get("key_insights")
+        if key_insights and isinstance(key_insights, list):
+            parts.append(f"\n**Key Insights:**\n")
+            for insight in key_insights:
+                if isinstance(insight, dict):
+                    text = insight.get("text", "")
+                    insight_nums = []
+                    for url in insight.get("source_urls", []):
+                        norm = normalize_url(url)
+                        num = ref_map.get(norm)
+                        if num is not None:
+                            insight_nums.append(f"[{num}]")
+                    parts.append(f"- {text} {''.join(insight_nums)}".rstrip())
+        tensions = sec.get("tensions")
+        if tensions and isinstance(tensions, list):
+            parts.append(f"\n**Tensions:**\n")
+            for tension in tensions:
+                if isinstance(tension, dict):
+                    desc = tension.get("description", "")
+                    tension_nums = []
+                    for url in tension.get("sources", []):
+                        norm = normalize_url(url)
+                        num = ref_map.get(norm)
+                        if num is not None:
+                            tension_nums.append(f"[{num}]")
+                    parts.append(f"- {desc} {''.join(tension_nums)}".rstrip())
         if not compact:
             claims = sec.get("claims", [])
             if claims:

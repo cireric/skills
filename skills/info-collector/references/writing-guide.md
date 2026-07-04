@@ -123,3 +123,77 @@ This section must use explicit "not recommended" language so readers can quickly
 - ❌ Content starting with `## Section Title` — top-level headings create structural conflicts with the report template
 - ❌ Pronouns without antecedents — "它支持并行处理" → what is "它"? Name it explicitly every time
 - ❌ Separating sources from claims — source URLs must be adjacent to their claims, not collected at the end
+- ❌ Pseudo-synthesis — using causal/contradiction language ("核心矛盾是", "综合来看", "本质上") without causal evidence. If A and B co-occur but you cannot establish A→B with source support, write "A and B co-occur; whether a causal relationship exists is not established by the available sources" instead.
+- ❌ Name-as-analysis — mentioning an entity + one-sentence description without evaluating its significance or comparing it to alternatives. Each section must have ≥ 2 analytical entries (entries with evaluation, comparison, or impact judgment, not just existence statements).
+- ❌ Action-platitude — "readers need to understand X" or "engineers should be aware of Y" without specific, source-supported guidance. Either provide concrete action items ("prioritize X because Y, supported by [source]") or omit the action paragraph entirely.
+
+## Depth Strategy (Per-Section)
+
+Each section's content organization follows a depth strategy determined by goal_type × section id. The orchestrator specifies the strategy in the section plan; the writer must follow it.
+
+### Strategy: overview (panoramic/exploratory sections, overview sections)
+
+- 1-2 paragraphs of breadth-first summary covering the direction's landscape
+- **≥ 2 deep-dive anchors** — each anchor is a paragraph that argues one key finding with 3+ sources
+- Deep-dive anchor selection criteria (the finding must satisfy at least one):
+  - **Tension**: multiple sources disagree or give different conclusions
+  - **Impact**: the finding changes the reader's action or judgment
+  - **Mechanism**: explains WHY/HOW, not just WHAT happened
+- Optional: 1 tension paragraph noting contradictions or unresolved questions within the direction
+- Optional: 1 action/decision paragraph — only if source-supported ("do X because Y [source]")
+
+### Strategy: deep_dive (tech_selection comparison sections, fact_check sections)
+
+- Full analysis with structured comparison tables
+- Every major claim argued with 2+ sources
+- Contradictions explicitly surfaced and resolution conditions stated
+- For tech_selection: must include recommendation matrix + key decision factors + not-recommended scenarios
+
+### Strategy: comparison (tech_selection/competitive_comparison)
+
+- Structured comparison table scoring each option against key criteria
+- Key decision factors with evidence references
+- Not-recommended scenarios with explicit language
+- See "Recommendation Structure" section above for full requirements
+
+### Strategy: methodology (quantitative goal_types)
+
+- Data sources and their test conditions
+- Limitations of cross-source comparisons
+- Date range of data collection
+- Must be detailed enough for a reader to assess validity
+
+### Depth strategy mapping (Phase 1 implicit)
+
+| goal_type | section id | depth strategy |
+|-----------|-----------|---------------|
+| panoramic_understanding, exploratory, background_check | overview | overview |
+| panoramic_understanding, exploratory, background_check | other sections | overview (with ≥ 2 deep-dive anchors) |
+| tech_selection, competitive_comparison | overview | overview (brief) |
+| tech_selection, competitive_comparison | comparison, recommendation | comparison |
+| tech_selection, competitive_comparison | methodology | methodology |
+| feasibility_assessment, market_analysis, academic_research | methodology | methodology |
+| feasibility_assessment, market_analysis, academic_research | other sections | deep_dive |
+| fact_check | * | deep_dive |
+| other | * | overview (with ≥ 2 deep-dive anchors) |
+
+## Synthesis Guard
+
+All synthesis paragraphs must satisfy the **synthesis guard**: causal direction must be explicitly stated (A→B), and each step in the causal chain must have at least one source supporting it.
+
+**Allowed synthesis** (passes synthesis guard):
+> Tool convergence → protocol fragmentation → interoperability gaps → expanded attack surface. Each step is documented: convergence [3], fragmentation [15], gaps [16], attack surface [9].
+
+**Disallowed synthesis** (fails synthesis guard):
+> "The core contradiction is that capability growth far outpaces governance maturity." — This states a contradiction but provides no causal chain and no source-supported reasoning for why these two trends are contradictory rather than merely co-occurring.
+
+**When synthesis guard cannot be satisfied**: Present the observations honestly as co-occurring phenomena:
+> "Capability metrics (benchmark scores, adoption rates) are rising rapidly while governance metrics (maturity scores, compliance rates) remain flat [8]. Whether these trends are causally linked or independent is not established by the available sources."
+
+## Panoramic Overview Section
+
+The overview section in panoramic/exploratory reports has special rules:
+
+1. **Prefer causal chain organization** — if cross-section causal links can be established (e.g., tool convergence → protocol fragmentation → security gaps), organize the overview around the causal chain. Each link must pass the synthesis guard.
+2. **Fallback to annotated co-occurrence** — if causal links cannot be established, list each direction's key finding and annotate relationships where evidence exists ("A is related to B because [source]"). Do not force connections without evidence.
+3. **Do not summarize each section** — the overview is not a table-of-contents with excerpts. It should reveal relationships between directions that are not visible within individual sections.

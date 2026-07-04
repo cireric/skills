@@ -7,6 +7,7 @@ from scripts.artifact_checks import (
     CheckResult,
     check_analysis_schema,
     check_artifact_exists,
+    check_key_insights_coverage,
     check_methodology_depth,
     check_quality_heuristics,
     check_recommendation_structure,
@@ -694,7 +695,7 @@ class TestRunAll:
             },
         )
         results = run_all(tmp_path, "tech_selection")
-        assert len(results) >= 14
+        assert len(results) >= 15
 
 
 class TestCheckResultDataclass:
@@ -712,3 +713,117 @@ class TestCheckResultDataclass:
         assert r.level == "BLOCKER"
         assert not r.passed
         assert r.message == "err"
+
+
+class TestCheckKeyInsightsCoverage:
+    def test_non_exploratory_skipped(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {"sections": []})
+        result = check_key_insights_coverage(tmp_path, "tech_selection")
+        assert result.passed
+        assert "Skipped" in result.message
+
+    def test_panoramic_with_sufficient_insights(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "Overview",
+                        "content": "Content",
+                        "key_insights": [
+                            {"text": "Finding A", "source_urls": ["https://a.com", "https://b.com"]},
+                            {"text": "Finding B", "source_urls": ["https://c.com", "https://d.com"]},
+                        ],
+                    },
+                    {
+                        "id": "findings",
+                        "title": "Findings",
+                        "content": "Content",
+                        "key_insights": [
+                            {"text": "Finding C", "source_urls": ["https://e.com", "https://f.com"]},
+                            {"text": "Finding D", "source_urls": ["https://g.com", "https://h.com"]},
+                        ],
+                    },
+                ],
+            },
+        )
+        result = check_key_insights_coverage(tmp_path, "panoramic_understanding")
+        assert result.passed
+
+    def test_panoramic_missing_key_insights(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "Overview",
+                        "content": "Content",
+                    },
+                ],
+            },
+        )
+        result = check_key_insights_coverage(tmp_path, "panoramic_understanding")
+        assert not result.passed
+        assert "missing key_insights" in result.message
+
+    def test_panoramic_insufficient_insights(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "Overview",
+                        "content": "Content",
+                        "key_insights": [{"text": "Only one"}],
+                    },
+                ],
+            },
+        )
+        result = check_key_insights_coverage(tmp_path, "panoramic_understanding")
+        assert not result.passed
+        assert "1 key_insights" in result.message
+
+    def test_exploratory_with_sufficient_insights(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "Overview",
+                        "content": "Content",
+                        "key_insights": [
+                            {"text": "Finding A", "source_urls": ["https://a.com", "https://b.com"]},
+                            {"text": "Finding B", "source_urls": ["https://c.com", "https://d.com"]},
+                        ],
+                    },
+                ],
+            },
+        )
+        result = check_key_insights_coverage(tmp_path, "exploratory")
+        assert result.passed
+
+    def test_panoramic_insight_insufficient_sources(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "Overview",
+                        "content": "Content",
+                        "key_insights": [
+                            {"text": "Finding A", "source_urls": ["https://a.com"]},
+                            {"text": "Finding B", "source_urls": ["https://b.com", "https://c.com"]},
+                        ],
+                    },
+                ],
+            },
+        )
+        result = check_key_insights_coverage(tmp_path, "panoramic_understanding")
+        assert not result.passed
+        assert "key_insights[0]" in result.message
+        assert "1 source_urls" in result.message

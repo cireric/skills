@@ -26,40 +26,106 @@ When delegating section writing to independent agent calls in Phase 3a, follow t
 5. **Include JSON schema in every subagent prompt** — embed the exact expected structure to minimize schema violations:
 
    ```
-   ## Required JSON structure
-   Write a single JSON object with these EXACT fields (no others):
-   {
-     "id": "<section_id>",
-     "title": "<section title>",
-     "content": "<full Markdown content, must NOT start with ## >",
-     "claims": [
-       {
-         "text": "<claim statement>",
-         "source_urls": ["<url from allowed list>"],
-         "evidence_type": "official_data|independent_benchmark|third_party_estimate|qualitative_trend|expert_opinion",
-         "confidence": "high|medium|low",
-         "precision": "exact|range|qualitative",
-         "source_metadata": { "test_conditions": "...", "test_date": "...", "source_type": "..." }
-       }
-     ]
-   }
-   - Use "id" NOT "section_id"
-   - Use "source_urls" NOT "sources"
-   - "claims" is REQUIRED, use [] if no claims
-   - Do NOT add fields like "word_count", "language", etc.
+    ## Required JSON structure
+    Write a single JSON object with these EXACT fields (no others):
+    {
+      "id": "<section_id>",
+      "title": "<section title>",
+      "content": "<full Markdown content, must NOT start with ## >",
+      "depth_strategy": "<overview|deep_dive|comparison|methodology>",
+      "key_insights": [
+        {
+          "text": "<insight statement with causal direction or key finding>",
+          "source_urls": ["<url from allowed list>"]
+        }
+      ],
+      "tensions": [
+        {
+          "description": "<description of disagreement or conflict between sources>",
+          "sources": ["<url from allowed list>"]
+        }
+      ],
+      "claims": [
+        {
+          "text": "<claim statement>",
+          "source_urls": ["<url from allowed list>"],
+          "evidence_type": "official_data|independent_benchmark|third_party_estimate|qualitative_trend|expert_opinion",
+          "confidence": "high|medium|low",
+          "precision": "exact|range|qualitative",
+          "source_metadata": { "test_conditions": "...", "test_date": "...", "source_type": "..." }
+        }
+      ]
+    }
+    - Use "id" NOT "section_id"
+    - Use "source_urls" NOT "sources"
+    - "claims" is REQUIRED, use [] if no claims
+    - "key_insights" is REQUIRED for panoramic/exploratory sections (min 2), optional otherwise
+    - "tensions" is optional — include only when sources genuinely disagree
+    - "depth_strategy" is REQUIRED — must be one of: overview, deep_dive, comparison, methodology
+    - Do NOT add fields like "word_count", "language", etc.
    ```
 
 ## Source Content Summary Injection
 
 When constructing each subagent prompt, the orchestrator MUST inject fetched_content summaries for URLs relevant to that section:
 
-1. Identify which URLs are relevant to the section (from section plan)
+1. Identify which URLs are relevant to the section (from section plan + source_hints)
 2. For each relevant URL, generate a summary:
    - First 300 characters of fetched_content
    - Plus sentences containing numbers (percentages, dollar amounts, benchmark scores) — up to 500 additional characters
    - Total per URL: ≤ 800 characters
 3. Include summaries in the subagent prompt under a "## Source Content" heading
 4. This gives the subagent actual source data to write from, reducing fabrication tendency
+
+## Deep-Dive Topic Injection
+
+When the section plan includes `deep_dive_topics`, the orchestrator MUST inject them into the subagent prompt. This is critical for panoramic/exploratory sections where the orchestrator has selected key findings for deep argumentation.
+
+Inject deep-dive topics under a "## Deep-Dive Topics" heading in the subagent prompt:
+
+```
+## Deep-Dive Topics
+You MUST write ≥ 2 deep-dive paragraphs in this section. Each deep-dive paragraph
+argues one key finding with 3+ sources. The orchestrator has identified these topics
+as the most important findings in this direction:
+
+1. **<topic_1>** — Suggested sources: <url1>, <url2>, <url3>
+   Selection criterion: <tension|impact|mechanism>
+
+2. **<topic_2>** — Suggested sources: <url4>, <url5>
+   Selection criterion: <tension|impact|mechanism>
+
+You may use sources beyond the suggested ones. The suggested sources are advisory,
+not exhaustive. If you find a more important finding than the suggested topics while
+writing, you may substitute it — but you must still write ≥ 2 deep-dive paragraphs
+and each must satisfy at least one selection criterion (tension, impact, or mechanism).
+```
+
+## Depth Strategy Injection
+
+The orchestrator MUST inject the section's depth strategy into the subagent prompt. This determines the content organization rules the subagent must follow.
+
+```
+## Depth Strategy: <overview|deep_dive|comparison|methodology>
+Follow the content organization rules for this strategy from writing-guide.md.
+```
+
+For **overview** strategy sections, the subagent must produce:
+- 1-2 paragraphs of breadth-first summary
+- ≥ 2 deep-dive anchor paragraphs (each with 3+ sources, satisfying tension/impact/mechanism)
+- Optional: 1 tension paragraph, 1 action paragraph (only if source-supported)
+
+For **deep_dive** strategy sections, the subagent must produce:
+- Full analysis with structured comparison tables
+- Every major claim argued with 2+ sources
+- Contradictions surfaced with resolution conditions
+
+For **comparison** strategy sections, the subagent must produce:
+- Comparison matrix, key decision factors, not-recommended scenarios
+- See writing-guide.md "Recommendation Structure" for full requirements
+
+For **methodology** strategy sections, the subagent must produce:
+- Data sources, test conditions, cross-source comparison limitations, date range
 
 ## Assembly Step
 
@@ -75,6 +141,19 @@ Merge all sections into a single analysis.json. **This step is JSON merge only �
 			"id": "comparison",
 			"title": "Comparison",
 			"content": "Full Markdown narrative with tables, details, and sub-headings...",
+			"depth_strategy": "comparison",
+			"key_insights": [
+				{
+					"text": "Key finding with causal direction",
+					"source_urls": ["https://..."]
+				}
+			],
+			"tensions": [
+				{
+					"description": "Source A claims X while Source B claims Y",
+					"sources": ["https://...", "https://..."]
+				}
+			],
 			"claims": [
 				{
 					"text": "Claim statement",

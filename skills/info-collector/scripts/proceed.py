@@ -28,7 +28,7 @@ from .lib.constants import (
     _VALID_TRANSITIONS_SET,
 )
 
-_SECTION_KEYS = frozenset({"id", "title", "content", "claims"})
+_SECTION_KEYS = frozenset({"id", "title", "content", "claims", "depth_strategy", "key_insights", "tensions"})
 _CLAIM_KEYS = frozenset({
     "text", "source_urls", "evidence_type", "confidence",
     "precision", "metric_type", "source_metadata", "verified",

@@ -59,6 +59,8 @@ _VALID_PRECISION = frozenset({"exact", "range", "qualitative"})
 _NON_EXACT_EVIDENCE_TYPES = frozenset({"third_party_estimate", "qualitative_trend", "expert_opinion"})
 
 _VALID_SOURCE_VERIFICATIONS = frozenset({"source_confirmed", "source_absent", "source_indirect"})
+_VALID_DEPTH_STRATEGIES = frozenset({"overview", "deep_dive", "comparison", "methodology"})
+_MIN_KEY_INSIGHTS_PANORAMIC = 2
 _SOURCE_INDIRECT_RATIO_WARN = 0.30
 _INDIRECT_CITATION_PATTERNS = (
     re.compile(r"据\s*\S+\s*(报告|预测|发现|统计|调查|研究|分析)"),
