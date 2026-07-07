@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from scripts.artifact_checks import CheckResult
-from scripts.claim_validator import ClaimValidator, _normalize_numbers, _number_found_in_source, _is_indirect_source
+from scripts.claim_validator import ClaimValidator, _normalize_numbers, _number_found_in_source, _is_indirect_source, _source_text
 
 
 def _write_json(path, data):
@@ -941,6 +941,127 @@ class TestSourceVerificationCheck:
         ClaimValidator(tmp_path, "tech_selection").check()
         new_mtime = (tmp_path / "analysis.json").stat().st_mtime
         assert original_mtime == new_mtime
+
+
+class TestSourceTextWithSourceFile:
+    def test_reads_from_source_file(self, tmp_path):
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        (sources_dir / "abc123.md").write_text("Revenue was $4.5B in 2025", encoding="utf-8")
+        item = {
+            "source_file": "sources/abc123.md",
+            "fetched_content": "Revenue was $4.5B...",
+            "snippet": "Financial report",
+        }
+        result = _source_text(item, tmp_path)
+        assert "$4.5b in 2025" in result
+        assert "financial report" in result
+
+    def test_falls_back_to_fetched_content_when_no_source_file(self, tmp_path):
+        item = {
+            "fetched_content": "Revenue was $4.5B",
+            "snippet": "Financial report",
+        }
+        result = _source_text(item, tmp_path)
+        assert "revenue was $4.5b" in result
+        assert "financial report" in result
+
+    def test_falls_back_when_source_file_missing_on_disk(self, tmp_path):
+        item = {
+            "source_file": "sources/nonexistent.md",
+            "fetched_content": "Revenue was $4.5B",
+            "snippet": "Financial report",
+        }
+        result = _source_text(item, tmp_path)
+        assert "revenue was $4.5b" in result
+
+    def test_falls_back_when_source_file_empty(self, tmp_path):
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        (sources_dir / "empty.md").write_text("", encoding="utf-8")
+        item = {
+            "source_file": "sources/empty.md",
+            "fetched_content": "Revenue was $4.5B",
+            "snippet": "Financial report",
+        }
+        result = _source_text(item, tmp_path)
+        assert "revenue was $4.5b" in result
+
+    def test_no_workdir_uses_fetched_content(self):
+        item = {
+            "source_file": "sources/abc123.md",
+            "fetched_content": "Revenue was $4.5B",
+            "snippet": "Financial report",
+        }
+        result = _source_text(item)
+        assert "revenue was $4.5b" in result
+
+    def test_source_file_overrides_fetched_content(self, tmp_path):
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        (sources_dir / "full.md").write_text("The exact number is 97.3% accuracy", encoding="utf-8")
+        item = {
+            "source_file": "sources/full.md",
+            "fetched_content": "Accuracy is high...",
+            "snippet": "ML benchmark",
+        }
+        result = _source_text(item, tmp_path)
+        assert "97.3% accuracy" in result
+        assert "high..." not in result
+
+
+class TestVerificationWithSourceFile:
+    def test_number_verified_from_source_file(self, tmp_path):
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        (sources_dir / "abc123.md").write_text("The model achieved 97.3% accuracy on the benchmark", encoding="utf-8")
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "Achieves 97.3% accuracy",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "independent_benchmark",
+                        "confidence": "high",
+                        "precision": "exact",
+                    }],
+                }],
+            },
+        )
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://a.com", "snippet": "Benchmark", "source_file": "sources/abc123.md", "source_tier": 1}
+        ])
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "source_verification_check")
+        assert "source_confirmed" in result.message
+
+    def test_number_absent_when_source_file_lacks_it(self, tmp_path):
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        (sources_dir / "abc123.md").write_text("The model performed well in general testing", encoding="utf-8")
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [{
+                    "id": "s1",
+                    "claims": [{
+                        "text": "Achieves 97.3% accuracy",
+                        "source_urls": ["https://a.com"],
+                        "evidence_type": "official_data",
+                        "confidence": "high",
+                        "precision": "exact",
+                    }],
+                }],
+            },
+        )
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://a.com", "snippet": "Report", "source_file": "sources/abc123.md", "source_tier": 1}
+        ])
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "source_verification_check")
+        assert "source_absent" in result.message
 
 
 class TestRefMarkerSuggestion:

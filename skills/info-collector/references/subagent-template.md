@@ -67,14 +67,25 @@ When delegating section writing to independent agent calls in Phase 3a, follow t
 
 ## Source Content Summary Injection
 
-When constructing each subagent prompt, the orchestrator MUST inject fetched_content summaries for URLs relevant to that section:
+When constructing each subagent prompt, the orchestrator MUST inject source content for URLs relevant to that section:
 
 1. Identify which URLs are relevant to the section (from section plan + source_hints)
-2. For each relevant URL, generate a summary:
-   - First 300 characters of fetched_content
-   - Plus sentences containing numbers (percentages, dollar amounts, benchmark scores) — up to 500 additional characters
-   - Total per URL: ≤ 800 characters
-3. Include summaries in the subagent prompt under a "## Source Content" heading
+2. For each relevant URL, inject:
+   - First 500 characters of the original text (from `.workdir/sources/{url_hash}.md`)
+   - The `source_file` path so the subagent can read deeper via the Read tool
+3. Include in the subagent prompt under a "## Source Content" heading:
+   ```
+   ## Source Content
+   For each source, the first 500 chars are provided below. For deeper detail, use the Read tool on the source_file path.
+
+   ### [URL1](url1)
+   - source_file: sources/abc123def456.md
+   - Preview: <first 500 chars of original text>
+
+   ### [URL2](url2)
+   - source_file: sources/def789ghi012.md
+   - Preview: <first 500 chars of original text>
+   ```
 4. This gives the subagent actual source data to write from, reducing fabrication tendency
 
 ## Deep-Dive Topic Injection
@@ -179,13 +190,13 @@ Every claim MUST have at least one source_url linking to a URL in collected.json
 
 Any claim containing a specific number (percentage, dollar amount, benchmark score, etc.) MUST satisfy one of these conditions:
 
-1. **The number appears verbatim in the `fetched_content` of the cited source** — use `precision: "exact"` or `"range"`.
-2. **The number does NOT appear in `fetched_content`** — you MUST either:
+1. **The number appears verbatim in the original source text file** (`.workdir/sources/{url_hash}.md`) — use `precision: "exact"` or `"range"`.
+2. **The number does NOT appear in the source text file** — you MUST either:
    - Use `precision: "qualitative"` and rephrase without the exact figure (e.g., "outperformed the baseline by a significant margin" instead of "72.2% vs 64.8%"), OR
    - Use `precision: "range"` with a conservative range (e.g., "~70-75%" instead of "72.2%"), OR
    - Remove the claim entirely.
 
-**Rationale**: The review subagent cross-checks every exact number against `fetched_content`. Numbers not present in the fetched source will be flagged as precision inflation and may block the review gate.
+**Rationale**: The review subagent cross-checks every exact number against the original source text files. Numbers not present in the source file will be flagged as precision inflation and may block the review gate.
 
 **NEVER infer or calculate exact numbers from ratios, percentages, or other derived data.**
 If the source says "revenue grew 15%" and you want to state the dollar amount, you MUST find the actual dollar figure in fetched_content. Calculating "$4.2B from 15% growth" is fabrication, not analysis.

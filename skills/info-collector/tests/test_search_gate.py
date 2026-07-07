@@ -228,7 +228,9 @@ class TestTierCoverage:
             tmp_path / "collected.json",
             [
                 {"url": "https://a.com", "title": "AI", "snippet": "About AI", "source_tier": 2, "fetched_content": "x" * 800},
-                {"url": "https://b.com", "title": "ML", "snippet": "About ML", "source_tier": 1, "fetched_content": "x" * 1000},
+                {"url": "https://b.com", "title": "ML", "snippet": "About ML", "source_tier": 3, "fetched_content": "x" * 1000},
+                {"url": "https://c.com", "title": "DL", "snippet": "About DL", "source_tier": 4, "fetched_content": "x" * 800},
+                {"url": "https://d.com", "title": "NN", "snippet": "About NN", "source_tier": 1, "fetched_content": "x" * 1000},
             ],
         )
         _make_completed_search_plan(tmp_path)

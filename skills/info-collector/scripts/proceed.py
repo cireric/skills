@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import cast
@@ -17,6 +18,7 @@ from .lib.constants import (
     ARTIFACT_ANALYSIS,
     ARTIFACT_COLLECTED,
     ARTIFACT_PIPELINE_STATE,
+    ARTIFACT_REVIEW_FALLBACK_LOG,
     ARTIFACT_REVIEW_REPORT,
     ARTIFACT_SCOPE,
     ARTIFACT_SEARCH_PLAN,
@@ -34,6 +36,76 @@ _CLAIM_KEYS = frozenset({
     "precision", "metric_type", "source_metadata", "verified",
     "source_verification",
 })
+
+
+def _repair_json_text(raw: str) -> str:
+    """Attempt to fix unescaped double quotes inside JSON string values.
+
+    When an LLM subagent writes Markdown content containing ``"quoted text"``
+    inside a JSON string, the resulting file is invalid JSON because the inner
+    quotes are not escaped.  This function finds unescaped ``"`` that appear
+    *inside* string values and escapes them as ``\\"``.
+
+    Strategy: iterate character-by-character, tracking whether we are inside a
+    JSON string and whether the current char is escaped.  When we encounter an
+    unescaped ``"`` that is *not* a valid string delimiter (i.e. it is not
+    followed by a structural character like ``: , ] }`` and not preceded by one
+    like ``: , [ {``), we escape it.
+    """
+    result: list[str] = []
+    in_string = False
+    i = 0
+    while i < len(raw):
+        ch = raw[i]
+        if not in_string:
+            result.append(ch)
+            if ch == '"':
+                in_string = True
+            i += 1
+            continue
+        # We are inside a JSON string
+        if ch == '\\' and i + 1 < len(raw):
+            result.append(ch)
+            result.append(raw[i + 1])
+            i += 2
+            continue
+        if ch == '"':
+            # Is this the closing quote of the string, or a rogue unescaped quote?
+            # A closing quote is followed by a structural char or EOF
+            rest = raw[i + 1:].lstrip()
+            if not rest or rest[0] in ':,]}':
+                result.append(ch)
+                in_string = False
+                i += 1
+                continue
+            # This looks like a rogue quote inside the string — escape it
+            result.append('\\"')
+            i += 1
+            continue
+        result.append(ch)
+        i += 1
+    return ''.join(result)
+
+
+def _read_json_with_repair(path: Path) -> tuple[dict | list | None, str | None]:
+    """Read JSON, attempting quote repair on JSONDecodeError.
+
+    Returns (data, error_message).  On success, error_message is None.
+    On failure, data is None and error_message describes the problem.
+    """
+    try:
+        data = read_json(path)
+        return data, None
+    except ArtifactError as e:
+        if "Invalid JSON" not in str(e):
+            return None, f"Cannot read {path.name}: {e}"
+        raw_text = path.read_text(encoding="utf-8")
+        repaired = _repair_json_text(raw_text)
+        try:
+            data = json.loads(repaired)
+            return data, None
+        except json.JSONDecodeError as e2:
+            return None, f"Cannot read {path.name}: Invalid JSON even after repair: {e2}"
 
 
 def _sanitize_sections(analysis: dict, collected_urls: set[str] | None = None) -> dict:
@@ -243,10 +315,9 @@ def _gate_search(workdir: Path, config: dict | None) -> list[str]:
 
 def _gate_analysis(workdir: Path) -> list[str]:
     errors: list[str] = []
-    try:
-        analysis = read_json(workdir / ARTIFACT_ANALYSIS)
-    except ArtifactError as e:
-        errors.append(f"Cannot read analysis.json: {e}")
+    analysis, err = _read_json_with_repair(workdir / ARTIFACT_ANALYSIS)
+    if err is not None:
+        errors.append(err)
         return errors
     collected_urls: set[str] | None = None
     try:
@@ -285,11 +356,41 @@ def _gate_analysis(workdir: Path) -> list[str]:
     return errors
 
 
-def _gate_review(workdir: Path) -> list[str]:
+def _check_review_report_exists(workdir: Path) -> CheckResult:
+    """Check that review_report.md exists and is non-empty.
+
+    SKIPPED if the user chose 'unreviewed' (review_fallback.log contains skip marker).
+    BLOCKER if the file is missing or empty — indicates subagent failure silently passed.
+    """
+    fallback_path = workdir / ARTIFACT_REVIEW_FALLBACK_LOG
+    if fallback_path.exists():
+        try:
+            fallback_content = fallback_path.read_text(encoding="utf-8").lower()
+            if "skip review" in fallback_content or "unreviewed" in fallback_content:
+                return CheckResult("review_report_exists", "BLOCKER", True, "Skipped (user chose unreviewed)")
+        except OSError:
+            pass
+    report_path = workdir / ARTIFACT_REVIEW_REPORT
+    if not report_path.exists():
+        return CheckResult("review_report_exists", "BLOCKER", False, "review_report.md does not exist — subagent may have failed silently")
+    try:
+        content = report_path.read_text(encoding="utf-8")
+    except OSError:
+        return CheckResult("review_report_exists", "BLOCKER", False, "Cannot read review_report.md")
+    if not content.strip():
+        return CheckResult("review_report_exists", "BLOCKER", False, "review_report.md is empty — subagent may have failed silently")
+    return CheckResult("review_report_exists", "BLOCKER", True)
+
+
+def _gate_review(workdir: Path, to_phase: str = "review") -> list[str]:
     gateway_results = run_gateway(workdir, _get_goal_type(workdir))
     for r in gateway_results:
         if not r.passed:
             print(f"  [ADVISORY] {r.name}: {r.message}", file=sys.stderr)
+    if to_phase == "final":
+        rr_check = _check_review_report_exists(workdir)
+        if not rr_check.passed:
+            return [f"[BLOCKER] {rr_check.name}: {rr_check.message}"]
     return []
 
 
@@ -323,7 +424,7 @@ def proceeds(
         "scope": lambda: _gate_scope(workdir, config),
         "search": lambda: _gate_search(workdir, config),
         "analysis": lambda: _gate_analysis(workdir),
-        "review": lambda: _gate_review(workdir),
+        "review": lambda: _gate_review(workdir, to_phase),
         "final": lambda: _gate_final(workdir),
     }.get(from_phase)
 

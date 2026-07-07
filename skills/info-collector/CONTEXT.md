@@ -140,6 +140,26 @@ _Avoid_: section outline, section schema
 The deep module that validates claim quality in analysis.json against collected.json. Owns claim_metadata, precision_inflation, source_metadata, metric_type_homogeneity, claim_dedup, entity_number_conflict, ref_marker_validity, claim_source_ref_coverage, and source_verification_check checks. Interface: `ClaimValidator(workdir, goal_type).check() → list[CheckResult]`. Reads analysis.json + collected.json once; shared helpers (number normalization, source text matching, data variance) are private to its implementation. See ADR 0027, ADR 0028.
 _Avoid_: claim checker, claim gate, claim quality checker
 
+**source fidelity**:
+`.workdir/sources/` 目录中原文文件的存在率和非空率。替代 `fetched_content_depth` 作为 search→analysis gate 的 BLOCKER 检查。阈值：如果 >30% 的 collected entry 没有对应的原文文件（文件不存在或为空且未标记 `fetch_failed: true`），则 BLOCKER。`fetch_failed: true` 的 entry 豁免检查，但豁免率本身受上限约束（如 >50% 豁免则 WARN）。
+_Avoid_: fetch quality, content depth, fetch completeness
+
+**source_file**:
+collected.json entry 中新增的字段，值为 `.workdir/sources/` 下对应原文文件的相对路径（如 `"sources/abc123.md"`）。与 `url_hash` 一一对应。subagent 通过此字段定位原文文件。
+_Avoid_: source path, content file
+
+**FetchStrategy**:
+per-source 的 fetch 策略接口，负责 URL 重写和工具 fallback 链。两种实现：`url_rewrite` 声明式规则（config.json，覆盖 80% 场景）和 `fetch_strategies/*.py` 代码式特例（覆盖 20%）。解析优先级：代码 strategy > config url_rewrite > DefaultStrategy（不重写，tools=["webfetch"]）。
+_Avoid_: fetch config, fetch handler, fetch adapter
+
+**url_rewrite**:
+config.json source 定义中的声明式 URL 重写规则。格式：`[{"match": "regex_pattern", "replace": "replacement_template"}]`。由通用 regex rewrite engine 执行，代码零 source 特化。
+_Avoid_: url transform, url mapping, url conversion
+
+**adaptive retry**:
+按 source tier 分级的 fetch 重试策略。Tier 1-2 每工具重试 2 次，Tier 3-4 每工具重试 1 次。单条 URL 全局超时 60 秒。所有工具穷尽后标记 `fetch_failed: true`。
+_Avoid_: retry policy, fetch retry, retry strategy
+
 **search plan**:
 Auto-generated plan (`.workdir/search_plan.json`) produced after scope→search gate passes. Based on goal_type route and search_directions, generates specific search tasks per direction × tier × source language. AI executes the plan rather than free-form searching.
 _Avoid_: search strategy, search outline
@@ -170,3 +190,32 @@ _Avoid_: repo root, workspace root
 - Source **language** field in config.json drives search plan task splitting (per source, not per tier)
 - **deep-dive anchor** selection is performed by the orchestrator in **section plan**; each panoramic/exploratory section must have ≥ 2 anchors
 - **false depth** is prohibited by **synthesis guard** and writing-guide content rules
+- **source fidelity** replaces **fetched_content_depth**: gate now checks `.workdir/sources/` file existence rather than `fetched_content` field character count
+- **fetched_content** field retains a 200-char index role; no longer a gate check target
+- **FetchStrategy** determines per-source URL rewriting and tool fallback chain; config.json `url_rewrite` rules cover 80%, `fetch_strategies/*.py` cover remaining 20%
+- **fetch router** resolves `get_fetch_strategy(source_config) → FetchStrategy`; priority: code strategy > config url_rewrite > DefaultStrategy
+- **adaptive retry** by Tier: Tier 1-2 retry twice per tool, Tier 3-4 retry once; 60s global timeout per URL
+- **source_file** in collected.json points to `.workdir/sources/{url_hash}.md`; subagents read original text via Read tool
+- subagent prompt injects first 500 chars of each source + file paths; Numeric Claim Source Rule updated: exact numbers must be verified in original text files, not just injected summaries
+
+## Route Decisions (ADR 0031)
+
+Grilling session decisions on source routing. Rationale for each change from original config:
+
+| route | original path | revised path | rationale |
+|---|---|---|---|
+| exploratory | [4,2] | [4,3,2] | +Tier 3 for industry trend perspective alongside community signals |
+| tech_selection | [2,1] | [2,3,4,1] | docs→industry→community→academic; industry shows adoption trends, community reveals real-world pain points before academic validation |
+| feasibility_assessment | [2,1] | [2,1,3] | docs→academic feasibility→industry cases; industry cases validate practical viability |
+| competitive_comparison | [2,3,4,1] | [2,1,3,4] | academic benchmark data before community opinions; benchmarks are objective ground truth |
+| background_check | [3,4,2,1] | [3,2,1,4] | official docs before community; background research needs authoritative sources first |
+| market_analysis | [3,1,2] | [3,4,1,2] | +Tier 4 for early trend signals; community behavior (Reddit/HN/Zhihu) is the earliest market indicator |
+| academic_research | [1] | [1], optional_tiers=[2] | main line stays Tier 1; optional Tier 2 for tech docs when reproducing experiments |
+
+Unchanged routes: panoramic_understanding [4,3,1] optional_tiers=[2], fact_check [1,2,4], other [3,2,1].
+
+New Tier 1 sources added for Chinese academic coverage:
+- **Wanfang** (wanfangdata.com.cn): Chinese academic database, same Tier 1 as CNKI
+- **CQVIP** (cqvip.com): Chinese academic database (维普), same Tier 1 as CNKI
+- 国标 (gb688.cn) considered but excluded due to connection timeout issues
+- Both Wanfang and CQVIP share CNKI's abstract-only access limitation; source_verification + precision mechanism handles "abstract has it, full text doesn't" naturally

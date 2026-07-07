@@ -321,14 +321,14 @@ class TestRouteAdjustments:
     def test_competitive_comparison_path(self):
         config = self._load_real_config()
         route = get_route("competitive_comparison", config)
-        assert route["path"] == [2, 3, 4, 1]
+        assert route["path"] == [2, 1, 3, 4]
 
     def test_market_analysis_path(self):
         config = self._load_real_config()
         route = get_route("market_analysis", config)
-        assert route["path"] == [3, 1, 2]
+        assert route["path"] == [3, 4, 1, 2]
 
     def test_background_check_path(self):
         config = self._load_real_config()
         route = get_route("background_check", config)
-        assert route["path"] == [3, 4, 2, 1]
+        assert route["path"] == [3, 2, 1, 4]

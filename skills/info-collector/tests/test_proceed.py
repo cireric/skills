@@ -4,9 +4,13 @@ import json
 from pathlib import Path
 
 from scripts.lib.exceptions import ArtifactError
+from scripts.lib.utils import compute_url_hash
 from scripts.proceed import (
     _check_scope_schema,
+    _check_review_report_exists,
     _gate_final,
+    _repair_json_text,
+    _read_json_with_repair,
     _sanitize_sections,
     write_phase_state,
     detect_current_phase,
@@ -46,7 +50,12 @@ def _make_completed_search_plan(workdir, directions=None):
 def _write_scope_and_collected(workdir):
     scope = {"topic": "t", "goal_type": "exploratory", "depth": "quick", "audience": "engineer", "scope_description": "d", "search_directions": ["d1"]}
     _write_json(workdir / "scope.json", scope)
-    _write_json(workdir / "collected.json", [{"url": "https://example.com", "title": "x", "snippet": "d1", "source_tier": 4, "fetched_content": "x" * 500}])
+    url = "https://example.com"
+    h = compute_url_hash(url)
+    sources_dir = workdir / "sources"
+    sources_dir.mkdir(parents=True, exist_ok=True)
+    (sources_dir / f"{h}.md").write_text("test content", encoding="utf-8")
+    _write_json(workdir / "collected.json", [{"url": url, "title": "x", "snippet": "d1", "source_tier": 4, "fetched_content": "x" * 500, "source_file": f"sources/{h}.md"}])
     _make_completed_search_plan(workdir, directions=["d1"])
 
 
@@ -119,13 +128,17 @@ class TestProceeds:
 
     def test_search_gate_passes(self, tmp_path):
         _make_scope(tmp_path)
-        _write_json(
-            tmp_path / "collected.json",
-            [
-                {"url": "https://a.com", "title": "AI News", "snippet": "About AI", "fetched_content": "x" * 300},
-                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML", "fetched_content": "x" * 300},
-            ],
-        )
+        entries = [
+            {"url": "https://a.com", "title": "AI News", "snippet": "About AI", "fetched_content": "x" * 300},
+            {"url": "https://b.com", "title": "ML Update", "snippet": "About ML", "fetched_content": "x" * 300},
+        ]
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir(parents=True, exist_ok=True)
+        for entry in entries:
+            h = compute_url_hash(entry["url"])
+            entry["source_file"] = f"sources/{h}.md"
+            (sources_dir / f"{h}.md").write_text("test content", encoding="utf-8")
+        _write_json(tmp_path / "collected.json", entries)
         _make_completed_search_plan(tmp_path)
         ok, errors = proceeds(tmp_path, "search", "analysis")
         assert ok, errors
@@ -420,6 +433,79 @@ class TestSanitizeSections:
         assert result["custom_key"] == "keep"
 
 
+class TestRepairJsonText:
+    """_repair_json_text escapes unescaped quotes inside JSON string values."""
+
+    def test_valid_json_unchanged(self):
+        raw = '{"topic": "T", "goal_type": "exploratory"}'
+        assert _repair_json_text(raw) == raw
+
+    def test_unescaped_quotes_in_content_escaped(self):
+        raw = '{"content": "He said "hello" to me"}'
+        repaired = _repair_json_text(raw)
+        data = json.loads(repaired)
+        assert data["content"] == 'He said "hello" to me'
+
+    def test_already_escaped_quotes_preserved(self):
+        raw = '{"content": "He said \\"hello\\" to me"}'
+        repaired = _repair_json_text(raw)
+        assert repaired == raw
+        data = json.loads(repaired)
+        assert data["content"] == 'He said "hello" to me'
+
+    def test_markdown_with_bold_quotes(self):
+        raw = '{"content": "The term "machine learning" was coined in 1959"}'
+        repaired = _repair_json_text(raw)
+        data = json.loads(repaired)
+        assert '"machine learning"' in data["content"]
+
+    def test_multiple_unescaped_quotes(self):
+        raw = '{"content": "A "big" deal and a "small" one"}'
+        repaired = _repair_json_text(raw)
+        data = json.loads(repaired)
+        assert data["content"] == 'A "big" deal and a "small" one'
+
+    def test_structural_chars_not_mangled(self):
+        raw = '{"a": "x", "b": ["y", "z"]}'
+        repaired = _repair_json_text(raw)
+        data = json.loads(repaired)
+        assert data == {"a": "x", "b": ["y", "z"]}
+
+    def test_empty_string_value(self):
+        raw = '{"content": ""}'
+        repaired = _repair_json_text(raw)
+        data = json.loads(repaired)
+        assert data["content"] == ""
+
+    def test_read_json_with_repair_valid_file(self, tmp_path):
+        path = tmp_path / "test.json"
+        _write_json(path, {"topic": "T"})
+        data, err = _read_json_with_repair(path)
+        assert err is None
+        assert data["topic"] == "T"
+
+    def test_read_json_with_repair_fixes_unescaped_quotes(self, tmp_path):
+        path = tmp_path / "analysis.json"
+        raw = '{"topic": "T", "goal_type": "exploratory", "sections": [{"id": "s1", "title": "Overview of "AI" trends", "content": "C", "claims": []}]}'
+        path.write_text(raw, encoding="utf-8")
+        data, err = _read_json_with_repair(path)
+        assert err is None
+        assert data["sections"][0]["title"] == 'Overview of "AI" trends'
+
+    def test_read_json_with_repair_non_json_error(self, tmp_path):
+        path = tmp_path / "missing.json"
+        data, err = _read_json_with_repair(path)
+        assert data is None
+        assert err is not None
+
+    def test_read_json_with_repair_unfixable_json(self, tmp_path):
+        path = tmp_path / "bad.json"
+        path.write_text("{{{", encoding="utf-8")
+        data, err = _read_json_with_repair(path)
+        assert data is None
+        assert "repair" in err.lower()
+
+
 class TestPipelineStateFile:
     def test_state_file_overrides_artifact_detection(self, tmp_path):
         _make_scope(tmp_path)
@@ -600,6 +686,11 @@ class TestIntegrationMediumComplexity:
         proceeds(workdir, "scope", "search", config)
         assert detect_current_phase(workdir) == "post_search"
         collected = [{"url": "https://example.com", "title": "d1 info", "snippet": "d1", "source_tier": 4, "fetched_content": "x" * 500}]
+        h = compute_url_hash("https://example.com")
+        sources_dir = workdir / "sources"
+        sources_dir.mkdir(parents=True, exist_ok=True)
+        (sources_dir / f"{h}.md").write_text("test content", encoding="utf-8")
+        collected[0]["source_file"] = f"sources/{h}.md"
         _write_json(workdir / "collected.json", collected)
         _make_completed_search_plan(workdir, directions=["d1"])
         proceeds(workdir, "search", "analysis")
@@ -999,3 +1090,126 @@ class TestSourceVerificationWriteBack:
         claim = analysis["sections"][0]["claims"][0]
         assert claim.get("source_verification") == "source_confirmed"
         assert claim.get("verified") is True
+
+
+class TestReviewReportExistsCheck:
+    """review_report_exists gate check for review→final transition."""
+
+    def test_blocks_when_review_report_missing(self, tmp_path):
+        result = _check_review_report_exists(tmp_path)
+        assert not result.passed
+        assert result.level == "BLOCKER"
+        assert "does not exist" in result.message
+
+    def test_blocks_when_review_report_empty(self, tmp_path):
+        (tmp_path / "review_report.md").write_text("", encoding="utf-8")
+        result = _check_review_report_exists(tmp_path)
+        assert not result.passed
+        assert result.level == "BLOCKER"
+        assert "empty" in result.message
+
+    def test_blocks_when_review_report_whitespace_only(self, tmp_path):
+        (tmp_path / "review_report.md").write_text("   \n\n  ", encoding="utf-8")
+        result = _check_review_report_exists(tmp_path)
+        assert not result.passed
+        assert result.level == "BLOCKER"
+        assert "empty" in result.message
+
+    def test_passes_when_review_report_has_content(self, tmp_path):
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+        result = _check_review_report_exists(tmp_path)
+        assert result.passed
+        assert result.level == "BLOCKER"
+
+    def test_skipped_when_fallback_log_says_skip_review(self, tmp_path):
+        (tmp_path / "review_fallback.log").write_text(
+            "2026-07-07 | subagent failed (attempt 2/2) | error: timeout | user chose: skip review\n",
+            encoding="utf-8",
+        )
+        result = _check_review_report_exists(tmp_path)
+        assert result.passed
+        assert "Skipped" in result.message
+
+    def test_skipped_when_fallback_log_says_unreviewed(self, tmp_path):
+        (tmp_path / "review_fallback.log").write_text(
+            "2026-07-07 | subagent failed | user chose: unreviewed\n",
+            encoding="utf-8",
+        )
+        result = _check_review_report_exists(tmp_path)
+        assert result.passed
+        assert "Skipped" in result.message
+
+    def test_not_skipped_when_fallback_log_says_inline_review(self, tmp_path):
+        (tmp_path / "review_fallback.log").write_text(
+            "2026-07-07 | subagent failed (attempt 1/2) | user chose: inline review\n",
+            encoding="utf-8",
+        )
+        result = _check_review_report_exists(tmp_path)
+        assert not result.passed
+        assert "does not exist" in result.message
+
+    def test_review_to_final_blocks_without_review_report(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Content.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                    },
+                ],
+            },
+        )
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "final")
+        assert not ok
+        assert any("review_report_exists" in e for e in errors)
+
+    def test_review_to_final_passes_with_review_report(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Content.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                    },
+                ],
+            },
+        )
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "final")
+        assert ok, errors
+
+    def test_review_to_review_does_not_check_review_report(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Content.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                    },
+                ],
+            },
+        )
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "review")
+        assert ok
+        assert not any("review_report_exists" in e for e in errors)

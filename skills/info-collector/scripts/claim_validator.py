@@ -33,7 +33,16 @@ _PRECISE_NUMBER_PATTERN = re.compile(
 _REF_MARKER_RE = re.compile(r'\{\{ref:(.*?)\}\}')
 
 
-def _source_text(item: dict) -> str:
+def _source_text(item: dict, workdir: Path | None = None) -> str:
+    sf = item.get("source_file", "")
+    if sf and workdir is not None:
+        source_path = workdir / sf
+        try:
+            if source_path.exists() and source_path.stat().st_size > 0:
+                content = source_path.read_text(encoding="utf-8")
+                return (content + " " + item.get("snippet", "")).lower()
+        except OSError:
+            pass
     return (item.get("fetched_content", "") + " " + item.get("snippet", "")).lower()
 
 
@@ -261,7 +270,7 @@ class ClaimValidator:
                 for url in claim.get("source_urls", []):
                     item = self._collected_by_url.get(normalize_url(url))
                     if item:
-                        source_texts.append(_source_text(item))
+                        source_texts.append(_source_text(item, self._workdir))
                 any_sufficient = any(len(src) >= 200 for src in source_texts)
                 if not any_sufficient:
                     continue
@@ -426,7 +435,7 @@ class ClaimValidator:
         for url in claim.get("source_urls", []):
             item = self._collected_by_url.get(normalize_url(url))
             if item:
-                source_texts.append(_source_text(item))
+                source_texts.append(_source_text(item, self._workdir))
 
         if not source_texts:
             if _PRECISE_NUMBER_PATTERN.search(claim.get("text", "")):

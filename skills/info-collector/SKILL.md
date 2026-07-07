@@ -99,18 +99,35 @@ Use `exa_web_search_exa` for discovery. Use `site:` queries from recommended sou
 
 ### Step 2.3: Full-content fetch (MANDATORY — do NOT skip)
 
-For EVERY entry you plan to add to `collected.json`, you MUST fetch its full content using `webfetch` (or `exa_web_fetch_exa` if available). Search-result highlights are NOT sufficient — they are summaries, not source material.
+For EVERY entry you plan to add to `collected.json`, you MUST fetch its full content using the fetch strategy system. Search-result highlights are NOT sufficient — they are summaries, not source material.
 
-**Minimum fetched_content lengths (BLOCKER if not met)**:
+**Fetch strategy resolution** (priority: code strategy > config url_rewrite > DefaultStrategy):
 
-| Source tier | Minimum fetched_content | Rationale |
-|-------------|------------------------|-----------|
-| Tier 1 (academic) | 1000 chars | Academic papers contain methodology, results, limitations that highlights cannot capture |
-| Tier 2 (docs) | 800 chars | Official docs have API details, configuration, examples |
-| Tier 3 (industry) | 600 chars | Blog posts and reports have context, nuance, caveats |
-| Tier 4 (community) | 400 chars | Forum posts are shorter but must still be fetched, not summarized from highlights |
+1. If the source has a `fetch_strategy` field in config.json (e.g., `"arxiv"`, `"github"`), the fetch router loads the corresponding `fetch_strategies/<name>.py` strategy
+2. If the source has `url_rewrite` rules in config.json, the generic regex rewrite engine applies them
+3. Otherwise, DefaultStrategy is used (no URL rewrite, tools=`["webfetch"]`)
 
-If a URL cannot be fetched (paywall, 403, timeout), you MAY still add the entry but MUST set `fetched_content` to the empty string `""` and add `"fetch_failed": true` to the entry. Entries with `fetch_failed: true` are exempt from depth checks but CANNOT be used as the sole source for claims with `precision: "exact"` or `evidence_type: "official_data"`.
+Each strategy provides: `rewrite_url(url) → str` and `get_tools() → list[str]` (ordered tool fallback chain).
+
+**Adaptive retry by Tier**:
+- Tier 1-2: retry each tool 2 times before falling back to next tool
+- Tier 3-4: retry each tool 1 time before falling back to next tool
+- Global timeout: 60 seconds per URL across all tools
+
+**Source file storage**:
+
+After fetching, save the original text to `.workdir/sources/{url_hash}.md` where `url_hash` is the first 12 characters of SHA-256 of the normalized URL. Set the `source_file` field in the collected.json entry to `"sources/{url_hash}.md"`.
+
+The `fetched_content` field is reduced to a 200-character index (first 200 chars of the fetched text). It is no longer a gate check target.
+
+**Source fidelity gate** (replaces fetched_content_depth):
+
+| Condition | Result |
+|-----------|--------|
+| >30% entries missing source files (not `fetch_failed`) | BLOCKER |
+| >50% entries are `fetch_failed` | WARN |
+
+If a URL cannot be fetched (paywall, 403, timeout), you MAY still add the entry but MUST set `fetched_content` to `""`, `source_file` to `null`, and add `"fetch_failed": true`. Entries with `fetch_failed: true` are exempt from source fidelity checks but CANNOT be used as the sole source for claims with `precision: "exact"` or `evidence_type: "official_data"`.
 
 ### Step 2.4: Collect
 
@@ -123,6 +140,7 @@ Add each result to `<project_root>/.workdir/collected.json`:
 	"snippet": "...",
 	"source_tier": 2,
 	"fetched_content": "...",
+	"source_file": "sources/abc123def456.md",
 	"covered_directions": ["direction 1", "direction 2"],
 	"fetch_failed": false,
 	"vendor_affiliation": ""
@@ -144,7 +162,7 @@ Checks:
 - tier_coverage (WARN) — source tier diversity
 - per_direction_min_sources (WARN) — enough sources per direction
 - min_sources (WARN) — total source count
-- fetched_content_depth (BLOCKER if >30% entries are stubs) — full content was actually fetched
+- source_fidelity (BLOCKER if >30% entries missing source files) — original text files exist in `.workdir/sources/`
 - search_plan_compliance (WARN) — plan tasks were executed and updated
 
 If BLOCKER → fix the issue (fetch missing content, search more) before proceeding.
