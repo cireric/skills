@@ -21,10 +21,9 @@ from .lib.constants import (
     _COVERAGE_THRESHOLD,
     _DEPTH_MIN_SOURCES_PER_DIRECTION,
     _ENGLISH_STOP_WORDS,
-    _FETCHED_CONTENT_MIN_BY_TIER,
-    _FETCHED_CONTENT_MIN_LENGTH,
-    _FETCHED_CONTENT_STUB_RATIO_BLOCKER,
     _MAX_COVERED_DIRECTIONS,
+    _SOURCE_FIDELITY_MISSING_RATIO_BLOCKER,
+    _SOURCE_FIDELITY_EXEMPT_RATIO_WARN,
 )
 from .lib.exceptions import ArtifactError
 from .lib.source_router import get_default_min_sources, get_route
@@ -71,7 +70,7 @@ class SearchGate:
             self._check_min_sources(),
             self._check_tier_coverage(),
             self._check_topic_coverage(),
-            self._check_fetched_content_depth(),
+            self._check_source_fidelity(),
             self._check_search_plan_compliance(),
             self._check_domain_concentration(),
             self._check_tier_task_completion(),
@@ -222,55 +221,44 @@ class SearchGate:
             return CheckResult("topic_coverage", level, False, "; ".join(messages))
         return CheckResult("topic_coverage", "BLOCKER", True)
 
-    def _check_fetched_content_depth(self) -> CheckResult:
+    def _check_source_fidelity(self) -> CheckResult:
         if self._collected is None:
-            return CheckResult("fetched_content_depth", "WARN", True, "Cannot read collected.json")
+            return CheckResult("source_fidelity", "BLOCKER", True, "Cannot read collected.json")
         if not self._collected:
-            return CheckResult("fetched_content_depth", "WARN", True, "collected.json is empty")
-        stub_count = 0
-        empty_count = 0
+            return CheckResult("source_fidelity", "BLOCKER", True, "collected.json is empty")
+        missing_count = 0
         fetch_failed_count = 0
-        tier_violations: list[str] = []
+        total = len(self._collected)
         for entry in self._collected:
-            fc = entry.get("fetched_content", "")
-            tier = entry.get("source_tier", 0)
             if entry.get("fetch_failed", False):
                 fetch_failed_count += 1
                 continue
-            if not fc:
-                empty_count += 1
-            else:
-                min_len = _FETCHED_CONTENT_MIN_BY_TIER.get(tier, _FETCHED_CONTENT_MIN_LENGTH)
-                if len(fc) < min_len:
-                    stub_count += 1
-                    tier_violations.append(f"Tier {tier}: {len(fc)} chars < {min_len} min")
-        total = len(self._collected)
+            sf = entry.get("source_file", "")
+            if not sf:
+                missing_count += 1
+                continue
+            source_path = self.workdir / sf
+            if not source_path.exists() or source_path.stat().st_size == 0:
+                missing_count += 1
         checked = total - fetch_failed_count
-        problem_count = empty_count + stub_count
-        ratio = problem_count / checked if checked > 0 else 0
-        parts: list[str] = []
-        if empty_count > 0:
-            parts.append(f"{empty_count}/{total} entries have no fetched_content")
-        if stub_count > 0:
-            parts.append(
-                f"{stub_count}/{total} entries have stub fetched_content (below per-tier minimum)"
-            )
+        ratio = missing_count / checked if checked > 0 else 0
+        exempt_ratio = fetch_failed_count / total if total > 0 else 0
+        parts = []
+        if missing_count > 0:
+            parts.append(f"{missing_count}/{checked} entries have no source file")
         if fetch_failed_count > 0:
             parts.append(f"{fetch_failed_count}/{total} entries have fetch_failed=true (exempt)")
-        if tier_violations:
-            for v in tier_violations[:3]:
-                parts.append(f"  e.g. {v}")
-        msg = "; ".join(parts) if parts else "all entries have substantial fetched_content"
-        if ratio > _FETCHED_CONTENT_STUB_RATIO_BLOCKER:
-            return CheckResult(
-                "fetched_content_depth",
-                "BLOCKER",
-                False,
-                f"{problem_count}/{checked} entries ({ratio:.0%}) have missing or stub fetched_content — re-fetch with full content before proceeding",
-            )
-        if problem_count > 0:
-            return CheckResult("fetched_content_depth", "WARN", False, msg)
-        return CheckResult("fetched_content_depth", "WARN", True, msg)
+        msg = "; ".join(parts) if parts else "all entries have source files"
+        if checked == 0:
+            return CheckResult("source_fidelity", "BLOCKER", True, msg)
+        if ratio > _SOURCE_FIDELITY_MISSING_RATIO_BLOCKER:
+            return CheckResult("source_fidelity", "BLOCKER", False, f"{missing_count}/{checked} entries ({ratio:.0%}) lack source files — re-fetch with full content before proceeding")
+        if exempt_ratio > _SOURCE_FIDELITY_EXEMPT_RATIO_WARN:
+            parts.append(f"high exempt ratio: {exempt_ratio:.0%}")
+            return CheckResult("source_fidelity", "WARN", False, "; ".join(parts))
+        if missing_count > 0:
+            return CheckResult("source_fidelity", "WARN", False, msg)
+        return CheckResult("source_fidelity", "BLOCKER", True, msg)
 
     def _check_search_plan_compliance(self) -> CheckResult:
         if self._search_plan is None:

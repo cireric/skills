@@ -57,11 +57,15 @@ class TestSearchGateCheck:
 
     def test_valid_search_passes(self, tmp_path):
         _make_scope(tmp_path)
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        (sources_dir / "a.md").write_text("x" * 300, encoding="utf-8")
+        (sources_dir / "b.md").write_text("x" * 300, encoding="utf-8")
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI News", "snippet": "About AI", "fetched_content": "x" * 300},
-                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML", "fetched_content": "x" * 300},
+                {"url": "https://a.com", "title": "AI News", "snippet": "About AI", "fetched_content": "x" * 300, "source_file": "sources/a.md"},
+                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML", "fetched_content": "x" * 300, "source_file": "sources/b.md"},
             ],
         )
         _make_completed_search_plan(tmp_path)
@@ -279,81 +283,79 @@ class TestTierCoverage:
         assert "[INFO]" in captured.err
 
 
-class TestFetchedContentDepth:
-    def test_all_entries_have_substantial_content(self, tmp_path):
+class TestSourceFidelity:
+    def test_all_entries_have_source_files(self, tmp_path):
+        _make_scope(tmp_path)
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        (sources_dir / "abc123.md").write_text("Full content here", encoding="utf-8")
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://example.com", "title": "T", "snippet": "S", "source_tier": 3, "source_file": "sources/abc123.md", "fetched_content": "Full content here"}],
+        )
+        results = SearchGate(tmp_path).check()
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert sf.passed
+
+    def test_missing_source_files_blocker(self, tmp_path):
+        _make_scope(tmp_path)
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        _write_json(
+            tmp_path / "collected.json",
+            [
+                {"url": "https://example.com/1", "title": "T1", "snippet": "S", "source_tier": 3, "source_file": "sources/missing.md", "fetched_content": ""},
+                {"url": "https://example.com/2", "title": "T2", "snippet": "S", "source_tier": 3, "source_file": "sources/also_missing.md", "fetched_content": ""},
+            ],
+        )
+        results = SearchGate(tmp_path).check()
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert not sf.passed
+        assert sf.level == "BLOCKER"
+
+    def test_fetch_failed_exempt(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://example.com/1", "title": "T1", "snippet": "S", "source_tier": 3, "fetch_failed": True, "fetched_content": ""}],
+        )
+        results = SearchGate(tmp_path).check()
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert sf.passed
+
+    def test_no_source_file_field_counts_as_missing(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://example.com/1", "title": "T1", "snippet": "S", "source_tier": 3, "fetched_content": "some text"}],
+        )
+        results = SearchGate(tmp_path).check()
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert not sf.passed
+        assert sf.level == "BLOCKER"
+
+    def test_high_exempt_ratio_warns(self, tmp_path):
         _make_scope(tmp_path)
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "A", "snippet": "s", "source_tier": 4, "fetched_content": "x" * 500},
-                {"url": "https://b.com", "title": "B", "snippet": "s", "source_tier": 4, "fetched_content": "y" * 500},
+                {"url": "https://example.com/1", "title": "T1", "snippet": "S", "source_tier": 3, "fetch_failed": True, "fetched_content": ""},
+                {"url": "https://example.com/2", "title": "T2", "snippet": "S", "source_tier": 3, "fetch_failed": True, "fetched_content": ""},
+                {"url": "https://example.com/3", "title": "T3", "snippet": "S", "source_tier": 3, "source_file": "sources/exists.md", "fetched_content": "x"},
             ],
         )
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        (sources_dir / "exists.md").write_text("content", encoding="utf-8")
         results = SearchGate(tmp_path).check()
-        fcd = _find_result(results, "fetched_content_depth")
-        assert fcd is not None
-        assert fcd.passed
-
-    def test_empty_fetched_content_blocker(self, tmp_path):
-        _make_scope(tmp_path)
-        _write_json(
-            tmp_path / "collected.json",
-            [
-                {"url": "https://a.com", "title": "A", "snippet": "s", "source_tier": 4, "fetched_content": "x" * 500},
-                {"url": "https://b.com", "title": "B", "snippet": "s", "source_tier": 4},
-            ],
-        )
-        results = SearchGate(tmp_path).check()
-        fcd = _find_result(results, "fetched_content_depth")
-        assert fcd is not None
-        assert not fcd.passed
-        assert fcd.level == "BLOCKER"
-        assert "missing or stub" in fcd.message
-
-    def test_stub_fetched_content_warns(self, tmp_path):
-        _make_scope(tmp_path)
-        _write_json(
-            tmp_path / "collected.json",
-            [
-                {"url": "https://a.com", "title": "A", "snippet": "s", "source_tier": 4, "fetched_content": "short"},
-                {"url": "https://b.com", "title": "B", "snippet": "s", "source_tier": 4, "fetched_content": "y" * 500},
-            ],
-        )
-        results = SearchGate(tmp_path).check()
-        fcd = _find_result(results, "fetched_content_depth")
-        assert fcd is not None
-        assert not fcd.passed
-        assert "stub" in fcd.message
-
-    def test_majority_stub_blocks(self, tmp_path):
-        _make_scope(tmp_path)
-        _write_json(
-            tmp_path / "collected.json",
-            [
-                {"url": "https://a.com", "title": "A", "snippet": "s"},
-                {"url": "https://b.com", "title": "B", "snippet": "s"},
-                {"url": "https://c.com", "title": "C", "snippet": "s", "fetched_content": "ok" * 100},
-            ],
-        )
-        results = SearchGate(tmp_path).check()
-        fcd = _find_result(results, "fetched_content_depth")
-        assert fcd is not None
-        assert fcd.level == "BLOCKER"
-
-    def test_missing_collected_warns(self, tmp_path):
-        _make_scope(tmp_path)
-        results = SearchGate(tmp_path).check()
-        fcd = _find_result(results, "fetched_content_depth")
-        assert fcd is not None
-        assert fcd.level == "WARN"
-
-    def test_empty_collected_warns(self, tmp_path):
-        _make_scope(tmp_path)
-        _write_json(tmp_path / "collected.json", [])
-        results = SearchGate(tmp_path).check()
-        fcd = _find_result(results, "fetched_content_depth")
-        assert fcd is not None
-        assert fcd.level == "WARN"
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert sf.level == "WARN"
+        assert "exempt" in sf.message.lower() or "high exempt" in sf.message.lower()
 
 
 class TestPerDirectionCJKDowngrade:
