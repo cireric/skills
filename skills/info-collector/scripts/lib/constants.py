@@ -94,14 +94,11 @@ _VAGUE_DENSITY_THRESHOLD = 0.10
 _TIER_BALANCE_THRESHOLD = 0.30
 _METHODOLOGY_MIN_WORDS = 150
 _MIN_SOURCES = 2
-_FETCHED_CONTENT_MIN_LENGTH = 200
-_FETCHED_CONTENT_STUB_RATIO_BLOCKER = 0.30
-_FETCHED_CONTENT_MIN_BY_TIER = {
-    1: 1000,  # Academic papers — methodology, results, limitations
-    2: 800,   # Official docs — API details, configuration
-    3: 600,   # Industry blogs — context, nuance, caveats
-    4: 400,   # Community posts — shorter but still fetched
-}
+_SOURCES_DIR = "sources"
+_SOURCE_FIDELITY_MISSING_RATIO_BLOCKER = 0.30
+_SOURCE_FIDELITY_EXEMPT_RATIO_WARN = 0.50
+_FETCH_TIMEOUT_SECONDS = 60
+_FETCHED_CONTENT_INDEX_LENGTH = 200
 _DEPTH_MIN_SOURCES_PER_DIRECTION = {"quick": 1, "standard": 3, "deep": 5}
 _COVERAGE_THRESHOLD = 0.5
 _OVERLONG_LINE_THRESHOLD = 500

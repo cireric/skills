@@ -74,6 +74,7 @@ class CollectedEntryDict(TypedDict, total=False):
     fetched_content: str
     covered_directions: list[str]
     vendor_affiliation: str
+    source_file: str
 
 
 _SCOPE_REQUIRED_FIELDS = (
@@ -299,6 +300,10 @@ def validate_collected(data: list) -> list[ValidationError]:
                         errors.append(_err(f"{prefix}.covered_directions[{k}]", "each item must be a non-empty string"))
         if "vendor_affiliation" in entry:
             va = entry["vendor_affiliation"]
-            if not isinstance(va, str) or not va.strip():
-                errors.append(_err(f"{prefix}.vendor_affiliation", "must be a non-empty string if present"))
+            if va is not None and (not isinstance(va, str) or not va.strip()):
+                errors.append(_err(f"{prefix}.vendor_affiliation", "must be a non-empty string or null if present"))
+        if "source_file" in entry:
+            sf = entry["source_file"]
+            if not isinstance(sf, str) or not sf.strip():
+                errors.append(_err(f"{prefix}.source_file", "must be a non-empty string if present"))
     return errors

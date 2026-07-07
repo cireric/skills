@@ -523,3 +523,42 @@ class TestValidateAnalysisTensions:
         sec = {"id": "s1", "title": "S", "content": "C"}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
         assert not any("tensions" in e.field for e in errors)
+
+
+class TestValidateCollectedSourceFile:
+    def test_collected_source_file_valid(self):
+        data = [{"url": "https://example.com", "title": "Test", "snippet": "s", "source_file": "sources/abc123.md"}]
+        errors = validate_collected(data)
+        assert not any("source_file" in e.field for e in errors)
+
+    def test_collected_source_file_empty_string(self):
+        data = [{"url": "https://example.com", "title": "Test", "snippet": "s", "source_file": ""}]
+        errors = validate_collected(data)
+        assert any("source_file" in e.field for e in errors)
+
+    def test_collected_source_file_not_str(self):
+        data = [{"url": "https://example.com", "title": "Test", "snippet": "s", "source_file": 123}]
+        errors = validate_collected(data)
+        assert any("source_file" in e.field for e in errors)
+
+    def test_collected_source_file_optional(self):
+        data = [{"url": "https://example.com", "title": "Test", "snippet": "s"}]
+        errors = validate_collected(data)
+        assert not any("source_file" in e.field for e in errors)
+
+
+class TestValidateCollectedVendorAffiliationNull:
+    def test_collected_vendor_affiliation_null(self):
+        data = [{"url": "https://example.com", "title": "Test", "snippet": "s", "vendor_affiliation": None}]
+        errors = validate_collected(data)
+        assert not any("vendor_affiliation" in e.field for e in errors)
+
+    def test_collected_vendor_affiliation_empty_string(self):
+        data = [{"url": "https://example.com", "title": "Test", "snippet": "s", "vendor_affiliation": ""}]
+        errors = validate_collected(data)
+        assert any("vendor_affiliation" in e.field for e in errors)
+
+    def test_collected_vendor_affiliation_valid_string(self):
+        data = [{"url": "https://example.com", "title": "Test", "snippet": "s", "vendor_affiliation": "Anthropic"}]
+        errors = validate_collected(data)
+        assert not any("vendor_affiliation" in e.field for e in errors)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -20,6 +21,11 @@ def normalize_url(url: str) -> str:
     else:
         sorted_query = ""
     return urlunparse((scheme, netloc, path, parsed.params, sorted_query, ""))
+
+
+def compute_url_hash(url: str) -> str:
+    normalized = normalize_url(url)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
 
 
 def read_json(path: Path, retries: int = 2, delay: float = 0.5) -> Any:
