@@ -1,7 +1,9 @@
 import pytest
+import json
 from pathlib import Path
 from scripts.fetch_strategies.base import FetchStrategy
 from scripts.fetch_strategies.default import DefaultStrategy
+from scripts.lib.utils import compute_url_hash
 
 
 def test_default_strategy_no_rewrite():
@@ -109,3 +111,37 @@ def test_apply_url_rewrite_no_match():
 def test_apply_url_rewrite_match():
     rules = [{"match": r"arxiv\.org/pdf/(.+)", "replace": r"ar5iv.labs.arxiv.org/html/\1"}]
     assert apply_url_rewrite("https://arxiv.org/pdf/2509.16941", rules) == "https://ar5iv.labs.arxiv.org/html/2509.16941"
+
+
+class TestEndToEndFetchFlow:
+    def test_arxiv_fetch_flow(self, tmp_path):
+        cfg = {"fetch_strategy": "arxiv"}
+        url = "https://arxiv.org/pdf/2509.16941"
+
+        strategy = get_fetch_strategy(cfg)
+        assert type(strategy).__name__ == "ArxivStrategy"
+
+        rewritten = strategy.rewrite_url(url)
+        assert rewritten == "https://ar5iv.labs.arxiv.org/html/2509.16941"
+
+        tools = strategy.tools()
+        assert tools == ["webfetch", "exa_web_fetch_exa"]
+
+        retries = strategy.retries(1)
+        assert retries == 2
+
+        url_hash = compute_url_hash(url)
+        source_file = f"sources/{url_hash}.md"
+
+        sources_dir = tmp_path / "sources"
+        sources_dir.mkdir()
+        source_path = sources_dir / f"{url_hash}.md"
+        source_path.write_text("# Fetched content", encoding="utf-8")
+
+        collected = [{"url": url, "title": "Test Paper", "source_file": source_file}]
+        collected_path = tmp_path / "collected.json"
+        collected_path.write_text(json.dumps(collected, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        loaded = json.loads(collected_path.read_text(encoding="utf-8"))
+        assert loaded[0]["source_file"] == source_file
+        assert (tmp_path / loaded[0]["source_file"]).exists()

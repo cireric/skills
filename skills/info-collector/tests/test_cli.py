@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,12 +10,6 @@ import pytest
 
 from scripts.cli import _detect_review_status, _build_report_filename, cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_reset, cmd_source, main, WORKDIR
 from scripts.lib.exceptions import InfoCollectorError
-
-
-def _write_json(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def _make_namespace(**kwargs):

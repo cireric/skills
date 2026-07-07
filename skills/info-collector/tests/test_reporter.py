@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from scripts.reporter import (
@@ -774,8 +773,3 @@ class TestVerificationSummary:
         result = _render_verification_summary(analysis)
         assert result == ""
 
-
-def _write_json(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)

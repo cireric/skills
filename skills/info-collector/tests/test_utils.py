@@ -3,7 +3,7 @@ import builtins
 
 import pytest
 from scripts.lib.exceptions import ArtifactError
-from scripts.lib.utils import ensure_dir, normalize_url, read_json, write_json
+from scripts.lib.utils import compute_url_hash, ensure_dir, normalize_url, read_json, write_json
 
 
 class TestNormalizeUrl:
@@ -134,3 +134,56 @@ class TestWriteJsonRetry:
         with pytest.raises(ArtifactError) as exc_info:
             write_json(data, path)
         assert "Failed after 3 attempts" in str(exc_info.value)
+
+
+class TestComputeUrlHash:
+    def test_known_hash(self):
+        assert compute_url_hash("https://arxiv.org/pdf/2509.16941") == "0991d9ad197a"
+
+    def test_deterministic(self):
+        url = "https://example.com/"
+        assert compute_url_hash(url) == compute_url_hash(url)
+
+    def test_trailing_slash_normalized(self):
+        assert compute_url_hash("https://example.com/") == compute_url_hash("https://example.com")
+
+    def test_www_stripped(self):
+        h1 = compute_url_hash("https://www.example.com/path")
+        h2 = compute_url_hash("https://example.com/path")
+        assert h1 == h2
+
+
+class TestCJKTokenization:
+    def test_cjk_chars_separate_tokens(self):
+        from scripts.lib.utils import tokenize_cjk_aware
+        tokens = tokenize_cjk_aware("大语言模型", lowercase=True)
+        assert tokens == ["大语言模型"]
+
+    def test_cjk_with_latin_mixed(self):
+        from scripts.lib.utils import tokenize_cjk_aware
+        tokens = tokenize_cjk_aware("AI智能体", lowercase=True)
+        assert "ai" in tokens
+        assert "智能体" in tokens
+
+    def test_cjk_in_context(self):
+        from scripts.lib.utils import tokenize_cjk_aware
+        tokens = tokenize_cjk_aware("大 语言 模型 在代码生成中的应用", lowercase=True)
+        assert "大语言模型" not in tokens
+        assert "大" in tokens or "语言" in tokens
+
+    def test_pure_latin_tokenization(self):
+        from scripts.lib.utils import tokenize_cjk_aware
+        tokens = tokenize_cjk_aware("Machine learning overview", lowercase=True)
+        assert tokens == ["machine", "learning", "overview"]
+
+    def test_lowercase_flag(self):
+        from scripts.lib.utils import tokenize_cjk_aware
+        tokens = tokenize_cjk_aware("AI智能体", lowercase=False)
+        assert "AI" in tokens
+        assert "智能体" in tokens
+
+    def test_cjk_full_run(self):
+        from scripts.lib.utils import tokenize_cjk_aware
+        tokens = tokenize_cjk_aware("深度学习框架PyTorch简介", lowercase=True)
+        assert "深度学习框架" in tokens
+        assert "pytorch简介" in tokens or "pytorch" in tokens

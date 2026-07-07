@@ -1,16 +1,10 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from scripts.artifact_checks import CheckResult
 from scripts.claim_validator import ClaimValidator, _normalize_numbers, _number_found_in_source, _is_indirect_source, _source_text
-
-
-def _write_json(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+from scripts.lib.constants import _INDIRECT_CITATION_PATTERNS
 
 
 def _get_result(results, name):
@@ -1084,3 +1078,168 @@ class TestRefMarkerSuggestion:
         result = _get_result(results, "ref_marker_validity")
         assert not result.passed
         assert "did you mean" in result.message
+
+
+class TestIndirectCitationChinese:
+    def test_ju_baogao_pattern(self):
+        claim = {"text": "据Gartner报告显示，2026年AI市场将达$5000亿", "source_urls": ["https://reuters.com/article"]}
+        collected_by_url = {}
+        assert _is_indirect_source(claim, collected_by_url) is True
+
+    def test_genju_yanjiu_pattern(self):
+        claim = {"text": "根据McKinsey研究指出，75%企业已采用AI", "source_urls": ["https://mckinsey.com/report"]}
+        collected_by_url = {}
+        assert _is_indirect_source(claim, collected_by_url) is True
+
+    def test_no_indirect_pattern(self):
+        claim = {"text": "PyTorch 2.0 achieved 97.3% accuracy", "source_urls": ["https://pytorch.org/blog"]}
+        collected_by_url = {}
+        assert _is_indirect_source(claim, collected_by_url) is False
+
+    def test_jucheng_pattern(self):
+        claim = {"text": "据称SWE-bench达到45%", "source_urls": ["https://example.com"]}
+        collected_by_url = {}
+        result = _is_indirect_source(claim, collected_by_url)
+        assert isinstance(result, bool)
+
+    def test_indirect_patterns_match_chinese(self):
+        pattern1 = _INDIRECT_CITATION_PATTERNS[0]
+        assert pattern1.search("据Gartner报告显示")
+        assert pattern1.search("据McKinsey研究发现")
+
+    def test_indirect_patterns_no_match_english(self):
+        pattern1 = _INDIRECT_CITATION_PATTERNS[0]
+        assert not pattern1.search("According to Gartner report")
+
+    def test_english_indirect_pattern(self):
+        pattern3 = _INDIRECT_CITATION_PATTERNS[2]
+        assert pattern3.search("according to Gartner")
+        assert pattern3.search("reported by McKinsey")
+
+    def test_tier3_indirect_source(self):
+        claim = {
+            "text": "AI市场将增长50%",
+            "source_urls": ["https://blog.example.com/post"],
+            "evidence_type": "official_data",
+        }
+        from scripts.lib.utils import normalize_url
+        norm_url = normalize_url("https://blog.example.com/post")
+        collected_by_url = {norm_url: {"source_tier": 3}}
+        assert _is_indirect_source(claim, collected_by_url) is True
+
+    def test_tier1_not_indirect_by_tier(self):
+        claim = {
+            "text": "AI市场将增长50%",
+            "source_urls": ["https://arxiv.org/paper"],
+            "evidence_type": "official_data",
+        }
+        collected_by_url = {"arxiv.org/paper": {"source_tier": 1}}
+        assert _is_indirect_source(claim, collected_by_url) is False
+
+    def test_vendor_source_with_exact_precision(self):
+        claim = {
+            "text": "Our product achieves 99.9% uptime",
+            "source_urls": ["https://vendor.com/blog"],
+            "precision": "exact",
+            "source_metadata": {"source_type": "vendor_benchmark"},
+        }
+        collected_by_url = {}
+        assert _is_indirect_source(claim, collected_by_url) is True
+
+
+class TestEntityNumberConflict:
+    def test_same_entity_same_number_pass(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [
+                {"text": "Python has 45% share", "source_urls": ["https://a.com"]},
+                {"text": "Python has 45% share again", "source_urls": ["https://b.com"]},
+            ]}],
+        })
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        r = _get_result(results, "entity_number_conflict")
+        assert r.passed
+
+    def test_same_entity_different_number_warn(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [
+                {"text": "Python has 45% share", "source_urls": ["https://a.com"]},
+                {"text": "Python has 52% share", "source_urls": ["https://b.com"]},
+            ]}],
+        })
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        r = _get_result(results, "entity_number_conflict")
+        assert not r.passed
+        assert "Python" in r.message
+
+    def test_different_entities_pass(self, tmp_path):
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [
+                {"text": "Python has 45% share", "source_urls": ["https://a.com"]},
+                {"text": "Java has 52% share", "source_urls": ["https://b.com"]},
+            ]}],
+        })
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        r = _get_result(results, "entity_number_conflict")
+        assert r.passed
+
+
+class TestIsIndirectSourceUnit:
+    def test_tier3_third_party_indirect(self):
+        from scripts.lib.utils import normalize_url
+        claim = {"text": "Market grows 15%", "source_urls": ["https://a.com"], "evidence_type": "third_party_estimate", "precision": "range"}
+        collected = {normalize_url("https://a.com"): {"source_tier": 3}}
+        assert _is_indirect_source(claim, collected) is True
+
+    def test_tier3_official_data_indirect(self):
+        from scripts.lib.utils import normalize_url
+        claim = {"text": "$4.5B revenue", "source_urls": ["https://a.com"], "evidence_type": "official_data", "precision": "exact"}
+        collected = {normalize_url("https://a.com"): {"source_tier": 3}}
+        assert _is_indirect_source(claim, collected) is True
+
+    def test_tier2_not_indirect(self):
+        from scripts.lib.utils import normalize_url
+        claim = {"text": "97.3% accuracy", "source_urls": ["https://a.com"], "evidence_type": "official_data", "precision": "exact"}
+        collected = {normalize_url("https://a.com"): {"source_tier": 2}}
+        assert _is_indirect_source(claim, collected) is False
+
+    def test_vendor_source_type_exact_indirect(self):
+        from scripts.lib.utils import normalize_url
+        claim = {
+            "text": "75% adoption",
+            "source_urls": ["https://a.com"],
+            "evidence_type": "official_data",
+            "precision": "exact",
+            "source_metadata": {"source_type": "vendor_benchmark"},
+        }
+        collected = {normalize_url("https://a.com"): {"source_tier": 2}}
+        assert _is_indirect_source(claim, collected) is True
+
+    def test_vendor_source_type_qualitative_not_indirect(self):
+        from scripts.lib.utils import normalize_url
+        claim = {
+            "text": "Widely adopted",
+            "source_urls": ["https://a.com"],
+            "evidence_type": "official_data",
+            "precision": "qualitative",
+            "source_metadata": {"source_type": "vendor_benchmark"},
+        }
+        collected = {normalize_url("https://a.com"): {"source_tier": 2}}
+        assert _is_indirect_source(claim, collected) is False
+
+    def test_chinese_indirect_citation_host_mismatch(self):
+        from scripts.lib.utils import normalize_url
+        claim = {"text": "据Gartner报告显示增长15%", "source_urls": ["https://someblog.com/post"], "evidence_type": "official_data", "precision": "exact"}
+        collected = {normalize_url("https://someblog.com/post"): {"source_tier": 3}}
+        assert _is_indirect_source(claim, collected) is True
+
+    def test_english_indirect_citation(self):
+        from scripts.lib.utils import normalize_url
+        claim = {"text": "According to Gartner, growth is 15%", "source_urls": ["https://someblog.com/post"], "evidence_type": "official_data", "precision": "exact"}
+        collected = {normalize_url("https://someblog.com/post"): {"source_tier": 2}}
+        assert _is_indirect_source(claim, collected) is True
+
+    def test_indirect_citation_host_match_not_indirect(self):
+        from scripts.lib.utils import normalize_url
+        claim = {"text": "据Gartner报告显示增长15%", "source_urls": ["https://gartner.com/report"], "evidence_type": "official_data", "precision": "exact"}
+        collected = {normalize_url("https://gartner.com/report"): {"source_tier": 2}}
+        assert _is_indirect_source(claim, collected) is False

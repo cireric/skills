@@ -1,38 +1,19 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from scripts.search_gate import SearchGate
 from scripts.artifact_checks import CheckResult
+from scripts.lib.utils import compute_url_hash
 
 
-def _write_json(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def _make_scope(workdir, goal_type="tech_selection", depth="standard", report_language=None, search_directions=None):
-    data = {
-        "topic": "Test",
-        "goal_type": goal_type,
-        "depth": depth,
-        "audience": "engineer",
-        "scope_description": "Test scope",
-        "search_directions": search_directions if search_directions is not None else ["AI", "ML"],
-    }
-    if report_language is not None:
-        data["report_language"] = report_language
-    _write_json(workdir / "scope.json", data)
-
-
-def _make_completed_search_plan(workdir, directions=None):
-    if directions is None:
-        scope = json.loads((workdir / "scope.json").read_text(encoding="utf-8"))
-        directions = scope.get("search_directions", ["AI", "ML"])
-    tasks = [{"direction": d, "tier": 4, "status": "completed", "collected_count": 1} for d in directions]
-    _write_json(workdir / "search_plan.json", {"tasks": tasks})
+def _create_source_file(workdir, url, content="full content"):
+    sources_dir = workdir / "sources"
+    sources_dir.mkdir(exist_ok=True)
+    h = compute_url_hash(url)
+    path = sources_dir / f"{h}.md"
+    path.write_text(content, encoding="utf-8")
+    return f"sources/{h}.md"
 
 
 def _find_result(results: list[CheckResult], name: str) -> CheckResult | None:
@@ -403,6 +384,141 @@ class TestPerDirectionCJKDowngrade:
         assert "CJK" in tc.message
 
 
+class TestSourceFidelityBoundary:
+    def _build_collected(self, workdir, total, missing, fetch_failed):
+        entries = []
+        for i in range(total):
+            url = f"https://example.com/{i}"
+            entry = {"url": url, "title": "T", "snippet": "S", "source_tier": 3, "fetched_content": ""}
+            if i < fetch_failed:
+                entry["fetch_failed"] = True
+            elif i < fetch_failed + missing:
+                entry["source_file"] = ""
+            else:
+                sf = _create_source_file(workdir, url, f"content {i}")
+                entry["source_file"] = sf
+            entries.append(entry)
+        return entries
+
+    def test_20pct_missing_warn(self, tmp_path):
+        _make_scope(tmp_path)
+        entries = self._build_collected(tmp_path, total=10, missing=2, fetch_failed=0)
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert sf.level == "WARN"
+        assert not sf.passed
+
+    def test_30pct_missing_warn(self, tmp_path):
+        _make_scope(tmp_path)
+        entries = self._build_collected(tmp_path, total=10, missing=3, fetch_failed=0)
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert sf.level == "WARN"
+        assert not sf.passed
+
+    def test_40pct_missing_blocker(self, tmp_path):
+        _make_scope(tmp_path)
+        entries = self._build_collected(tmp_path, total=10, missing=4, fetch_failed=0)
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert not sf.passed
+        assert sf.level == "BLOCKER"
+
+    def test_60pct_exempt_warn(self, tmp_path):
+        _make_scope(tmp_path)
+        entries = self._build_collected(tmp_path, total=10, missing=0, fetch_failed=6)
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert not sf.passed
+        assert sf.level == "WARN"
+
+    def test_50pct_exempt_pass(self, tmp_path):
+        _make_scope(tmp_path)
+        entries = self._build_collected(tmp_path, total=10, missing=0, fetch_failed=5)
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert sf.passed
+
+    def test_mixed_missing_and_exempt_blocker(self, tmp_path):
+        _make_scope(tmp_path)
+        entries = self._build_collected(tmp_path, total=10, missing=3, fetch_failed=5)
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert not sf.passed
+        assert sf.level == "BLOCKER"
+
+    def test_all_exempt_pass(self, tmp_path):
+        _make_scope(tmp_path)
+        entries = self._build_collected(tmp_path, total=1, missing=0, fetch_failed=1)
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert sf.passed
+
+    def test_empty_collected_pass(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [])
+        results = SearchGate(tmp_path).check()
+        sf = _find_result(results, "source_fidelity")
+        assert sf is not None
+        assert sf.passed
+
+
+class TestDomainConcentrationBoundary:
+    def _make_entries_with_domain(self, workdir, same_domain_count, diff_domain_count):
+        entries = []
+        for i in range(same_domain_count):
+            url = f"https://same-domain.com/page{i}"
+            sf = _create_source_file(workdir, url, f"content {i}")
+            entries.append({"url": url, "title": "T", "snippet": "S", "source_tier": 3, "source_file": sf, "fetched_content": ""})
+        for i in range(diff_domain_count):
+            url = f"https://other{i}.com/page"
+            sf = _create_source_file(workdir, url, f"content diff {i}")
+            entries.append({"url": url, "title": "T", "snippet": "S", "source_tier": 3, "source_file": sf, "fetched_content": ""})
+        return entries
+
+    def test_50pct_pass(self, tmp_path):
+        _make_scope(tmp_path)
+        entries = self._make_entries_with_domain(tmp_path, 5, 5)
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        dc = _find_result(results, "domain_concentration")
+        assert dc is not None
+        assert dc.passed
+
+    def test_60pct_warn(self, tmp_path):
+        _make_scope(tmp_path)
+        entries = self._make_entries_with_domain(tmp_path, 6, 4)
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        dc = _find_result(results, "domain_concentration")
+        assert dc is not None
+        assert not dc.passed
+        assert dc.level == "WARN"
+
+    def test_10pct_pass(self, tmp_path):
+        _make_scope(tmp_path)
+        entries = self._make_entries_with_domain(tmp_path, 1, 9)
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        dc = _find_result(results, "domain_concentration")
+        assert dc is not None
+        assert dc.passed
+
+
 class TestSearchPlanCompliance:
     def test_no_plan_warns(self, tmp_path):
         _make_scope(tmp_path)
@@ -427,6 +543,21 @@ class TestSearchPlanCompliance:
         _write_json(
             tmp_path / "search_plan.json",
             {"tasks": [{"direction": "AI", "tier": 4, "status": "pending", "collected_count": 0}]},
+        )
+        results = SearchGate(tmp_path).check()
+        spc = _find_result(results, "search_plan_compliance")
+        assert spc is not None
+        assert not spc.passed
+
+    def test_completed_but_direction_missing_warn(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://a.com", "title": "A", "snippet": "s"}])
+        _write_json(
+            tmp_path / "search_plan.json",
+            {"tasks": [
+                {"direction": "AI", "tier": 4, "status": "completed"},
+                {"direction": "ML", "tier": 4, "status": "pending"},
+            ]},
         )
         results = SearchGate(tmp_path).check()
         spc = _find_result(results, "search_plan_compliance")

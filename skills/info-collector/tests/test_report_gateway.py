@@ -383,11 +383,8 @@ code
         assert result.passed
 
     def test_code_at_start_appears_unclosed(self, tmp_path):
-        """Code block at position 0 → only opening marker found → odd → WARN."""
-        md = """```
-code
-```
-"""
+        """Code block at position 0 with no closing marker → odd → WARN."""
+        md = "```\ncode\n"
         _write_md(tmp_path / "report.md", md)
         result = check_report_unclosed_code_blocks(tmp_path / "report.md")
         assert not result.passed

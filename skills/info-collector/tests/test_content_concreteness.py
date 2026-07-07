@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from scripts.artifact_checks import (
@@ -9,12 +8,6 @@ from scripts.artifact_checks import (
     _has_valid_number,
     check_content_concreteness,
 )
-
-
-def _write_json(path: Path, data) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 class TestCountWords:

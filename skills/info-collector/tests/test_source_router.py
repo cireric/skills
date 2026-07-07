@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts.lib.source_router import (
     _get_config,
     get_default_depth,
@@ -10,6 +12,7 @@ from scripts.lib.source_router import (
     get_route,
     recommend_sources,
 )
+from scripts.lib.utils import config_path
 
 TEST_CONFIG = {
     "sources": {
@@ -332,3 +335,171 @@ class TestRouteAdjustments:
         config = self._load_real_config()
         route = get_route("background_check", config)
         assert route["path"] == [3, 2, 1, 4]
+
+
+@pytest.fixture(scope="module")
+def _real_config():
+    with open(config_path(), encoding="utf-8") as f:
+        return json.load(f)
+
+
+EXPECTED_ROUTES = {
+    "exploratory": {"entry_tier": 4, "path": [4, 3, 2]},
+    "panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]},
+    "tech_selection": {"entry_tier": 2, "path": [2, 3, 4, 1]},
+    "feasibility_assessment": {"entry_tier": 2, "path": [2, 1, 3]},
+    "competitive_comparison": {"entry_tier": 2, "path": [2, 1, 3, 4]},
+    "academic_research": {"entry_tier": 1, "path": [1], "optional_tiers": [2]},
+    "fact_check": {"entry_tier": 1, "path": [1, 2, 4]},
+    "background_check": {"entry_tier": 3, "path": [3, 2, 1, 4]},
+    "market_analysis": {"entry_tier": 3, "path": [3, 4, 1, 2]},
+    "other": {"entry_tier": 3, "path": [3, 2, 1]},
+}
+
+
+class TestConfigStructuralValidation:
+
+    def test_four_tiers_present(self, _real_config):
+        for key in ("1", "2", "3", "4"):
+            assert key in _real_config["sources"]
+            tier = _real_config["sources"][key]
+            assert "name" in tier
+            assert isinstance(tier["sources"], list)
+
+    def test_every_source_has_required_fields(self, _real_config):
+        for tier_key, tier_data in _real_config["sources"].items():
+            for src in tier_data["sources"]:
+                assert "name" in src, f"Tier {tier_key} source missing 'name'"
+                assert "domain" in src, f"{src.get('name', '?')} missing 'domain'"
+                assert "site_query" in src, f"{src['name']} missing 'site_query'"
+                assert "fetch" in src, f"{src['name']} missing 'fetch'"
+                assert "tools" in src["fetch"], f"{src['name']} fetch missing 'tools'"
+
+    def test_chinese_sources_have_language_zh(self, _real_config):
+        zh_names = {"CNKI", "Wanfang", "CQVIP", "Zhihu"}
+        found = set()
+        for tier_data in _real_config["sources"].values():
+            for src in tier_data["sources"]:
+                if src["name"] in zh_names:
+                    assert src.get("language") == "zh", f"{src['name']} language != 'zh'"
+                    found.add(src["name"])
+        assert found == zh_names, f"Missing zh sources: {zh_names - found}"
+
+    def test_arxiv_has_fetch_strategy_arxiv(self, _real_config):
+        tier1 = _real_config["sources"]["1"]["sources"]
+        arxiv = next(s for s in tier1 if s["name"] == "arXiv")
+        assert arxiv.get("fetch_strategy") == "arxiv"
+
+    def test_github_has_fetch_strategy_github(self, _real_config):
+        tier2 = _real_config["sources"]["2"]["sources"]
+        github = next(s for s in tier2 if s["name"] == "GitHub")
+        assert github.get("fetch_strategy") == "github"
+
+    def test_ten_routes_present(self, _real_config):
+        routes = _real_config["routes"]
+        assert len(routes) == 10
+        for gt in EXPECTED_ROUTES:
+            assert gt in routes, f"Missing route for '{gt}'"
+
+    def test_each_route_has_entry_tier_and_path(self, _real_config):
+        for gt, route in _real_config["routes"].items():
+            assert "entry_tier" in route, f"{gt} missing entry_tier"
+            assert "path" in route, f"{gt} missing path"
+
+    def test_entry_tier_is_integer_1_to_4(self, _real_config):
+        for gt, route in _real_config["routes"].items():
+            et = route["entry_tier"]
+            assert isinstance(et, int) and 1 <= et <= 4, f"{gt} entry_tier={et}"
+
+    def test_path_is_nonempty_list_of_tier_ints(self, _real_config):
+        for gt, route in _real_config["routes"].items():
+            p = route["path"]
+            assert isinstance(p, list) and len(p) > 0, f"{gt} path empty or not list"
+            for t in p:
+                assert isinstance(t, int) and 1 <= t <= 4, f"{gt} path element {t}"
+
+    def test_optional_tiers_present_where_expected(self, _real_config):
+        routes = _real_config["routes"]
+        assert "optional_tiers" in routes["panoramic_understanding"]
+        assert routes["panoramic_understanding"]["optional_tiers"] == [2]
+        assert "optional_tiers" in routes["academic_research"]
+        assert routes["academic_research"]["optional_tiers"] == [2]
+        no_optional = {"exploratory", "tech_selection", "feasibility_assessment",
+                       "competitive_comparison", "fact_check", "background_check",
+                       "market_analysis", "other"}
+        for gt in no_optional:
+            assert routes[gt].get("optional_tiers", []) == [], f"{gt} should have no optional_tiers"
+
+
+class TestRoutePathInvariants:
+
+    def test_entry_tier_is_first_in_path(self, _real_config):
+        for gt, route in _real_config["routes"].items():
+            assert route["entry_tier"] == route["path"][0], (
+                f"{gt}: entry_tier={route['entry_tier']} != path[0]={route['path'][0]}"
+            )
+
+    def test_path_has_no_duplicates(self, _real_config):
+        for gt, route in _real_config["routes"].items():
+            assert len(route["path"]) == len(set(route["path"])), (
+                f"{gt}: path has duplicates: {route['path']}"
+            )
+
+    def test_path_elements_in_1_to_4(self, _real_config):
+        for gt, route in _real_config["routes"].items():
+            for t in route["path"]:
+                assert t in {1, 2, 3, 4}, f"{gt}: path element {t} not in {{1,2,3,4}}"
+
+    def test_optional_tiers_disjoint_from_path(self, _real_config):
+        for gt, route in _real_config["routes"].items():
+            opt = set(route.get("optional_tiers", []))
+            path_set = set(route["path"])
+            assert opt.isdisjoint(path_set), (
+                f"{gt}: optional_tiers {opt} overlaps with path {path_set}"
+            )
+
+    def test_every_route_has_nonempty_path(self, _real_config):
+        for gt, route in _real_config["routes"].items():
+            assert len(route["path"]) >= 1, f"{gt}: path is empty"
+
+
+class TestSourceDomainUniqueness:
+
+    def test_no_duplicate_domains_within_tier(self, _real_config):
+        for tier_key, tier_data in _real_config["sources"].items():
+            domains = [s["domain"] for s in tier_data["sources"]]
+            assert len(domains) == len(set(domains)), (
+                f"Tier {tier_key} has duplicate domains: {domains}"
+            )
+
+    def test_no_duplicate_domains_across_tiers(self, _real_config):
+        all_domains = []
+        for tier_data in _real_config["sources"].values():
+            all_domains.extend(s["domain"] for s in tier_data["sources"])
+        assert len(all_domains) == len(set(all_domains)), (
+            f"Cross-tier duplicate domains found"
+        )
+
+    def test_all_domains_are_nonempty_strings(self, _real_config):
+        for tier_key, tier_data in _real_config["sources"].items():
+            for src in tier_data["sources"]:
+                assert isinstance(src["domain"], str) and len(src["domain"]) > 0, (
+                    f"Tier {tier_key} source {src.get('name', '?')} has empty/missing domain"
+                )
+
+
+class TestChineseSourceCountInTier1:
+
+    def test_tier1_has_exactly_3_chinese_sources(self, _real_config):
+        tier1 = _real_config["sources"]["1"]["sources"]
+        zh_sources = [s for s in tier1 if s.get("language") == "zh"]
+        zh_names = {s["name"] for s in zh_sources}
+        assert zh_names == {"CNKI", "Wanfang", "CQVIP"}
+        assert len(zh_sources) == 3
+
+    def test_tier4_has_exactly_1_chinese_source(self, _real_config):
+        tier4 = _real_config["sources"]["4"]["sources"]
+        zh_sources = [s for s in tier4 if s.get("language") == "zh"]
+        zh_names = {s["name"] for s in zh_sources}
+        assert zh_names == {"Zhihu"}
+        assert len(zh_sources) == 1

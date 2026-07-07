@@ -5,9 +5,18 @@ from pathlib import Path
 
 from scripts.lib.exceptions import ArtifactError
 from scripts.lib.utils import compute_url_hash
+from scripts.lib.constants import (
+    ARTIFACT_ANALYSIS,
+    ARTIFACT_COLLECTED,
+    ARTIFACT_PIPELINE_STATE,
+    ARTIFACT_REVIEW_REPORT,
+    ARTIFACT_SCOPE,
+    ARTIFACT_SEARCH_PLAN,
+)
 from scripts.proceed import (
     _check_scope_schema,
     _check_review_report_exists,
+    _gate_analysis,
     _gate_final,
     _repair_json_text,
     _read_json_with_repair,
@@ -17,34 +26,6 @@ from scripts.proceed import (
     get_gateway_results,
     proceeds,
 )
-
-
-def _write_json(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def _make_scope(workdir, goal_type="tech_selection", depth="standard", report_language=None, search_directions=None):
-    data = {
-        "topic": "Test",
-        "goal_type": goal_type,
-        "depth": depth,
-        "audience": "engineer",
-        "scope_description": "Test scope",
-        "search_directions": search_directions if search_directions is not None else ["AI", "ML"],
-    }
-    if report_language is not None:
-        data["report_language"] = report_language
-    _write_json(workdir / "scope.json", data)
-
-
-def _make_completed_search_plan(workdir, directions=None):
-    if directions is None:
-        scope = json.loads((workdir / "scope.json").read_text(encoding="utf-8"))
-        directions = scope.get("search_directions", ["AI", "ML"])
-    tasks = [{"direction": d, "tier": 4, "status": "completed", "collected_count": 1} for d in directions]
-    _write_json(workdir / "search_plan.json", {"tasks": tasks})
 
 
 def _write_scope_and_collected(workdir):
@@ -1213,3 +1194,150 @@ class TestReviewReportExistsCheck:
         ok, errors = proceeds(tmp_path, "review", "review")
         assert ok
         assert not any("review_report_exists" in e for e in errors)
+
+
+class TestEmptyArtifactHandling:
+    def test_empty_scope_json_blocks(self, tmp_path):
+        _write_json(tmp_path / ARTIFACT_SCOPE, {})
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_scope"})
+        ok, errors = proceeds(tmp_path, "scope", "search")
+        assert not ok
+
+    def test_empty_collected_json_blocks(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
+        _make_completed_search_plan(tmp_path)
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_search"})
+        _write_json(tmp_path / ARTIFACT_COLLECTED, [])
+        ok, errors = proceeds(tmp_path, "search", "analysis")
+        assert not ok
+
+    def test_empty_analysis_json_blocks(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
+        _make_completed_search_plan(tmp_path)
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_search"})
+        _write_json(tmp_path / ARTIFACT_ANALYSIS, {})
+        ok, errors = proceeds(tmp_path, "analysis", "review")
+        assert not ok
+
+    def test_empty_review_report_blocks(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Content.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                    },
+                ],
+            },
+        )
+        (tmp_path / ARTIFACT_REVIEW_REPORT).write_text("", encoding="utf-8")
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "final")
+        assert not ok
+
+    def test_empty_search_plan_yields_blockers(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
+        _make_completed_search_plan(tmp_path)
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_search"})
+        _write_json(tmp_path / ARTIFACT_SEARCH_PLAN, {"tasks": []})
+        ok, errors = proceeds(tmp_path, "search", "analysis")
+        assert not ok
+
+
+class TestInvalidPhaseTransitions:
+    def test_scope_to_final(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_scope"})
+        ok, errors = proceeds(tmp_path, "scope", "final")
+        assert not ok
+        assert "Invalid transition" in errors[0]
+
+    def test_search_to_scope_backward(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
+        _make_completed_search_plan(tmp_path)
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_search"})
+        ok, errors = proceeds(tmp_path, "search", "scope")
+        assert not ok
+        assert "Invalid transition" in errors[0]
+
+    def test_analysis_to_search_backward(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
+        _make_completed_search_plan(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {"topic": "T", "goal_type": "tech_selection", "sections": []},
+        )
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_analysis"})
+        ok, errors = proceeds(tmp_path, "analysis", "search")
+        assert not ok
+        assert "Invalid transition" in errors[0]
+
+    def test_review_to_analysis_backward(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {"topic": "T", "goal_type": "tech_selection", "sections": []},
+        )
+        (tmp_path / ARTIFACT_REVIEW_REPORT).write_text("review", encoding="utf-8")
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "analysis")
+        assert not ok
+        assert "Invalid transition" in errors[0]
+
+    def test_final_to_review_backward(self, tmp_path):
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_final"})
+        ok, errors = proceeds(tmp_path, "final", "review")
+        assert not ok
+        assert "Invalid transition" in errors[0]
+
+    def test_scope_to_review_skip(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_scope"})
+        ok, errors = proceeds(tmp_path, "scope", "review")
+        assert not ok
+        assert "Invalid transition" in errors[0]
+
+    def test_review_self_loop_allowed(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Content.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                    },
+                ],
+            },
+        )
+        (tmp_path / ARTIFACT_REVIEW_REPORT).write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "review")
+        assert ok
+
+
+class TestCorruptedJsonWithRepairableContent:
+    def test_gate_analysis_repairs_unescaped_quotes(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
+        _make_completed_search_plan(tmp_path)
+        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_search"})
+        raw = '{"topic": "AI", "goal_type": "exploratory", "sections": [{"id": "s1", "title": "Overview of "AI" trends", "content": "C", "claims": []}]}'
+        (tmp_path / ARTIFACT_ANALYSIS).write_text(raw, encoding="utf-8")
+        errors = _gate_analysis(tmp_path)
+        assert not any("Invalid JSON" in e for e in errors)

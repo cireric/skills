@@ -13,8 +13,8 @@ _HIDDEN_REF_DEF = re.compile(r'^\[\d+\]:\s+https?://\S')
 _VISIBLE_REF_ITEM = re.compile(r'^-\s+\[\d+\]')
 _INLINE_CITATION = re.compile(r'\[&#91;(\d+)[†‡]?&#93;\]\([^)]*\)|\[\\?\[(\d+)[†‡]?\\?\]\]\([^)]*\)')
 _REF_DEF_NUM = re.compile(r'^\[(\d+)\]:\s+https?://\S')
-_FENCED_CODE = re.compile(r'^```')
-_HEADING = re.compile(r'^(#{1,6})\s+(.+)$')
+_FENCED_CODE = re.compile(r'^```', re.MULTILINE)
+_HEADING = re.compile(r'^(#{1,6})\s+(.+)$', re.MULTILINE)
 _FRONT_MATTER_DELIM = re.compile(r'^---\s*$')
 
 
@@ -237,11 +237,11 @@ def check_report_empty_sections(report_path: Path) -> CheckResult:
     except OSError as e:
         return CheckResult("report_empty_sections", "WARN", True, f"Cannot read report: {e}")
     content = _strip_front_matter(content)
-    headings = [(m.start(), m.group(1), m.group(2).strip()) for m in _HEADING.finditer(content)]
+    headings = [(m.start(), m.end(), m.group(2).strip()) for m in _HEADING.finditer(content)]
     issues = []
-    for i, (pos, level_text, heading_text) in enumerate(headings):
+    for i, (pos, end_pos, heading_text) in enumerate(headings):
         next_pos = headings[i + 1][0] if i + 1 < len(headings) else len(content)
-        between = content[pos + len(level_text) + len(heading_text):next_pos].strip()
+        between = content[end_pos:next_pos].strip()
         if not between:
             issues.append(f"'{heading_text}' has no content")
     if issues:
