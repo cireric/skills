@@ -132,6 +132,25 @@ def test_apply_url_rewrite_match():
     assert apply_url_rewrite("https://arxiv.org/pdf/2509.16941", rules) == "https://ar5iv.labs.arxiv.org/html/2509.16941"
 
 
+def test_get_fetch_strategy_broken_strategy_falls_back():
+    """When fetch_strategy points to a module that fails to load, fall back gracefully."""
+    config = {"name": "Broken", "domain": "broken.com", "fetch_strategy": "nonexistent_strategy_xyz"}
+    strategy = get_fetch_strategy(config)
+    assert isinstance(strategy, DefaultStrategy)
+
+
+from scripts.fetch_router import _load_url_rewriter
+
+
+def test_load_url_rewriter_import_error_returns_none(monkeypatch, tmp_path):
+    """When a strategy module raises ImportError, _load_url_rewriter returns None instead of crashing."""
+    broken_file = tmp_path / "broken_strategy.py"
+    broken_file.write_text("import nonexistent_module_xyz\n", encoding="utf-8")
+    monkeypatch.setattr("scripts.fetch_router._STRATEGY_DIR", tmp_path)
+    result = _load_url_rewriter("broken_strategy")
+    assert result is None
+
+
 class TestEndToEndFetchFlow:
     def test_arxiv_fetch_flow(self, tmp_path):
         cfg = {"fetch_strategy": "arxiv",

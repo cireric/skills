@@ -119,9 +119,12 @@ def _post_process(markdown: str) -> str:
     if ref_idx != -1:
         body = markdown[:ref_idx]
         refs = markdown[ref_idx:]
+        def _make_link(m: re.Match) -> str:
+            url = m.group(1).rstrip('.,;:!?()')
+            return f'[https://{url}](https://{url})'
         body = re.sub(
             r'(?<!\]\()https?://(\S+)',
-            r'[https://\1](https://\1)',
+            _make_link,
             body,
         )
         markdown = body + refs

@@ -96,3 +96,29 @@ class TestPostProcess:
         assert "[https://example.com](https://example.com)" in result
         assert "## 参考文献\nhttps://ref1.com" in result
         assert "https://ref2.com" in result
+
+    def test_bare_url_trailing_period_excluded(self):
+        """Trailing period after URL should NOT be included in the link."""
+        md = "See https://example.com. More text.\n\n## References\n"
+        result = _post_process(md)
+        assert "[https://example.com](https://example.com)" in result
+        assert "example.com.](https://example.com." not in result
+
+    def test_bare_url_trailing_comma_excluded(self):
+        """Trailing comma after URL should NOT be included in the link."""
+        md = "See https://example.com, and more.\n\n## References\n"
+        result = _post_process(md)
+        assert "[https://example.com](https://example.com)" in result
+
+    def test_bare_url_trailing_paren_excluded(self):
+        """Trailing ) after URL (when not part of markdown link) should NOT be included."""
+        md = "Visit (https://example.com) for details.\n\n## References\n"
+        result = _post_process(md)
+        assert "[https://example.com](https://example.com)" in result
+        assert "example.com)](https://example.com))" not in result
+
+    def test_bare_url_trailing_semicolon_excluded(self):
+        """Trailing semicolon after URL should NOT be included in the link."""
+        md = "URL: https://example.com; next item.\n\n## References\n"
+        result = _post_process(md)
+        assert "[https://example.com](https://example.com)" in result

@@ -59,7 +59,10 @@ def _load_url_rewriter(strategy_name: str) -> UrlRewriter | None:
     import importlib.util
     spec = importlib.util.spec_from_file_location(strategy_name, module_path)
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    try:
+        spec.loader.exec_module(mod)
+    except (ImportError, ModuleNotFoundError, SyntaxError):
+        return None
     for attr_name in dir(mod):
         attr = getattr(mod, attr_name)
         if (isinstance(attr, type) and
