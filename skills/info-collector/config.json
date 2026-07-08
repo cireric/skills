@@ -3,49 +3,50 @@
     "1": {
       "name": "Academic / Standards",
       "sources": [
-        {"name": "arXiv", "domain": "arxiv.org", "site_query": "arxiv.org", "fetch_strategy": "arxiv", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa"]}},
-        {"name": "Google Scholar", "domain": "scholar.google.com", "site_query": "scholar.google.com", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch"]}},
-        {"name": "PubMed", "domain": "pubmed.ncbi.nlm.nih.gov", "site_query": "pubmed.ncbi.nlm.nih.gov", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch"]}},
-        {"name": "CNKI", "domain": "cnki.net", "site_query": "cnki.net", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch"]}},
-        {"name": "W3C", "domain": "w3.org", "site_query": "w3.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch"]}},
-        {"name": "IETF", "domain": "ietf.org", "site_query": "ietf.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch"]}},
-        {"name": "ISO", "domain": "iso.org", "site_query": "iso.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch"]}},
-        {"name": "ACL Anthology", "domain": "aclanthology.org", "site_query": "aclanthology.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch"]}},
-        {"name": "Semantic Scholar", "domain": "semanticscholar.org", "site_query": "semanticscholar.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch"]}},
-        {"name": "Wanfang", "domain": "wanfangdata.com.cn", "site_query": "wanfangdata.com.cn", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch"]}},
-        {"name": "CQVIP", "domain": "cqvip.com", "site_query": "cqvip.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch"]}}
+        {"name": "arXiv", "domain": "arxiv.org", "site_query": "arxiv.org", "fetch_strategy": "arxiv", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
+        {"name": "Google Scholar", "domain": "scholar.google.com", "site_query": "scholar.google.com", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
+        {"name": "PubMed", "domain": "pubmed.ncbi.nlm.nih.gov", "site_query": "pubmed.ncbi.nlm.nih.gov", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
+        {"name": "CNKI", "domain": "cnki.net", "site_query": "cnki.net", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
+        {"name": "W3C", "domain": "w3.org", "site_query": "w3.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
+        {"name": "IETF", "domain": "ietf.org", "site_query": "ietf.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
+        {"name": "ISO", "domain": "iso.org", "site_query": "iso.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
+        {"name": "ACL Anthology", "domain": "aclanthology.org", "site_query": "aclanthology.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
+        {"name": "Semantic Scholar", "domain": "semanticscholar.org", "site_query": "semanticscholar.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
+        {"name": "Wanfang", "domain": "wanfangdata.com.cn", "site_query": "wanfangdata.com.cn", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
+        {"name": "CQVIP", "domain": "oa.cqvip.com", "site_query": "oa.cqvip.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
+        {"name": "CBOA", "domain": "cboa.cqvip.com", "site_query": "cboa.cqvip.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}}
       ]
     },
     "2": {
       "name": "Documentation / Open Source",
       "sources": [
-        {"name": "GitHub", "domain": "github.com", "site_query": "github.com", "fetch_strategy": "github", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa"]}},
-        {"name": "MDN Web Docs", "domain": "developer.mozilla.org", "site_query": "developer.mozilla.org", "fetch": {"tools": ["webfetch"]}},
-        {"name": "Wikipedia", "domain": "en.wikipedia.org", "site_query": "en.wikipedia.org", "fetch": {"tools": ["webfetch"]}},
-        {"name": "Hugging Face", "domain": "huggingface.co", "site_query": "huggingface.co", "fetch": {"tools": ["webfetch"]}},
-        {"name": "PyPI", "domain": "pypi.org", "site_query": "pypi.org", "fetch": {"tools": ["webfetch"]}},
-        {"name": "ReadTheDocs", "domain": "readthedocs.io", "site_query": "readthedocs.io", "fetch": {"tools": ["webfetch"]}}
+        {"name": "GitHub", "domain": "github.com", "site_query": "github.com", "fetch_strategy": "github", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "MDN Web Docs", "domain": "developer.mozilla.org", "site_query": "developer.mozilla.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "Wikipedia", "domain": "en.wikipedia.org", "site_query": "en.wikipedia.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "Hugging Face", "domain": "huggingface.co", "site_query": "huggingface.co", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "PyPI", "domain": "pypi.org", "site_query": "pypi.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "ReadTheDocs", "domain": "readthedocs.io", "site_query": "readthedocs.io", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}}
       ]
     },
     "3": {
       "name": "Industry / Expert Blogs",
       "sources": [
-        {"name": "Medium", "domain": "medium.com", "site_query": "medium.com", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa"]}},
-        {"name": "IEEE Spectrum", "domain": "spectrum.ieee.org", "site_query": "spectrum.ieee.org", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa"]}},
-        {"name": "MIT Technology Review", "domain": "technologyreview.com", "site_query": "technologyreview.com", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa"]}},
-        {"name": "Substack", "domain": "substack.com", "site_query": "substack.com", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa"]}},
-        {"name": "Towards Data Science", "domain": "towardsdatascience.com", "site_query": "towardsdatascience.com", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa"]}},
-        {"name": "The New Stack", "domain": "thenewstack.io", "site_query": "thenewstack.io", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa"]}}
+        {"name": "Medium", "domain": "medium.com", "site_query": "medium.com", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}},
+        {"name": "IEEE Spectrum", "domain": "spectrum.ieee.org", "site_query": "spectrum.ieee.org", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}},
+        {"name": "MIT Technology Review", "domain": "technologyreview.com", "site_query": "technologyreview.com", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}},
+        {"name": "Substack", "domain": "substack.com", "site_query": "substack.com", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}},
+        {"name": "Towards Data Science", "domain": "towardsdatascience.com", "site_query": "towardsdatascience.com", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}},
+        {"name": "The New Stack", "domain": "thenewstack.io", "site_query": "thenewstack.io", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}}
       ]
     },
     "4": {
       "name": "Community / UGC",
       "sources": [
-        {"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com", "fetch": {"tools": ["webfetch"]}},
-        {"name": "Stack Overflow", "domain": "stackoverflow.com", "site_query": "stackoverflow.com", "fetch": {"tools": ["webfetch"]}},
-        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com", "language": "zh", "fetch": {"tools": ["webfetch"]}},
-        {"name": "Hacker News", "domain": "news.ycombinator.com", "site_query": "news.ycombinator.com", "fetch": {"tools": ["webfetch"]}},
-        {"name": "Dev.to", "domain": "dev.to", "site_query": "dev.to", "fetch": {"tools": ["webfetch"]}}
+        {"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com", "fetch": {"tools": ["webfetch", "playwright"]}},
+        {"name": "Stack Overflow", "domain": "stackoverflow.com", "site_query": "stackoverflow.com", "fetch": {"tools": ["webfetch", "playwright"]}},
+        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com", "language": "zh", "fetch": {"tools": ["webfetch", "playwright"]}},
+        {"name": "Hacker News", "domain": "news.ycombinator.com", "site_query": "news.ycombinator.com", "fetch": {"tools": ["webfetch", "playwright"]}},
+        {"name": "Dev.to", "domain": "dev.to", "site_query": "dev.to", "fetch": {"tools": ["webfetch", "playwright"]}}
       ]
     }
   },
@@ -73,5 +74,13 @@
       "depth": "quick",
       "min_sources": 1
     }
+  },
+  "fetch_defaults": {
+    "source_dir": ".workdir/sources/",
+    "max_characters": 50000,
+    "shallow_threshold": 2000,
+    "playwright_enabled": true,
+    "playwright_channel": "chrome",
+    "playwright_timeout": 30000
   }
 }
