@@ -139,11 +139,11 @@ def cmd_reset(args: argparse.Namespace) -> None:
 def _detect_review_status() -> str:
     review_path = WORKDIR / ARTIFACT_REVIEW_REPORT
     if not review_path.exists():
-        return "unreviewed"
+        return "degraded"
     try:
         content = review_path.read_text(encoding="utf-8")
     except OSError:
-        return "unreviewed"
+        return "degraded"
     # Find "## Overall Verdict" section and parse the verdict
     match = re.search(r"##\s*Overall\s+Verdict\s*\n\s*\*\*(pass|pass_with_issues|fail)\*\*", content, re.IGNORECASE)
     if not match:
@@ -201,6 +201,25 @@ def _build_report_filename(scope_data: dict, output_path: Path) -> Path:
     return output_path / f"{safe_name}_{report_date}.md"
 
 
+def cmd_fetch(args: argparse.Namespace) -> None:
+    from dataclasses import asdict
+    from .fetcher import Fetcher
+
+    fetcher = Fetcher(WORKDIR, _load_config())
+
+    if args.from_stdin:
+        raw = sys.stdin.read()
+        tier = args.tier if args.tier is not None else fetcher.infer_tier(args.url) or 3
+        result = fetcher.save_piped(args.url, raw, tier=tier)
+    else:
+        tier = args.tier if args.tier is not None else fetcher.infer_tier(args.url) or 3
+        result = fetcher.fetch(args.url, tier=tier, no_playwright=args.no_playwright)
+
+    print(json.dumps(asdict(result), ensure_ascii=False))
+    if result.fetch_failed:
+        sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Info-Collector Skill CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -214,7 +233,7 @@ def main() -> None:
     p_gateway.set_defaults(func=cmd_gateway)
 
     p_report = sub.add_parser("report", help="Generate report from analysis.json")
-    p_report.add_argument("--review-status", choices=["passed", "degraded", "unreviewed"], dest="review_status")
+    p_report.add_argument("--review-status", choices=["passed", "degraded"], dest="review_status")
     p_report.add_argument("--search-rounds", type=int)
     p_report.add_argument("--source-count", type=int)
     p_report.add_argument("--output")
@@ -230,6 +249,13 @@ def main() -> None:
     p_reset = sub.add_parser("reset", help="Reset pipeline to a given phase")
     p_reset.add_argument("--phase", required=True, help="Phase to reset to (scope, search, analysis, review)")
     p_reset.set_defaults(func=cmd_reset)
+
+    p_fetch = sub.add_parser("fetch", help="Fetch URL and save as source file")
+    p_fetch.add_argument("url", help="URL to fetch")
+    p_fetch.add_argument("--tier", type=int, default=None, help="Source tier (auto-inferred if omitted)")
+    p_fetch.add_argument("--no-playwright", action="store_true", help="Skip Playwright fallback")
+    p_fetch.add_argument("--from-stdin", action="store_true", help="Read fetched content from stdin")
+    p_fetch.set_defaults(func=cmd_fetch)
 
     args = parser.parse_args()
     try:

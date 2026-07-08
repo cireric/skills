@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from scripts.cli import _detect_review_status, _build_report_filename, cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_reset, cmd_source, main, WORKDIR
+from scripts.cli import _detect_review_status, _build_report_filename, cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_reset, cmd_source, cmd_fetch, main, WORKDIR
+from scripts.fetcher import FetchResult
 from scripts.lib.exceptions import InfoCollectorError
+from scripts.lib.utils import compute_url_hash
 
 
 def _make_namespace(**kwargs):
@@ -58,7 +61,7 @@ class TestDetectReviewStatus:
         workdir = tmp_path / ".workdir"
         workdir.mkdir()
         with patch("scripts.cli.WORKDIR", workdir):
-            assert _detect_review_status() == "unreviewed"
+            assert _detect_review_status() == "degraded"
 
 
 class TestCmdProceed:
@@ -107,9 +110,12 @@ class TestCmdGateway:
         _write_json(
             workdir / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI", "snippet": "About AI"},
+                {"url": "https://a.com", "title": "AI", "snippet": "About AI", "source_file": f"sources/{compute_url_hash('https://a.com')}.md"},
             ],
         )
+        sources_dir = workdir / "sources"
+        sources_dir.mkdir(parents=True, exist_ok=True)
+        (sources_dir / f"{compute_url_hash('https://a.com')}.md").write_text("x" * 2100, encoding="utf-8")
         _write_json(
             workdir / "analysis.json",
             {
@@ -143,6 +149,8 @@ class TestCmdGateway:
                 ],
             },
         )
+        for sec_id in ["overview", "comparison", "recommendation", "methodology"]:
+            _write_json(workdir / f"analysis_section_{sec_id}.json", {"id": sec_id})
         with patch("scripts.cli.WORKDIR", workdir), patch("sys.exit") as mock_exit:
             cmd_gateway(_make_namespace(command="gateway"))
             mock_exit.assert_not_called()
@@ -475,3 +483,82 @@ class TestMain:
         with pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 1
+
+
+class TestCmdFetch:
+    def test_fetch_autonomous_success(self, tmp_path, capsys):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        (workdir / "sources").mkdir()
+        mock_result = FetchResult(
+            url="https://example.com/paper", actual_url="https://example.com/paper",
+            source_file="sources/abc123.md", url_hash="abc123def456",
+            char_count=5000, fetched_content="# Title",
+            fetch_failed=False, tool_used="webfetch",
+            content_insufficient=False, source_tier=None,
+        )
+        with patch("scripts.cli.WORKDIR", workdir), \
+             patch("scripts.fetcher.Fetcher") as MockFetcher:
+            MockFetcher.return_value.fetch.return_value = mock_result
+            args = _make_namespace(url="https://example.com/paper", tier=None, no_playwright=False, from_stdin=False)
+            cmd_fetch(args)
+        output = json.loads(capsys.readouterr().out)
+        assert output["fetch_failed"] is False
+        assert output["source_file"] == "sources/abc123.md"
+
+    def test_fetch_failed_exits_1(self, tmp_path):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        mock_result = FetchResult(
+            url="https://example.com/404", actual_url="https://example.com/404",
+            source_file=None, url_hash="abc123def456",
+            char_count=0, fetched_content="",
+            fetch_failed=True, tool_used="",
+            content_insufficient=True, source_tier=None,
+        )
+        with patch("scripts.cli.WORKDIR", workdir), \
+             patch("scripts.fetcher.Fetcher") as MockFetcher:
+            MockFetcher.return_value.fetch.return_value = mock_result
+            args = _make_namespace(url="https://example.com/404", tier=None, no_playwright=False, from_stdin=False)
+            with pytest.raises(SystemExit) as exc:
+                cmd_fetch(args)
+            assert exc.value.code == 1
+
+    def test_fetch_from_stdin_passes_raw_to_save_piped(self, tmp_path, capsys):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        mock_result = FetchResult(
+            url="https://example.com/paper", actual_url="https://example.com/paper",
+            source_file="sources/abc123.md", url_hash="abc123def456",
+            char_count=5000, fetched_content="# Title",
+            fetch_failed=False, tool_used="exa_web_fetch_exa",
+            content_insufficient=False, source_tier=1,
+        )
+        stdin_content = '{"content": "# Paper\\n\\ncontent", "tool_used": "exa_web_fetch_exa"}'
+        with patch("scripts.cli.WORKDIR", workdir), \
+             patch("scripts.fetcher.Fetcher") as MockFetcher, \
+             patch("sys.stdin.read", return_value=stdin_content):
+            MockFetcher.return_value.save_piped.return_value = mock_result
+            args = _make_namespace(url="https://example.com/paper", tier=1, no_playwright=False, from_stdin=True)
+            cmd_fetch(args)
+        call_args = MockFetcher.return_value.save_piped.call_args
+        assert call_args[0][1] == stdin_content
+
+    def test_fetch_auto_infers_tier_when_none(self, tmp_path, capsys):
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        mock_result = FetchResult(
+            url="https://arxiv.org/abs/2503.15223", actual_url="https://ar5iv.labs.arxiv.org/html/2503.15223",
+            source_file="sources/abc123.md", url_hash="abc123def456",
+            char_count=5000, fetched_content="# Title",
+            fetch_failed=False, tool_used="webfetch",
+            content_insufficient=False, source_tier=1,
+        )
+        with patch("scripts.cli.WORKDIR", workdir), \
+             patch("scripts.fetcher.Fetcher") as MockFetcher:
+            MockFetcher.return_value.infer_tier.return_value = 1
+            MockFetcher.return_value.fetch.return_value = mock_result
+            args = _make_namespace(url="https://arxiv.org/abs/2503.15223", tier=None, no_playwright=False, from_stdin=False)
+            cmd_fetch(args)
+        MockFetcher.return_value.fetch.assert_called_once()
+        assert MockFetcher.return_value.fetch.call_args[1]["tier"] == 1
