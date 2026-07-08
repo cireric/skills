@@ -83,7 +83,7 @@ After collecting answers, write `skills/info-collector/config.json` and confirm 
 
 Use `exa_web_search_exa` for discovery. Use `site:` queries from recommended sources. Aim for ~3 search rounds (soft limit).
 
-**You MUST execute searches by following `search_plan.json`**: Read it before searching. For each task in the plan, execute the corresponding search using that task's `site_queries` and `query_language`. After each search round, update task statuses to `completed` / `skipped` / `pending` in `search_plan.json`. Do NOT proceed to Step 2.3 until every direction has at least one `completed` task.
+**You MUST execute searches by following `search_plan.json`**: Read it before searching. For each task in the plan, execute the corresponding search using that task's `site_queries` and `query_language`. After each search round, update task statuses to `completed` / `skipped` / `pending` in `search_plan.json`. When marking a task as `skipped`, you MUST provide a `skip_reason` field (e.g., `"cnki.net requires institutional login"`). Tasks skipped without `skip_reason` are treated as pending and will block the gate. Do NOT proceed to Step 2.3 until every direction has at least one `completed` task or is fully skipped with reasons.
 
 **Search language rule**: Search English-language sources using English queries even if the topic is in Chinese. Use Chinese queries only for Chinese domains (cnki.net, zhihu.com, baidu.com, etc.).
 
@@ -99,37 +99,50 @@ Use `exa_web_search_exa` for discovery. Use `site:` queries from recommended sou
 
 ### Step 2.3: Full-content fetch (MANDATORY — do NOT skip)
 
-For EVERY entry you plan to add to `collected.json`, you MUST fetch its full content using the fetch strategy system. Search-result highlights are NOT sufficient — they are summaries, not source material.
+For EVERY entry you plan to add to `collected.json`, you MUST fetch its full content using one of two paths:
 
-**Fetch strategy resolution** (priority: code strategy > config url_rewrite > DefaultStrategy):
+**Path A — CLI autonomous fetch** (try first for all sources):
+```bash
+.venv\Scripts\python.exe -m scripts.cli fetch <url> [--tier <N>] [--no-playwright]
+```
+CLI will: rewrite URL → try tools in strategy order (skip exa, use requests+markdownify → Playwright) → clean → write source file → output JSON metadata. If `content_insufficient: true` in the result, try Path B. `--tier` is optional — CLI auto-infers from URL domain.
 
-1. If the source has a `fetch_strategy` field in config.json (e.g., `"arxiv"`, `"github"`), the fetch router loads the corresponding `fetch_strategies/<name>.py` strategy
-2. If the source has `url_rewrite` rules in config.json, the generic regex rewrite engine applies them
-3. Otherwise, DefaultStrategy is used (no URL rewrite, tools=`["webfetch"]`)
+**Path B — Agent exa fetch + CLI post-processing** (for Tier 1-2 or when Path A returns insufficient content):
+1. Call `exa_web_fetch_exa(url, maxCharacters=50000)` — **MUST set maxCharacters=50000 for Tier 1-2 sources**
+2. Pipe the result to CLI:
+```bash
+echo '<json_or_text>' | .venv\Scripts\python.exe -m scripts.cli fetch <url> --from-stdin [--tier <N>]
+```
+Or pass plain text via stdin:
+```bash
+.venv\Scripts\python.exe -m scripts.cli fetch <url> --from-stdin [--tier <N>] < content.txt
+```
 
-Each strategy provides: `rewrite_url(url) → str` and `get_tools() → list[str]` (ordered tool fallback chain).
+**Decision rule**: Try Path A first. If output shows `content_insufficient: true`, switch to Path B.
 
-**Adaptive retry by Tier**:
-- Tier 1-2: retry each tool 2 times before falling back to next tool
-- Tier 3-4: retry each tool 1 time before falling back to next tool
-- Global timeout: 60 seconds per URL across all tools
+**CLI JSON output** — use these fields to populate collected.json entry:
+- `source_file` ← result.source_file
+- `fetched_content` ← result.fetched_content
+- `url_hash` ← result.url_hash (for reference)
+- `source_tier` ← result.source_tier (auto-inferred, or override with --tier)
+- Add `snippet`, `covered_directions` yourself (CLI cannot infer these)
 
-**Source file storage**:
-
-After fetching, save the original text to `.workdir/sources/{url_hash}.md` where `url_hash` is the first 12 characters of SHA-256 of the normalized URL. Set the `source_file` field in the collected.json entry to `"sources/{url_hash}.md"`.
-
-The `fetched_content` field is reduced to a 200-character index (first 200 chars of the fetched text). It is no longer a gate check target.
+**If fetch fails completely** (all tools exhausted, `fetch_failed: true`):
+- Set `fetched_content` to `""`, `source_file` to `null`, add `"fetch_failed": true`
+- Entries with `fetch_failed: true` are exempt from source fidelity checks but CANNOT be used as the sole source for claims with `precision: "exact"` or `evidence_type: "official_data"`
 
 **Source fidelity gate** (replaces fetched_content_depth):
 
 | Condition | Result |
 |-----------|--------|
 | >30% entries missing source files (not `fetch_failed`) | BLOCKER |
+| >30% entries have source files < 2000 chars | BLOCKER (summary-only, not full article) |
 | >50% entries are `fetch_failed` | WARN |
-
-If a URL cannot be fetched (paywall, 403, timeout), you MAY still add the entry but MUST set `fetched_content` to `""`, `source_file` to `null`, and add `"fetch_failed": true`. Entries with `fetch_failed: true` are exempt from source fidelity checks but CANNOT be used as the sole source for claims with `precision: "exact"` or `evidence_type: "official_data"`.
+| Any entries with source files < 5000 chars | WARN (thin content) |
 
 ### Step 2.4: Collect
+
+**Prerequisite**: The source file must already exist in `.workdir/sources/` before adding an entry to collected.json. Do NOT write collected.json entries first and then retroactively fetch source files.
 
 Add each result to `<project_root>/.workdir/collected.json`:
 
@@ -163,7 +176,8 @@ Checks:
 - per_direction_min_sources (WARN) — enough sources per direction
 - min_sources (WARN) — total source count
 - source_fidelity (BLOCKER if >30% entries missing source files) — original text files exist in `.workdir/sources/`
-- search_plan_compliance (WARN) — plan tasks were executed and updated
+- source_fidelity depth (BLOCKER if >30% entries have source files < 2000 chars; WARN if any entries < 5000 chars) — source files must contain full article content, not search-result highlights/summaries
+- search_plan_compliance (BLOCKER) — every search_direction must have at least one task with genuine collected results (verified by gate reverse-computation from collected.json). Tasks may be marked `skipped` with a mandatory `skip_reason` field; skipped tasks without `skip_reason` are treated as pending and block the gate. Tier-level coverage remains WARN.
 
 If BLOCKER → fix the issue (fetch missing content, search more) before proceeding.
 
@@ -185,6 +199,8 @@ Read collected.json and scope.json. Decide the sections (id, title) based on goa
 
 Delegate an independent agent call per section. Follow the template in `references/subagent-template.md`.
 
+**Subagent delegation is mandatory** when analysis.json has ≥ 2 sections. The `analysis→review` gate will BLOCK if no `analysis_section_*.json` files exist in `.workdir/`. Each subagent must write its output to `.workdir/analysis_section_{id}.json`. This prevents the orchestrator from writing all sections itself, which degrades quality via token compression and loss of context isolation.
+
 #### Step 2.5: Gate pre-check
 
 Before running `proceed --from analysis --to review`, verify analysis.json against
@@ -204,6 +220,7 @@ the checklist ensures you know the rules before the gate enforces them.
 | 6 | `{{ref:URL}}` markers' URLs (normalized) must exist in collected.json | iterate ref markers | fix and re-check |
 | 7 | Quantitative `goal_type` must have `methodology` section | section id check | fix and re-check |
 | 8 | Every claim's `source_urls` URLs must appear as `{{ref:URL}}` in the same section's content | iterate claims + content | fix and re-check |
+| 9 | If analysis.json has ≥ 2 sections, `.workdir/analysis_section_*.json` files must exist | glob `.workdir/analysis_section_*.json` | delegate sections to subagents and re-check |
 
 #### Step 3: Assemble analysis.json
 
@@ -220,7 +237,7 @@ Merge all sections into a single analysis.json. JSON merge only — never rewrit
 
 Run: `python -m scripts.cli proceed --from analysis --to review`
 
-- Runs all gateway checks but filters to **analysis-phase only** (excludes `claim_verified` and `claim_source_relevance`). Checks schema validation + 14 analysis-phase BLOCKERs including url_traceability, section_coverage, content_concreteness, claim_metadata, precision_inflation, source_metadata, metric_type_homogeneity, claim_dedup, etc. (ADR 0025). Also runs `source_verification_check` (WARN only, never BLOCKER) which computes the three-level source_verification classification and writes `verified` on each claim deterministically.
+- Runs all gateway checks but filters to **analysis-phase only** (excludes `claim_verified` and `claim_source_relevance`). Checks schema validation + analysis-phase BLOCKERs including url_traceability, section_coverage, content_concreteness, claim_metadata, precision_inflation, source_metadata, metric_type_homogeneity, claim_dedup, subagent_delegation, etc. (ADR 0025). Also runs `source_verification_check` (WARN only, never BLOCKER) which computes the three-level source_verification classification and writes `verified` on each claim deterministically.
 - **YOU MUST ASK THE USER** whether to launch an independent review (adapt language to user).
 
 ### 3b: Review
@@ -245,10 +262,9 @@ If the subagent fails to produce review_report.md (file missing or empty):
       write findings). Create `.workdir/review_fallback.log` with:
       `<timestamp> | subagent failed (attempt N/2) | error: <error detail> | user chose: inline review`
       Use `--review-status degraded` when generating the report.
-   c. **Skip review** — use `--review-status unreviewed`
 
 `degraded` means review independence was lost (same LLM wrote and reviewed).
-`unreviewed` means no review was performed at all.
+There is no `unreviewed` option — review is mandatory, minimum level is degraded.
 
 The review subagent performs semantic checks only — context twist, cross-section inconsistency,
 vendor bias undisclosed, and tier misattribution. The `verified` field on claims is set
@@ -257,7 +273,7 @@ deterministically by `source_verification_check()` code, not by the review subag
 For each issue found, the subagent writes findings in review_report.md following
 the format in `references/REVIEW_PROMPT.md`.
 
-If user says **no** → review_status will be set to `unreviewed` at finalization.
+If user says **no** to independent review → degrade to inline review (same agent performs review itself, same workload as subagent). Use `--review-status degraded`.
 
 ### 3c: User confirmation + Final report
 
@@ -273,7 +289,7 @@ Show the review report (or degradation notice) to user and ask:
   Then generate final report:
 
   ```
-  python -m scripts.cli report --review-status <passed|degraded|unreviewed> --search-rounds N --source-count N [--output DIR]
+  python -m scripts.cli report --review-status <passed|degraded> --search-rounds N --source-count N [--output DIR]
   ```
 
   Report filename: `{english_title_or_topic}.md`. If file already exists, appends date suffix: `{name}_{YYYY-MM-DD}.md`.
