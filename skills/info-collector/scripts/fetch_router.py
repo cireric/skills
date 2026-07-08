@@ -51,7 +51,7 @@ def get_fetch_strategy(source_config: dict) -> FetchStrategy:
                     return attr()
     fetch_config = source_config.get("fetch", {})
     url_rewrite = fetch_config.get("url_rewrite", [])
-    if url_rewrite:
-        tools = fetch_config.get("tools", ["webfetch"])
+    tools = fetch_config.get("tools")
+    if url_rewrite or tools:
         return ConfigRewriteStrategy(url_rewrite, tools)
     return DefaultStrategy()
