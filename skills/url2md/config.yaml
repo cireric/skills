@@ -1,0 +1,28 @@
+# url2md skill configuration
+# Preset defaults — agent reads this before each crawl.
+# Future: ask user to confirm/override on first use.
+
+# Output
+output_dir: "misc/"
+filename: null                # Custom filename (single article only; null = auto from title)
+
+# Images
+download_images: false
+images_dir: null              # null = <output_dir>/images/
+
+# Rate limiting
+delay: 2.0                    # Base delay between requests (seconds)
+max_delay: 5.0                # Max delay cap (seconds)
+max_concurrent: 3             # Max concurrent image downloads
+
+# Browser
+headless: true
+cookies_file: null            # Path to cookies JSON (null = no cookies)
+
+# List crawl
+limit: null                   # Max articles per list page (null = all)
+resume: false                 # Enable checkpoint resume
+state_file: "url2md-state.json"
+
+# Retry
+max_retries: 3                # Per-image retry count
