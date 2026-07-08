@@ -65,28 +65,28 @@ When delegating section writing to independent agent calls in Phase 3a, follow t
     - Do NOT add fields like "word_count", "language", etc.
    ```
 
-## Source Content Summary Injection
+## Source Content Injection
 
-When constructing each subagent prompt, the orchestrator MUST inject source content for URLs relevant to that section:
+When constructing each subagent prompt, the orchestrator MUST inject source references for URLs relevant to that section:
 
 1. Identify which URLs are relevant to the section (from section plan + source_hints)
 2. For each relevant URL, inject:
-   - First 500 characters of the original text (from `.workdir/sources/{url_hash}.md`)
-   - The `source_file` path so the subagent can read deeper via the Read tool
+   - The source title (from collected.json)
+   - The `source_file` path so the subagent can read the full original text via the Read tool
 3. Include in the subagent prompt under a "## Source Content" heading:
    ```
    ## Source Content
-   For each source, the first 500 chars are provided below. For deeper detail, use the Read tool on the source_file path.
+   For each source, the title and source_file path are provided below. You MUST use the Read tool on the source_file path to read the original text before writing any claim — titles alone are for relevance screening, not for content extraction.
 
    ### [URL1](url1)
+   - Title: <title from collected.json>
    - source_file: sources/abc123def456.md
-   - Preview: <first 500 chars of original text>
 
    ### [URL2](url2)
+   - Title: <title from collected.json>
    - source_file: sources/def789ghi012.md
-   - Preview: <first 500 chars of original text>
    ```
-4. This gives the subagent actual source data to write from, reducing fabrication tendency
+4. This ensures subagents read full original text rather than paraphrasing previews
 
 ## Deep-Dive Topic Injection
 

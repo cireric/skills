@@ -18,7 +18,6 @@ from .lib.constants import (
     ARTIFACT_ANALYSIS,
     ARTIFACT_COLLECTED,
     ARTIFACT_PIPELINE_STATE,
-    ARTIFACT_REVIEW_FALLBACK_LOG,
     ARTIFACT_REVIEW_REPORT,
     ARTIFACT_SCOPE,
     ARTIFACT_SEARCH_PLAN,
@@ -259,6 +258,7 @@ def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
                     "direction": direction, "tier": tier, "query_language": "en",
                     "site_queries": site_queries, "fetch_hints": fetch_hints,
                     "min_sources": min_per_direction, "status": "pending", "collected_count": 0,
+                    "skip_reason": "",
                 }
                 tasks.append(task)
 
@@ -269,6 +269,7 @@ def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
                     "direction": direction, "tier": tier, "query_language": "zh",
                     "site_queries": site_queries, "fetch_hints": fetch_hints,
                     "min_sources": min_per_direction, "status": "pending", "collected_count": 0,
+                    "skip_reason": "",
                 }
                 tasks.append(task)
 
@@ -341,7 +342,7 @@ def _gate_analysis(workdir: Path) -> list[str]:
             "source_metadata", "metric_type_homogeneity", "claim_dedup",
             "methodology_depth", "recommendation_structure",
             "ref_marker_validity", "claim_source_ref_coverage",
-            "source_verification_check",
+            "source_verification_check", "subagent_delegation",
         }
         blockers = [
             r for r in gateway_results
@@ -359,17 +360,9 @@ def _gate_analysis(workdir: Path) -> list[str]:
 def _check_review_report_exists(workdir: Path) -> CheckResult:
     """Check that review_report.md exists and is non-empty.
 
-    SKIPPED if the user chose 'unreviewed' (review_fallback.log contains skip marker).
-    BLOCKER if the file is missing or empty — indicates subagent failure silently passed.
+    Review is mandatory (minimum: degraded/inline). BLOCKER if the file is
+    missing or empty — indicates review was not performed.
     """
-    fallback_path = workdir / ARTIFACT_REVIEW_FALLBACK_LOG
-    if fallback_path.exists():
-        try:
-            fallback_content = fallback_path.read_text(encoding="utf-8").lower()
-            if "skip review" in fallback_content or "unreviewed" in fallback_content:
-                return CheckResult("review_report_exists", "BLOCKER", True, "Skipped (user chose unreviewed)")
-        except OSError:
-            pass
     report_path = workdir / ARTIFACT_REVIEW_REPORT
     if not report_path.exists():
         return CheckResult("review_report_exists", "BLOCKER", False, "review_report.md does not exist — subagent may have failed silently")

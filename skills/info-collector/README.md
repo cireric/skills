@@ -26,7 +26,7 @@ Info-collector 产出的报告是 **research starting point**，不是 citable a
 |------|------|
 | `proceed --from X --to Y` | 阶段转换门禁 |
 | `gateway` | 独立运行 gateway 检查 |
-| `report --review-status <passed\|degraded\|unreviewed>` | 从 analysis.json 生成报告 |
+| `report --review-status <passed\|degraded>` | 从 analysis.json 生成报告 |
 | `source <goal_type>` | 推荐来源 |
 | `clean` | 清除 `.workdir/` |
 

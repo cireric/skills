@@ -36,7 +36,7 @@ def _make_completed_search_plan(workdir, directions=None):
     if directions is None:
         scope = json.loads((workdir / "scope.json").read_text(encoding="utf-8"))
         directions = scope.get("search_directions", ["AI", "ML"])
-    tasks = [{"direction": d, "tier": 4, "status": "completed", "collected_count": 1} for d in directions]
+    tasks = [{"direction": d, "tier": 4, "status": "completed", "collected_count": 1, "skip_reason": ""} for d in directions]
     _write_json(workdir / "search_plan.json", {"tasks": tasks})
 
 

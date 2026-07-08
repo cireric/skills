@@ -24,6 +24,10 @@ from .lib.constants import (
     _MAX_COVERED_DIRECTIONS,
     _SOURCE_FIDELITY_MISSING_RATIO_BLOCKER,
     _SOURCE_FIDELITY_EXEMPT_RATIO_WARN,
+    _SOURCE_FIDELITY_SHALLOW_RATIO_BLOCKER,
+    _SOURCE_FIDELITY_SHALLOW_CHARS,
+    _SOURCE_FIDELITY_THIN_RATIO_WARN,
+    _SOURCE_FIDELITY_THIN_CHARS,
 )
 from .lib.exceptions import ArtifactError
 from .lib.source_router import get_default_min_sources, get_route
@@ -227,6 +231,8 @@ class SearchGate:
         if not self._collected:
             return CheckResult("source_fidelity", "BLOCKER", True, "collected.json is empty")
         missing_count = 0
+        shallow_count = 0
+        thin_count = 0
         fetch_failed_count = 0
         total = len(self._collected)
         for entry in self._collected:
@@ -240,58 +246,159 @@ class SearchGate:
             source_path = self.workdir / sf
             if not source_path.exists() or source_path.stat().st_size == 0:
                 missing_count += 1
+                continue
+            try:
+                content_len = len(source_path.read_text(encoding="utf-8"))
+            except OSError:
+                missing_count += 1
+                continue
+            if content_len < _SOURCE_FIDELITY_SHALLOW_CHARS:
+                shallow_count += 1
+            elif content_len < _SOURCE_FIDELITY_THIN_CHARS:
+                thin_count += 1
         checked = total - fetch_failed_count
         ratio = missing_count / checked if checked > 0 else 0
         exempt_ratio = fetch_failed_count / total if total > 0 else 0
+        shallow_ratio = shallow_count / checked if checked > 0 else 0
+        thin_ratio = thin_count / checked if checked > 0 else 0
         parts = []
         if missing_count > 0:
             parts.append(f"{missing_count}/{checked} entries have no source file")
+        if shallow_count > 0:
+            parts.append(f"{shallow_count}/{checked} entries have source files < {_SOURCE_FIDELITY_SHALLOW_CHARS} chars (summary-only, not full content)")
+        if thin_count > 0:
+            parts.append(f"{thin_count}/{checked} entries have source files < {_SOURCE_FIDELITY_THIN_CHARS} chars")
         if fetch_failed_count > 0:
             parts.append(f"{fetch_failed_count}/{total} entries have fetch_failed=true (exempt)")
-        msg = "; ".join(parts) if parts else "all entries have source files"
+        msg = "; ".join(parts) if parts else "all entries have source files with sufficient depth"
         if checked == 0:
             return CheckResult("source_fidelity", "BLOCKER", True, msg)
         if ratio > _SOURCE_FIDELITY_MISSING_RATIO_BLOCKER:
             return CheckResult("source_fidelity", "BLOCKER", False, f"{missing_count}/{checked} entries ({ratio:.0%}) lack source files — re-fetch with full content before proceeding")
+        if shallow_ratio > _SOURCE_FIDELITY_SHALLOW_RATIO_BLOCKER:
+            return CheckResult("source_fidelity", "BLOCKER", False, f"{shallow_count}/{checked} entries ({shallow_ratio:.0%}) have source files < {_SOURCE_FIDELITY_SHALLOW_CHARS} chars — search-result highlights are NOT sufficient; re-fetch full article content")
         if exempt_ratio > _SOURCE_FIDELITY_EXEMPT_RATIO_WARN:
             parts.append(f"high exempt ratio: {exempt_ratio:.0%}")
             return CheckResult("source_fidelity", "WARN", False, "; ".join(parts))
         if missing_count > 0:
             return CheckResult("source_fidelity", "WARN", False, msg)
+        if shallow_count > 0 or thin_count > 0:
+            return CheckResult("source_fidelity", "WARN", False, msg)
         return CheckResult("source_fidelity", "BLOCKER", True, msg)
+
+    def _reverse_compute_direction_coverage(self) -> dict[str, int]:
+        """Reverse-compute per-direction collected counts from collected.json.
+
+        Method C (ADR 0034): covered_directions takes priority;
+        entries without covered_directions fall back to token-based matching.
+        Returns {direction: count}.
+        """
+        if self._collected is None or self._scope is None:
+            return {}
+        needed = self._search_directions
+        direction_counts: dict[str, int] = {d: 0 for d in needed}
+
+        for entry in self._collected:
+            cd = entry.get("covered_directions")
+            if cd and isinstance(cd, list) and len(cd) <= _MAX_COVERED_DIRECTIONS:
+                invalid = [d for d in cd if d not in needed]
+                if not invalid:
+                    for d in cd:
+                        direction_counts[d] = direction_counts.get(d, 0) + 1
+                    continue
+
+            combined_text = (
+                entry.get("title", "")
+                + " " + entry.get("snippet", "")
+                + " " + entry.get("fetched_content", "")[:500]
+            ).lower()
+            for direction in needed:
+                tokens = self._tokenize_direction(direction)
+                if not tokens:
+                    continue
+                matched = sum(1 for t in tokens if t in combined_text)
+                if matched / len(tokens) >= _COVERAGE_THRESHOLD:
+                    direction_counts[direction] = direction_counts.get(direction, 0) + 1
+
+        return direction_counts
 
     def _check_search_plan_compliance(self) -> CheckResult:
         if self._search_plan is None:
-            return CheckResult("search_plan_compliance", "WARN", True, "search_plan.json not found")
+            return CheckResult("search_plan_compliance", "BLOCKER", False, "search_plan.json not found")
         tasks = self._search_plan.get("tasks", [])
         if not tasks:
-            return CheckResult("search_plan_compliance", "WARN", True, "search_plan.json has no tasks")
-        pending = [t for t in tasks if t.get("status") == "pending"]
-        completed = [t for t in tasks if t.get("status") == "completed"]
-        skipped = [t for t in tasks if t.get("status") == "skipped"]
+            return CheckResult("search_plan_compliance", "BLOCKER", False, "search_plan.json has no tasks")
+
         directions_in_plan = set(t.get("direction", "") for t in tasks)
-        directions_completed = set(t.get("direction", "") for t in completed)
-        directions_missing = directions_in_plan - directions_completed
-        if pending and not completed:
-            return CheckResult(
-                "search_plan_compliance", "WARN", False,
-                f"0/{len(tasks)} tasks completed, {len(pending)} pending — search_plan was not followed. "
-                f"Directions without any completed task: {', '.join(sorted(directions_missing))}",
+
+        # Classify tasks: skipped without skip_reason treated as pending (ADR 0033)
+        genuinely_completed = []
+        properly_skipped = []
+        for t in tasks:
+            status = t.get("status", "pending")
+            if status == "completed":
+                genuinely_completed.append(t)
+            elif status == "skipped":
+                if t.get("skip_reason"):
+                    properly_skipped.append(t)
+            # pending and skipped-without-reason are not completed
+
+        directions_with_completed = set(t.get("direction", "") for t in genuinely_completed)
+        directions_all_skipped = set()
+        for d in directions_in_plan:
+            dir_tasks = [t for t in tasks if t.get("direction") == d]
+            has_completed = any(t.get("status") == "completed" for t in dir_tasks)
+            has_unjustified_skip = any(
+                t.get("status") == "skipped" and not t.get("skip_reason") for t in dir_tasks
             )
-        if pending:
-            return CheckResult(
-                "search_plan_compliance", "WARN", False,
-                f"{len(completed)}/{len(tasks)} tasks completed, {len(pending)} pending — search_plan incomplete. "
-                f"Directions without coverage: {', '.join(sorted(directions_missing))}",
+            if not has_completed and not has_unjustified_skip:
+                all_properly_skipped = all(
+                    t.get("status") == "skipped" and t.get("skip_reason") for t in dir_tasks
+                )
+                if all_properly_skipped:
+                    directions_all_skipped.add(d)
+
+        # Reverse-compute collected counts (ADR 0034)
+        reverse_counts = self._reverse_compute_direction_coverage()
+
+        # Verify completed tasks have actual collected entries
+        directions_with_actual_results = set()
+        for d in directions_in_plan:
+            if reverse_counts.get(d, 0) > 0:
+                directions_with_actual_results.add(d)
+
+        # Direction-level BLOCKER: every direction must have completed task
+        # with actual results, OR be properly skipped entirely
+        directions_missing = directions_in_plan - directions_with_actual_results - directions_all_skipped
+
+        unjustified_skips = [t for t in tasks if t.get("status") == "skipped" and not t.get("skip_reason")]
+
+        parts = []
+        if directions_missing:
+            parts.append(
+                f"Directions without collected results or justified skips: "
+                f"{', '.join(sorted(directions_missing))}"
             )
+        if unjustified_skips:
+            parts.append(
+                f"{len(unjustified_skips)} tasks skipped without skip_reason (treated as pending)"
+            )
+
         if directions_missing:
             return CheckResult(
+                "search_plan_compliance", "BLOCKER", False,
+                "; ".join(parts),
+            )
+        if unjustified_skips:
+            return CheckResult(
                 "search_plan_compliance", "WARN", False,
-                f"{len(completed)}/{len(tasks)} tasks completed, but directions without coverage: {', '.join(sorted(directions_missing))}",
+                "; ".join(parts),
             )
         return CheckResult(
-            "search_plan_compliance", "WARN", True,
-            f"{len(completed)}/{len(tasks)} tasks completed, {len(skipped)} skipped",
+            "search_plan_compliance", "BLOCKER", True,
+            f"{len(genuinely_completed)}/{len(tasks)} tasks completed, "
+            f"{len(properly_skipped)} properly skipped, "
+            f"directions with all tasks skipped: {len(directions_all_skipped)}",
         )
 
     def _check_domain_concentration(self) -> CheckResult:

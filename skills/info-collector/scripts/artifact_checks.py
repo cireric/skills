@@ -18,6 +18,7 @@ from .lib.constants import (
     _QUANTITATIVE_GOAL_TYPES,
     _REQUIRED_SECTION_IDS,
     _SINGLE_SOURCE_RATIO,
+    _SUBAGENT_DELEGATION_MIN_SECTIONS,
     _TIER_BALANCE_THRESHOLD,
     _VAGUE_DENSITY_THRESHOLD,
     _VAGUE_PHRASES_EN,
@@ -390,6 +391,41 @@ def check_key_insights_coverage(workdir: Path, goal_type: str) -> CheckResult:
     return CheckResult("key_insights_coverage", "WARN", True)
 
 
+def check_subagent_delegation(workdir: Path) -> CheckResult:
+    if not workdir.exists():
+        return CheckResult("subagent_delegation", "BLOCKER", True, "Skipped (workdir not found)")
+    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "subagent_delegation", "WARN")
+    if err:
+        return err
+    sections = analysis.get("sections", [])
+    if len(sections) < _SUBAGENT_DELEGATION_MIN_SECTIONS:
+        return CheckResult("subagent_delegation", "BLOCKER", True, "Skipped (fewer than 2 sections, delegation not required)")
+    section_files = list(workdir.glob("analysis_section_*.json"))
+    if not section_files:
+        return CheckResult(
+            "subagent_delegation",
+            "BLOCKER",
+            False,
+            f"analysis.json has {len(sections)} sections but no analysis_section_*.json files found in .workdir/ — "
+            f"subagent delegation is required for multi-section reports (see references/subagent-template.md). "
+            f"Write each section via a separate subagent call, then merge with JSON merge only.",
+        )
+    missing_ids = []
+    for section in sections:
+        sec_id = section.get("id", "")
+        if sec_id and not any(sec_id in f.name for f in section_files):
+            missing_ids.append(sec_id)
+    if missing_ids:
+        return CheckResult(
+            "subagent_delegation",
+            "WARN",
+            False,
+            f"Sections without matching analysis_section_*.json: {', '.join(missing_ids)} — "
+            f"these sections may not have been written by independent subagents",
+        )
+    return CheckResult("subagent_delegation", "BLOCKER", True, f"{len(section_files)} section files found for {len(sections)} sections")
+
+
 def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
     from .claim_validator import ClaimValidator
     claim_results = ClaimValidator(workdir, goal_type).check()
@@ -404,4 +440,5 @@ def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
         check_recommendation_structure(workdir, goal_type),
         check_source_tier_balance(workdir, goal_type),
         check_key_insights_coverage(workdir, goal_type),
+        check_subagent_delegation(workdir),
     ] + claim_results

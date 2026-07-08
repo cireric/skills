@@ -48,6 +48,5 @@ Set during finalization after gate 4:
 
 ```
 if gateway.heuristics_fired:  review_status = "degraded"
-elif user_skipped_review:    review_status = "unreviewed"
 else:                        review_status = "passed"
 ```

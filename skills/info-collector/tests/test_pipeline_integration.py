@@ -18,12 +18,17 @@ from scripts.search_gate import SearchGate
 
 
 
-def _make_source_file(workdir, url, content="Test source content for verification."):
+def _make_source_file(workdir, url, content="x" * 6000):
     h = compute_url_hash(url)
     sources_dir = workdir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)
     (sources_dir / f"{h}.md").write_text(content, encoding="utf-8")
     return f"sources/{h}.md"
+
+
+def _write_analysis_section_files(workdir, analysis):
+    for sec in analysis["sections"]:
+        _write_json(workdir / f"analysis_section_{sec['id']}.json", sec)
 
 
 def _make_collected_entry(url, title, snippet, source_tier,
@@ -137,6 +142,7 @@ class TestTechSelectionHappyPath:
             ],
         }
         _write_json(workdir / "analysis.json", analysis)
+        _write_analysis_section_files(workdir, analysis)
 
         ok, errors = proceeds(workdir, "analysis", "review")
         assert ok, f"analysis→review failed: {errors}"
@@ -263,6 +269,7 @@ class TestAcademicResearchChinese:
             ],
         }
         _write_json(workdir / "analysis.json", analysis)
+        _write_analysis_section_files(workdir, analysis)
 
         ok, errors = proceeds(workdir, "analysis", "review")
         assert ok, f"analysis→review failed: {errors}"
@@ -296,8 +303,8 @@ class TestAcademicResearchChinese:
         assert errors == [], f"report BLOCKERs: {errors}"
 
 
-class TestMarketAnalysisUnreviewed:
-    def test_unreviewed_pipeline(self, tmp_path, monkeypatch):
+class TestMarketAnalysisDegraded:
+    def test_degraded_pipeline(self, tmp_path, monkeypatch):
         workdir = tmp_path / "workdir"
         workdir.mkdir()
         directions = ["AI agent market", "framework trends 2026"]
@@ -382,29 +389,26 @@ class TestMarketAnalysisUnreviewed:
             ],
         }
         _write_json(workdir / "analysis.json", analysis)
+        _write_analysis_section_files(workdir, analysis)
 
         ok, errors = proceeds(workdir, "analysis", "review")
         assert ok, f"analysis→review failed: {errors}"
 
-        (workdir / "review_fallback.log").write_text(
-            "2026-07-07 | user chose: unreviewed\n", encoding="utf-8")
+        (workdir / "review_report.md").write_text(
+            "## Overall Verdict\n**pass_with_issues**\n\nSome minor concerns.", encoding="utf-8")
 
         write_phase_state(workdir, "post_review")
         ok, errors = proceeds(workdir, "review", "final")
         assert ok, f"review→final failed: {errors}"
 
-        rr_check = _check_review_report_exists(workdir)
-        assert rr_check.passed
-        assert "Skipped" in rr_check.message
-
         report = generate_report(
             workdir / "analysis.json",
             workdir / "scope.json",
-            review_status="unreviewed",
+            review_status="degraded",
             search_rounds=1,
             source_count=len(collected),
         )
-        assert "review_status: unreviewed" in report
+        assert "review_status: degraded" in report
         assert "verification_required: true" in report
 
         report_path = _write_report_to_reports_dir(workdir, report)
@@ -428,7 +432,7 @@ class TestFactCheckMinimal:
 
         url1 = "https://arxiv.org/abs/rust-memory-safety"
         url2 = "https://doc.rust-lang.org/book/ch04-00.html"
-        sf1 = _make_source_file(workdir, url1, content="Rust ownership model provides memory safety guarantees.")
+        sf1 = _make_source_file(workdir, url1, content="x" * 6000)
         collected = [
             _make_collected_entry(
                 url=url1, title="Rust Memory Safety", snippet="Rust memory safety ownership",
@@ -486,6 +490,7 @@ class TestFactCheckMinimal:
             ],
         }
         _write_json(workdir / "analysis.json", analysis)
+        _write_analysis_section_files(workdir, analysis)
 
         ok, errors = proceeds(workdir, "analysis", "review")
         assert ok, f"analysis→review failed: {errors}"
@@ -608,6 +613,7 @@ class TestExploratoryDeepDive:
             ],
         }
         _write_json(workdir / "analysis.json", analysis)
+        _write_analysis_section_files(workdir, analysis)
 
         ok, errors = proceeds(workdir, "analysis", "review")
         assert ok, f"analysis→review failed: {errors}"
@@ -773,6 +779,7 @@ class TestPipelineStateConsistency:
             {"id": "findings", "title": "Findings", "content": "test findings", "claims": []},
         ]}
         _write_json(workdir / "analysis.json", analysis)
+        _write_analysis_section_files(workdir, analysis)
 
         proceeds(workdir, "analysis", "review")
         assert detect_current_phase(workdir) == "post_review"

@@ -490,12 +490,12 @@ class TestSourceDomainUniqueness:
 
 class TestChineseSourceCountInTier1:
 
-    def test_tier1_has_exactly_3_chinese_sources(self, _real_config):
+    def test_tier1_has_exactly_4_chinese_sources(self, _real_config):
         tier1 = _real_config["sources"]["1"]["sources"]
         zh_sources = [s for s in tier1 if s.get("language") == "zh"]
         zh_names = {s["name"] for s in zh_sources}
-        assert zh_names == {"CNKI", "Wanfang", "CQVIP"}
-        assert len(zh_sources) == 3
+        assert zh_names == {"CNKI", "Wanfang", "CQVIP", "CBOA"}
+        assert len(zh_sources) == 4
 
     def test_tier4_has_exactly_1_chinese_source(self, _real_config):
         tier4 = _real_config["sources"]["4"]["sources"]

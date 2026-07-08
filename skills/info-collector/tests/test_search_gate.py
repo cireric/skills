@@ -7,7 +7,7 @@ from scripts.artifact_checks import CheckResult
 from scripts.lib.utils import compute_url_hash
 
 
-def _create_source_file(workdir, url, content="full content"):
+def _create_source_file(workdir, url, content="x" * 2100):
     sources_dir = workdir / "sources"
     sources_dir.mkdir(exist_ok=True)
     h = compute_url_hash(url)
@@ -40,13 +40,13 @@ class TestSearchGateCheck:
         _make_scope(tmp_path)
         sources_dir = tmp_path / "sources"
         sources_dir.mkdir()
-        (sources_dir / "a.md").write_text("x" * 300, encoding="utf-8")
-        (sources_dir / "b.md").write_text("x" * 300, encoding="utf-8")
+        (sources_dir / "a.md").write_text("x" * 2100, encoding="utf-8")
+        (sources_dir / "b.md").write_text("x" * 2100, encoding="utf-8")
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI News", "snippet": "About AI", "fetched_content": "x" * 300, "source_file": "sources/a.md"},
-                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML", "fetched_content": "x" * 300, "source_file": "sources/b.md"},
+                {"url": "https://a.com", "title": "AI News", "snippet": "About AI", "fetched_content": "x" * 2100, "source_file": "sources/a.md"},
+                {"url": "https://b.com", "title": "ML Update", "snippet": "About ML", "fetched_content": "x" * 2100, "source_file": "sources/b.md"},
             ],
         )
         _make_completed_search_plan(tmp_path)
@@ -271,10 +271,10 @@ class TestSourceFidelity:
         _make_scope(tmp_path)
         sources_dir = tmp_path / "sources"
         sources_dir.mkdir()
-        (sources_dir / "abc123.md").write_text("Full content here", encoding="utf-8")
+        (sources_dir / "abc123.md").write_text("x" * 6000, encoding="utf-8")
         _write_json(
             tmp_path / "collected.json",
-            [{"url": "https://example.com", "title": "T", "snippet": "S", "source_tier": 3, "source_file": "sources/abc123.md", "fetched_content": "Full content here"}],
+            [{"url": "https://example.com", "title": "T", "snippet": "S", "source_tier": 3, "source_file": "sources/abc123.md", "fetched_content": "x" * 200}],
         )
         results = SearchGate(tmp_path).check()
         sf = _find_result(results, "source_fidelity")
@@ -333,7 +333,7 @@ class TestSourceFidelity:
         )
         sources_dir = tmp_path / "sources"
         sources_dir.mkdir()
-        (sources_dir / "exists.md").write_text("content", encoding="utf-8")
+        (sources_dir / "exists.md").write_text("x" * 2100, encoding="utf-8")
         results = SearchGate(tmp_path).check()
         sf = _find_result(results, "source_fidelity")
         assert sf is not None
@@ -395,7 +395,7 @@ class TestSourceFidelityBoundary:
             elif i < fetch_failed + missing:
                 entry["source_file"] = ""
             else:
-                sf = _create_source_file(workdir, url, f"content {i}")
+                sf = _create_source_file(workdir, url, "x" * 6000)
                 entry["source_file"] = sf
             entries.append(entry)
         return entries
@@ -482,11 +482,11 @@ class TestDomainConcentrationBoundary:
         entries = []
         for i in range(same_domain_count):
             url = f"https://same-domain.com/page{i}"
-            sf = _create_source_file(workdir, url, f"content {i}")
+            sf = _create_source_file(workdir, url, "x" * 2100)
             entries.append({"url": url, "title": "T", "snippet": "S", "source_tier": 3, "source_file": sf, "fetched_content": ""})
         for i in range(diff_domain_count):
             url = f"https://other{i}.com/page"
-            sf = _create_source_file(workdir, url, f"content diff {i}")
+            sf = _create_source_file(workdir, url, "x" * 2100)
             entries.append({"url": url, "title": "T", "snippet": "S", "source_tier": 3, "source_file": sf, "fetched_content": ""})
         return entries
 
@@ -520,36 +520,40 @@ class TestDomainConcentrationBoundary:
 
 
 class TestSearchPlanCompliance:
-    def test_no_plan_warns(self, tmp_path):
+    def test_no_plan_blocks(self, tmp_path):
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://a.com", "title": "A", "snippet": "s"}])
         results = SearchGate(tmp_path).check()
         spc = _find_result(results, "search_plan_compliance")
         assert spc is not None
-        assert spc.passed
+        assert not spc.passed
+        assert spc.level == "BLOCKER"
 
     def test_all_completed_passes(self, tmp_path):
         _make_scope(tmp_path)
-        _write_json(tmp_path / "collected.json", [{"url": "https://a.com", "title": "A", "snippet": "s"}])
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://a.com", "title": "AI research", "snippet": "ML machine learning", "source_tier": 4, "covered_directions": ["AI", "ML"]},
+        ])
         _make_completed_search_plan(tmp_path)
         results = SearchGate(tmp_path).check()
         spc = _find_result(results, "search_plan_compliance")
         assert spc is not None
         assert spc.passed
 
-    def test_pending_tasks_warns(self, tmp_path):
+    def test_pending_tasks_blocker(self, tmp_path):
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://a.com", "title": "A", "snippet": "s"}])
         _write_json(
             tmp_path / "search_plan.json",
-            {"tasks": [{"direction": "AI", "tier": 4, "status": "pending", "collected_count": 0}]},
+            {"tasks": [{"direction": "AI", "tier": 4, "status": "pending"}]},
         )
         results = SearchGate(tmp_path).check()
         spc = _find_result(results, "search_plan_compliance")
         assert spc is not None
         assert not spc.passed
+        assert spc.level == "BLOCKER"
 
-    def test_completed_but_direction_missing_warn(self, tmp_path):
+    def test_completed_but_direction_missing_blocker(self, tmp_path):
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://a.com", "title": "A", "snippet": "s"}])
         _write_json(
@@ -563,3 +567,29 @@ class TestSearchPlanCompliance:
         spc = _find_result(results, "search_plan_compliance")
         assert spc is not None
         assert not spc.passed
+        assert spc.level == "BLOCKER"
+
+    def test_skipped_without_reason_treated_as_pending(self, tmp_path):
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://a.com", "title": "A", "snippet": "s"}])
+        _write_json(
+            tmp_path / "search_plan.json",
+            {"tasks": [{"direction": "AI", "tier": 4, "status": "skipped", "skip_reason": ""}]},
+        )
+        results = SearchGate(tmp_path).check()
+        spc = _find_result(results, "search_plan_compliance")
+        assert spc is not None
+        assert not spc.passed
+        assert "skip_reason" in spc.message
+
+    def test_properly_skipped_direction_passes(self, tmp_path):
+        _make_scope(tmp_path, search_directions=["AI"])
+        _write_json(tmp_path / "collected.json", [{"url": "https://a.com", "title": "A", "snippet": "s"}])
+        _write_json(
+            tmp_path / "search_plan.json",
+            {"tasks": [{"direction": "AI", "tier": 4, "status": "skipped", "skip_reason": "requires institutional login"}]},
+        )
+        results = SearchGate(tmp_path).check()
+        spc = _find_result(results, "search_plan_compliance")
+        assert spc is not None
+        assert spc.passed

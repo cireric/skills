@@ -13,15 +13,14 @@
 
 | Flag | Description |
 |------|-------------|
-| `--quality` | Quality value: passed, degraded, unreviewed |
+| `--review-status` | Review outcome: passed, degraded |
 | `--search-rounds` | Number of search rounds performed |
 | `--source-count` | Number of sources collected |
 | `--output DIR` | Override config.json `output_dir` for this report |
 
-## Quality Values
+## Review Status Values
 
-| Value      | Meaning                                        |
-| ---------- | ---------------------------------------------- |
-| passed     | Subagent review ran + gateway heuristics clean |
-| degraded   | Gateway quality_heuristics fired WARN(s)       |
-| unreviewed | User skipped subagent + gateway clean          |
+| Value    | Meaning                                        |
+| -------- | ---------------------------------------------- |
+| passed   | Independent subagent review ran + gateway clean |
+| degraded | Review independence lost (same LLM wrote and reviewed); minimum level when subagent fails |
