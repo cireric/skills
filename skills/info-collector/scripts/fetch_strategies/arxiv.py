@@ -12,9 +12,3 @@ class ArxivStrategy:
             if m:
                 return f"https://ar5iv.labs.arxiv.org/html/{m.group(1)}"
         return url
-
-    def tools(self) -> list[str]:
-        return ["webfetch", "exa_web_fetch_exa"]
-
-    def retries(self, tier: int) -> int:
-        return 2 if tier <= 2 else 1

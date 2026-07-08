@@ -11,12 +11,11 @@ _SAMPLE_CONFIG = {
     "sources": {
         "1": {"sources": [{"name": "arXiv", "domain": "arxiv.org", "fetch_strategy": "arxiv", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}}]},
         "2": {"sources": [{"name": "GitHub", "domain": "github.com", "fetch_strategy": "github", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}}]},
-        "3": {"sources": [{"name": "Medium", "domain": "medium.com", "fetch": {"url_rewrite": [{"match": "^__never_match__", "replace": ""}], "tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}}]},
-        "4": {"sources": [{"name": "Reddit", "domain": "reddit.com", "fetch": {"url_rewrite": [{"match": "^__never_match__", "replace": ""}], "tools": ["webfetch", "playwright"]}}]},
+        "3": {"sources": [{"name": "Medium", "domain": "medium.com", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}}]},
+        "4": {"sources": [{"name": "Reddit", "domain": "reddit.com", "fetch": {"tools": ["webfetch", "playwright"]}}]},
     },
     "fetch_defaults": {
         "source_dir": ".workdir/sources/",
-        "max_characters": 50000,
         "shallow_threshold": 2000,
         "playwright_enabled": True,
         "playwright_channel": "chrome",
@@ -109,6 +108,37 @@ class TestFetchAutonomous:
         assert result.tool_used == "webfetch"
 
 
+class TestBestShallowContent:
+    def test_shallow_content_saved_not_discarded(self, fetcher, workdir):
+        """All tools return < threshold → save best shallow content, not fetch_failed."""
+        with patch("scripts.fetcher._fetch_requests", return_value="x" * 500):
+            with patch("scripts.fetcher._try_playwright", return_value="y" * 300):
+                result = fetcher.fetch("https://medium.com/@user/article", tier=3)
+        assert result.fetch_failed is False
+        assert result.content_insufficient is True
+        assert result.char_count >= 500
+        assert result.tool_used == "webfetch"
+        assert (workdir / result.source_file).exists()
+
+    def test_best_shallow_picks_longest(self, fetcher, workdir):
+        """requests returns 300 chars, playwright returns 800 chars → pick playwright."""
+        with patch("scripts.fetcher._fetch_requests", return_value="x" * 300):
+            with patch("scripts.fetcher._try_playwright", return_value="y" * 800):
+                result = fetcher.fetch("https://medium.com/@user/article", tier=3)
+        assert result.fetch_failed is False
+        assert result.content_insufficient is True
+        assert result.char_count >= 800
+        assert result.tool_used == "playwright"
+
+    def test_all_none_returns_fetch_failed(self, fetcher, workdir):
+        """All tools return None → fetch_failed, no shallow content."""
+        with patch("scripts.fetcher._fetch_requests", return_value=None):
+            with patch("scripts.fetcher._try_playwright", return_value=None):
+                result = fetcher.fetch("https://medium.com/@user/article", tier=3)
+        assert result.fetch_failed is True
+        assert result.char_count == 0
+
+
 class TestPipedMode:
     def test_piped_plain_text(self, fetcher, workdir):
         content = "# Paper Title\n\n" + "x" * 3000
@@ -195,3 +225,20 @@ class TestPlaywrightConfig:
             timeout=30000,
             channel="chrome",
         )
+
+    def test_playwright_enabled_false_skips_playwright(self, workdir):
+        config = {**_SAMPLE_CONFIG, "fetch_defaults": {**_SAMPLE_CONFIG["fetch_defaults"], "playwright_enabled": False}}
+        fetcher = Fetcher(workdir, config)
+        with patch("scripts.fetcher._fetch_requests", return_value=None):
+            with patch("scripts.fetcher._try_playwright", return_value="x" * 3000) as mock_pw:
+                result = fetcher.fetch("https://medium.com/@user/article", tier=3)
+        mock_pw.assert_not_called()
+        assert result.fetch_failed is True
+
+    def test_no_playwright_overrides_enabled_true(self, fetcher, workdir):
+        """--no-playwright flag takes precedence over playwright_enabled=true."""
+        with patch("scripts.fetcher._fetch_requests", return_value=None):
+            with patch("scripts.fetcher._try_playwright", return_value="x" * 3000) as mock_pw:
+                result = fetcher.fetch("https://medium.com/@user/article", tier=3, no_playwright=True)
+        mock_pw.assert_not_called()
+        assert result.fetch_failed is True

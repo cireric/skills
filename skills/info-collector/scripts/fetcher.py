@@ -80,6 +80,7 @@ class Fetcher:
         self._shallow_threshold = self._fetch_defaults.get("shallow_threshold", _SOURCE_FIDELITY_SHALLOW_CHARS)
         self._pw_timeout = self._fetch_defaults.get("playwright_timeout", _FETCH_PLAYWRIGHT_TIMEOUT)
         self._pw_channel = self._fetch_defaults.get("playwright_channel", _FETCH_PLAYWRIGHT_CHANNEL_DEFAULT)
+        self._playwright_enabled = self._fetch_defaults.get("playwright_enabled", True)
 
     def fetch(self, url: str, tier: int = 3, no_playwright: bool = False) -> FetchResult:
         url_hash = compute_url_hash(url)
@@ -143,10 +144,11 @@ class Fetcher:
 
     def _try_tools(self, url: str, tools: list[str], retries: int,
                    tier: int, no_playwright: bool) -> tuple[str | None, str]:
+        best_shallow: tuple[str, str] | None = None
         for tool in tools:
             if tool == "exa_web_fetch_exa":
                 continue
-            if tool == "playwright" and no_playwright:
+            if tool == "playwright" and (no_playwright or not self._playwright_enabled):
                 continue
             impl_name = _AUTONOMOUS_TOOL_MAP.get(tool)
             if impl_name is None:
@@ -155,10 +157,12 @@ class Fetcher:
                 result = self._call_tool_impl(impl_name, url)
                 if result is None:
                     continue
+                display_tool = tool if tool != "requests" else "webfetch"
                 if len(result) >= self._shallow_threshold:
-                    return result, tool if tool != "requests" else "webfetch"
-            # Tool exhausted all retries (or all results < threshold) → advance to next tool
-        return None, ""
+                    return result, display_tool
+                if best_shallow is None or len(result) > len(best_shallow[0]):
+                    best_shallow = (result, display_tool)
+        return best_shallow if best_shallow is not None else (None, "")
 
     def _call_tool_impl(self, impl_name: str, url: str) -> str | None:
         if impl_name == "_fetch_requests":

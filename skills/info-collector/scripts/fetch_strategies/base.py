@@ -2,6 +2,10 @@ from __future__ import annotations
 from typing import Protocol
 
 
+class UrlRewriter(Protocol):
+    def rewrite_url(self, url: str) -> str: ...
+
+
 class FetchStrategy(Protocol):
     def rewrite_url(self, url: str) -> str: ...
     def tools(self) -> list[str]: ...

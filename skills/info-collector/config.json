@@ -3,18 +3,18 @@
     "1": {
       "name": "Academic / Standards",
       "sources": [
-        {"name": "arXiv", "domain": "arxiv.org", "site_query": "arxiv.org", "fetch_strategy": "arxiv", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
-        {"name": "Google Scholar", "domain": "scholar.google.com", "site_query": "scholar.google.com", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
-        {"name": "PubMed", "domain": "pubmed.ncbi.nlm.nih.gov", "site_query": "pubmed.ncbi.nlm.nih.gov", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
-        {"name": "CNKI", "domain": "cnki.net", "site_query": "cnki.net", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
-        {"name": "W3C", "domain": "w3.org", "site_query": "w3.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
-        {"name": "IETF", "domain": "ietf.org", "site_query": "ietf.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
-        {"name": "ISO", "domain": "iso.org", "site_query": "iso.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
-        {"name": "ACL Anthology", "domain": "aclanthology.org", "site_query": "aclanthology.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
-        {"name": "Semantic Scholar", "domain": "semanticscholar.org", "site_query": "semanticscholar.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
-        {"name": "Wanfang", "domain": "wanfangdata.com.cn", "site_query": "wanfangdata.com.cn", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
-        {"name": "CQVIP", "domain": "oa.cqvip.com", "site_query": "oa.cqvip.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}},
-        {"name": "CBOA", "domain": "cboa.cqvip.com", "site_query": "cboa.cqvip.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"], "max_characters": 50000}}
+        {"name": "arXiv", "domain": "arxiv.org", "site_query": "arxiv.org", "fetch_strategy": "arxiv", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "Google Scholar", "domain": "scholar.google.com", "site_query": "scholar.google.com", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "PubMed", "domain": "pubmed.ncbi.nlm.nih.gov", "site_query": "pubmed.ncbi.nlm.nih.gov", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "CNKI", "domain": "cnki.net", "site_query": "cnki.net", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "W3C", "domain": "w3.org", "site_query": "w3.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "IETF", "domain": "ietf.org", "site_query": "ietf.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "ISO", "domain": "iso.org", "site_query": "iso.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "ACL Anthology", "domain": "aclanthology.org", "site_query": "aclanthology.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "Semantic Scholar", "domain": "semanticscholar.org", "site_query": "semanticscholar.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "Wanfang", "domain": "wanfangdata.com.cn", "site_query": "wanfangdata.com.cn", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "CQVIP", "domain": "oa.cqvip.com", "site_query": "oa.cqvip.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "CBOA", "domain": "cboa.cqvip.com", "site_query": "cboa.cqvip.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}}
       ]
     },
     "2": {
@@ -77,7 +77,6 @@
   },
   "fetch_defaults": {
     "source_dir": ".workdir/sources/",
-    "max_characters": 50000,
     "shallow_threshold": 2000,
     "playwright_enabled": true,
     "playwright_channel": "chrome",

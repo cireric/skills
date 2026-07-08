@@ -15,9 +15,3 @@ class GithubStrategy:
             repo = m.group(1)
             return f"https://github.com/{repo}/blob/main/README.md"
         return url
-
-    def tools(self) -> list[str]:
-        return ["webfetch", "exa_web_fetch_exa"]
-
-    def retries(self, tier: int) -> int:
-        return 2 if tier <= 2 else 1

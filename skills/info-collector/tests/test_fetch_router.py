@@ -1,7 +1,7 @@
 import pytest
 import json
 from pathlib import Path
-from scripts.fetch_strategies.base import FetchStrategy
+from scripts.fetch_strategies.base import FetchStrategy, UrlRewriter
 from scripts.fetch_strategies.default import DefaultStrategy
 from scripts.lib.utils import compute_url_hash
 
@@ -49,9 +49,10 @@ def test_arxiv_rewrite_non_arxiv():
     assert s.rewrite_url("https://example.com/paper") == "https://example.com/paper"
 
 
-def test_arxiv_tools():
+def test_arxiv_is_url_rewriter():
     s = ArxivStrategy()
-    assert s.tools() == ["webfetch", "exa_web_fetch_exa"]
+    assert hasattr(s, "rewrite_url")
+    assert not hasattr(s, "tools")
 
 
 from scripts.fetch_strategies.github import GithubStrategy
@@ -68,12 +69,13 @@ def test_github_rewrite_non_github():
     assert s.rewrite_url("https://example.com/code") == "https://example.com/code"
 
 
-def test_github_tools():
+def test_github_is_url_rewriter():
     s = GithubStrategy()
-    assert s.tools() == ["webfetch", "exa_web_fetch_exa"]
+    assert hasattr(s, "rewrite_url")
+    assert not hasattr(s, "tools")
 
 
-from scripts.fetch_router import get_fetch_strategy, apply_url_rewrite
+from scripts.fetch_router import get_fetch_strategy, apply_url_rewrite, ComposedStrategy
 
 
 def test_get_fetch_strategy_default():
@@ -82,10 +84,20 @@ def test_get_fetch_strategy_default():
     assert isinstance(strategy, DefaultStrategy)
 
 
-def test_get_fetch_strategy_arxiv():
+def test_get_fetch_strategy_arxiv_with_config_tools():
+    config = {"name": "arXiv", "domain": "arxiv.org", "fetch_strategy": "arxiv",
+              "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}}
+    strategy = get_fetch_strategy(config)
+    assert isinstance(strategy, ComposedStrategy)
+    assert strategy.rewrite_url("https://arxiv.org/abs/2509.16941") == "https://ar5iv.labs.arxiv.org/html/2509.16941"
+    assert strategy.tools() == ["exa_web_fetch_exa", "webfetch", "playwright"]
+
+
+def test_get_fetch_strategy_arxiv_without_config_tools():
     config = {"name": "arXiv", "domain": "arxiv.org", "fetch_strategy": "arxiv"}
     strategy = get_fetch_strategy(config)
-    assert type(strategy).__name__ == "ArxivStrategy"
+    assert isinstance(strategy, ComposedStrategy)
+    assert strategy.tools() == ["webfetch"]
 
 
 def test_get_fetch_strategy_config_rewrite():
@@ -103,6 +115,13 @@ def test_get_fetch_strategy_config_rewrite():
     assert strategy.tools() == ["webfetch"]
 
 
+def test_get_fetch_strategy_config_tools_without_rewrite():
+    config = {"name": "PyPI", "domain": "pypi.org",
+              "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}}
+    strategy = get_fetch_strategy(config)
+    assert strategy.tools() == ["exa_web_fetch_exa", "webfetch", "playwright"]
+
+
 def test_apply_url_rewrite_no_match():
     rules = [{"match": r"arxiv\.org/pdf/(.+)", "replace": r"ar5iv.labs.arxiv.org/html/\1"}]
     assert apply_url_rewrite("https://example.com/page", rules) == "https://example.com/page"
@@ -115,17 +134,18 @@ def test_apply_url_rewrite_match():
 
 class TestEndToEndFetchFlow:
     def test_arxiv_fetch_flow(self, tmp_path):
-        cfg = {"fetch_strategy": "arxiv"}
+        cfg = {"fetch_strategy": "arxiv",
+               "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}}
         url = "https://arxiv.org/pdf/2509.16941"
 
         strategy = get_fetch_strategy(cfg)
-        assert type(strategy).__name__ == "ArxivStrategy"
+        assert isinstance(strategy, ComposedStrategy)
 
         rewritten = strategy.rewrite_url(url)
         assert rewritten == "https://ar5iv.labs.arxiv.org/html/2509.16941"
 
         tools = strategy.tools()
-        assert tools == ["webfetch", "exa_web_fetch_exa"]
+        assert tools == ["exa_web_fetch_exa", "webfetch", "playwright"]
 
         retries = strategy.retries(1)
         assert retries == 2
