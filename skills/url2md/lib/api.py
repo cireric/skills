@@ -72,7 +72,7 @@ async def crawl_single_article(
                 referer=url, max_concurrent=max_concurrent, max_retries=max_retries,
             )
             for orig_url, local_path in local_paths.items():
-                rel_path = os.path.relpath(local_path, output_dir)
+                rel_path = os.path.relpath(local_path, output_dir).replace(os.sep, "/")
                 article.content = re.sub(
                     re.escape(orig_url) + r"(?![\w\-])", rel_path, article.content
                 )
