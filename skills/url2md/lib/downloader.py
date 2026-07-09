@@ -67,7 +67,7 @@ async def _process_image_response(
     """处理 HTTP 响应并保存图片文件."""
     if response.status != HTTP_OK:
         if HTTP_SERVER_ERROR_MIN <= response.status < HTTP_SERVER_ERROR_MAX:
-            raise aiohttp.ClientError(f"Server error {response.status}")
+            raise RuntimeError(f"Server error {response.status}")
         logger.warning(f"下载图片失败 {url}: HTTP {response.status}")
         return False
     content = await response.read()
@@ -95,7 +95,7 @@ async def download_single_image(
 ) -> bool:
     """下载单张图片（支持重试）."""
     if aiohttp is None:
-        raise ImportError("aiohttp not installed. Run: pip install aiohttp aiofiles")
+        raise ImportError("aiohttp not installed. Run: venv-pip install aiohttp aiofiles")
     headers = {}
     if referer:
         headers["Referer"] = referer
@@ -117,13 +117,7 @@ async def download_single_image(
                 ):
                     return await _process_image_response(response, url, save_path)
         except Exception as e:
-            client_error_type = getattr(aiohttp, "ClientError", None) if aiohttp else None
-            if (
-                client_error_type is not None
-                and isinstance(client_error_type, type)
-                and issubclass(client_error_type, Exception)
-                and isinstance(e, client_error_type)
-            ):
+            if aiohttp and isinstance(e, aiohttp.ClientError):
                 logger.warning(f"下载图片失败 {url} (尝试 {attempt + 1}/{max_retries + 1}): {e}")
                 if attempt < max_retries:
                     wait_time = exponential_backoff(attempt)

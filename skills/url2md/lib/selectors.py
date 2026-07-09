@@ -30,6 +30,15 @@ _DEFAULT_PLATFORM_CONFIGS: dict[Platform, dict[str, Any]] = {
         "list_link_selector": "a[href*='/s/']",
         "needs_scroll": True,
         "wait_selector": "#js_content",
+        "tail_noise_markers": [
+            "今日好文推荐", "好文推荐", "相关推荐", "猜你喜欢",
+            "为你推荐", "热门推荐",
+            "会议推荐", "活动推荐", "课程推荐",
+            "广告", "推广", "赞助", "商务合作",
+            "扫码关注", "长按关注", "关注公众号",
+            "阅读原文", "点击阅读原文", "查看原文",
+            "转载请联系",
+        ],
     },
     Platform.ZHIHU: {
         "name": "知乎专栏",
@@ -42,6 +51,13 @@ _DEFAULT_PLATFORM_CONFIGS: dict[Platform, dict[str, Any]] = {
         "list_link_selector": "a[href*='/p/']",
         "needs_scroll": False,
         "wait_selector": ".Post-RichText, .RichText",
+        "tail_noise_markers": [
+            "相关推荐", "猜你喜欢", "为你推荐", "热门推荐",
+            "广告", "推广", "赞助", "商务合作",
+            "扫码关注", "长按关注",
+            "阅读原文", "点击阅读原文",
+            "转载请联系",
+        ],
     },
     Platform.JIANSHU: {
         "name": "简书",
@@ -54,6 +70,13 @@ _DEFAULT_PLATFORM_CONFIGS: dict[Platform, dict[str, Any]] = {
         "list_link_selector": "a[href*='/p/']",
         "needs_scroll": True,
         "wait_selector": "article, .article",
+        "tail_noise_markers": [
+            "相关推荐", "猜你喜欢", "为你推荐", "热门推荐",
+            "广告", "推广", "赞助",
+            "扫码关注", "长按关注",
+            "阅读原文", "点击阅读原文",
+            "转载请联系",
+        ],
     },
     Platform.BILIBILI: {
         "name": "Bilibili专栏",
@@ -66,6 +89,13 @@ _DEFAULT_PLATFORM_CONFIGS: dict[Platform, dict[str, Any]] = {
         "list_link_selector": "a[href*='/read/cv']",
         "needs_scroll": True,
         "wait_selector": ".article-content",
+        "tail_noise_markers": [
+            "相关推荐", "猜你喜欢", "为你推荐", "热门推荐",
+            "广告", "推广", "赞助",
+            "扫码关注", "长按关注", "关注公众号",
+            "阅读原文", "点击阅读原文",
+            "转载请联系",
+        ],
     },
     Platform.GENERIC: {
         "name": "通用网页",
@@ -77,6 +107,13 @@ _DEFAULT_PLATFORM_CONFIGS: dict[Platform, dict[str, Any]] = {
         "date_selector": ".date, .time, .published",
         "list_link_selector": "a",
         "needs_scroll": False,
+        "tail_noise_markers": [
+            "相关推荐", "猜你喜欢", "为你推荐", "热门推荐",
+            "广告", "推广", "赞助", "商务合作",
+            "扫码关注", "长按关注",
+            "阅读原文", "点击阅读原文",
+            "转载请联系",
+        ],
     },
 }
 

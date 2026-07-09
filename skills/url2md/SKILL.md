@@ -7,6 +7,9 @@ description: Crawl web articles to Markdown. Use when user wants to crawl, scrap
 
 Self-contained — all code lives in this skill directory. Zero project imports.
 
+> **Convention:** `venv-python` means the venv Python interpreter for the current platform:
+> Windows: `.venv\Scripts\python.exe` · Linux/macOS: `.venv/bin/python`
+
 ## Steps
 
 ### 1. Preflight
@@ -14,10 +17,18 @@ Self-contained — all code lives in this skill directory. Zero project imports.
 Run dependency check:
 
 ```bash
-.venv\Scripts\python.exe .opencode\skills\url2md\scripts\crawl.py --preflight
+venv-python skills/url2md/scripts/crawl.py --preflight
 ```
 
 **Done when:** `PREFLIGHT OK` printed. If FAIL, install missing deps from the output and re-run.
+
+Preflight checks (in order):
+1. **playwright Python package** — missing → `pip install playwright`
+2. **System Chrome** — detected via known install paths; missing → error with two options:
+   - Install Google Chrome (preferred, `channel="chrome"` used at runtime)
+   - Run `playwright install chromium` as fallback
+3. **PyYAML** — missing → `pip install pyyaml`
+4. **aiohttp / aiofiles** — only when `--download-images` or config `download_images: true`
 
 ### 2. Infer parameters
 
@@ -33,7 +44,7 @@ Run dependency check:
 ### 3. Crawl
 
 ```bash
-.venv\Scripts\python.exe .opencode\skills\url2md\scripts\crawl.py "<url>" [flags]
+venv-python skills/url2md/scripts/crawl.py "<url>" [flags]
 ```
 
 **Done when:** script exits 0 and file path(s) printed.
@@ -63,7 +74,7 @@ Defaults in `config.yaml`. CLI flags override config. Full config schema and CLI
 |-------|--------|
 | 429 / rate limit | Increase `delay` in config, retry |
 | Login wall | Set `cookies_file` in config |
-| Playwright crash | `--preflight`, reinstall browser |
+| Playwright crash | `--preflight`, check Chrome still installed |
 | Partial list fail | Set `resume: true` in config, re-run |
 
 Full dependency list, config schema, CLI flags, and API details: see `reference.md`.

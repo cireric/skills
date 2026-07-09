@@ -12,6 +12,7 @@ from .selectors import Platform, get_platform_config, is_article_page
 logger = logging.getLogger(__name__)
 
 MAX_SCROLL_NO_CHANGE = 3
+TAIL_SCAN_LINES = 30
 
 
 class ExtractError(Exception):
@@ -193,7 +194,7 @@ async def extract_list_links(page, platform: Platform, scroll: bool = True) -> l
         else:
             await _extract_links_from_elements(page, link_selector, links)
         article_links = [link for link in links if is_article_page(link, platform)]
-        return list(set(article_links))
+        return list(article_links)
     except Exception as e:
         logger.error(f"提取列表链接失败: {e}")
         raise ExtractError(f"提取列表链接失败: {e}") from e
@@ -261,7 +262,29 @@ def _convert_html_to_markdown(content: str) -> str:
     return content.strip()
 
 
-def convert_to_markdown(article: ArticleData, image_dir: str | None = None) -> str:
+def truncate_tail_noise(content: str, markers: list[str], scan_lines: int = TAIL_SCAN_LINES) -> str:
+    """截断 Markdown 文末噪音区域.
+
+    只在最后 scan_lines 行内扫描噪音标记词，从首个匹配行截断。
+    若正文中间出现同义词则不受影响。
+    """
+    if not markers or not content:
+        return content
+    lines = content.split("\n")
+    tail_start = max(0, len(lines) - scan_lines)
+    for i in range(tail_start, len(lines)):
+        line_stripped = lines[i].strip()
+        for marker in markers:
+            if marker in line_stripped:
+                cut = i
+                while cut > 0 and not lines[cut - 1].strip():
+                    cut -= 1
+                result = "\n".join(lines[:cut]).rstrip()
+                return result
+    return content
+
+
+def convert_to_markdown(article: ArticleData, platform: Platform | None = None) -> str:
     """将文章转换为 Markdown 格式."""
     lines = []
     lines.append(f"# {article.title}")
@@ -275,5 +298,10 @@ def convert_to_markdown(article: ArticleData, image_dir: str | None = None) -> s
     lines.append("---")
     lines.append("")
     content = _convert_html_to_markdown(article.content)
+    if platform is not None:
+        config = get_platform_config(platform)
+        markers = config.get("tail_noise_markers", [])
+        if markers:
+            content = truncate_tail_noise(content, markers)
     lines.append(content)
     return "\n".join(lines)

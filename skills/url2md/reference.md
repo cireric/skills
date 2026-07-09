@@ -35,17 +35,19 @@ Disclosed reference for the url2md skill. Agent loads this on demand — not nee
 
 | Package | Required for | Install |
 |---------|-------------|---------|
-| `playwright` | All crawls | `.venv\Scripts\pip.exe install playwright` |
-| Playwright browser | All crawls | `.venv\Scripts\python.exe -m playwright install chrome` |
-| `aiohttp` | Image download only | `.venv\Scripts\pip.exe install aiohttp` |
-| `aiofiles` | Image download only | `.venv\Scripts\pip.exe install aiofiles` |
-| `pyyaml` | Config loading | `.venv\Scripts\pip.exe install pyyaml` |
+| `playwright` | All crawls | `venv-pip install playwright` |
+| System Chrome | All crawls | Install Google Chrome, or `venv-python -m playwright install chromium` |
+| `aiohttp` | Image download only | `venv-pip install aiohttp` |
+| `aiofiles` | Image download only | `venv-pip install aiofiles` |
+| `pyyaml` | Config loading | `venv-pip install pyyaml` |
+
+> `venv-python` / `venv-pip` = venv interpreter for current platform (Windows: `.venv\Scripts\python.exe` / `.venv\Scripts\pip.exe`, Linux/macOS: `.venv/bin/python` / `.venv/bin/pip`).
 
 `aiohttp`/`aiofiles` are only enforced by preflight when `download_images: true`.
 
 ## Config Schema
 
-File: `config.yaml` (next to SKILL.md). Missing file → built-in defaults used.
+File: `config.yaml` (next to SKILL.md). Missing file → error (run `--preflight` to diagnose).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -54,13 +56,10 @@ File: `config.yaml` (next to SKILL.md). Missing file → built-in defaults used.
 | `download_images` | bool | false | Download images locally |
 | `images_dir` | str\|null | null | Image save directory (null = `<output_dir>/images/`) |
 | `delay` | float | 2.0 | Base delay between requests (seconds) |
-| `max_delay` | float | 5.0 | Max delay cap (seconds) |
 | `max_concurrent` | int | 3 | Max concurrent image downloads |
 | `headless` | bool | true | Run browser in headless mode |
 | `cookies_file` | str\|null | null | Path to cookies JSON for login-required sites |
 | `limit` | int\|null | null | Max articles per list page (null = all) |
-| `resume` | bool | false | Enable checkpoint resume for list crawls |
-| `state_file` | str | `"url2md-state.json"` | State file path for resume |
 | `max_retries` | int | 3 | Per-image retry count |
 
 ## CLI Flags

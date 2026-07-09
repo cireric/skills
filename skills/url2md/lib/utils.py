@@ -1,4 +1,4 @@
-"""工具函数：延迟、重试、文件名清理、状态管理."""
+"""工具函数：文件名清理、指数退避、asyncio 配置."""
 
 import asyncio
 import json
@@ -6,21 +6,12 @@ import logging
 import random
 import re
 import sys
-import time
 import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
 logger = logging.getLogger(__name__)
-
-
-def random_delay(base_delay: float = 2.0, max_delay: float = 5.0) -> float:
-    """生成随机延迟时间."""
-    jitter = random.uniform(0, 1)
-    delay = min(base_delay + jitter, max_delay)
-    time.sleep(delay)
-    return delay
 
 
 def sanitize_filename(filename: str, max_length: int = 200) -> str:

@@ -3,7 +3,7 @@
 # Future: ask user to confirm/override on first use.
 
 # Output
-output_dir: "misc/"
+output_dir: "docs/misc/"
 filename: null                # Custom filename (single article only; null = auto from title)
 
 # Images
@@ -12,7 +12,6 @@ images_dir: null              # null = <output_dir>/images/
 
 # Rate limiting
 delay: 2.0                    # Base delay between requests (seconds)
-max_delay: 5.0                # Max delay cap (seconds)
 max_concurrent: 3             # Max concurrent image downloads
 
 # Browser
@@ -21,8 +20,6 @@ cookies_file: null            # Path to cookies JSON (null = no cookies)
 
 # List crawl
 limit: null                   # Max articles per list page (null = all)
-resume: false                 # Enable checkpoint resume
-state_file: "url2md-state.json"
 
 # Retry
 max_retries: 3                # Per-image retry count

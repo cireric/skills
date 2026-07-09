@@ -8,50 +8,80 @@ Reads config from config.yaml in the skill directory.
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
-SKILL_DIR = Path(__file__).resolve().parent
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+SKILL_DIR = Path(__file__).resolve().parent.parent
 LIB_DIR = SKILL_DIR / "lib"
 CONFIG_PATH = SKILL_DIR / "config.yaml"
 
 sys.path.insert(0, str(SKILL_DIR))
 
 
+def _venv_python() -> str:
+    if sys.platform == "win32":
+        return ".venv\\Scripts\\python.exe"
+    return ".venv/bin/python"
+
+
+def _venv_pip() -> str:
+    if sys.platform == "win32":
+        return ".venv\\Scripts\\pip.exe"
+    return ".venv/bin/pip"
+
+
 def _load_config() -> dict:
-    """Load config.yaml, falling back to defaults if missing or invalid."""
-    defaults = {
-        "output_dir": "misc/",
-        "filename": None,
-        "download_images": False,
-        "images_dir": None,
-        "delay": 2.0,
-        "max_delay": 5.0,
-        "max_concurrent": 3,
-        "headless": True,
-        "cookies_file": None,
-        "limit": None,
-        "resume": False,
-        "state_file": "url2md-state.json",
-        "max_retries": 3,
-    }
-
+    """Load config.yaml. Raises FileNotFoundError if config is missing."""
     if not CONFIG_PATH.exists():
-        return defaults
+        raise FileNotFoundError(
+            f"Config file not found: {CONFIG_PATH}. "
+            f"Create it from the skill directory template."
+        )
 
-    try:
-        import yaml
+    import yaml
 
-        with open(CONFIG_PATH, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-    except (ImportError, OSError):
-        return defaults
+    with open(CONFIG_PATH, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
 
-    for key, value in data.items():
-        if key in defaults and value is not None:
-            defaults[key] = value
+    return data
 
-    return defaults
+
+def _find_system_chrome() -> str | None:
+    """Return path to system Chrome if found, else None."""
+    if sys.platform == "win32":
+        candidates = [
+            os.path.expandvars(
+                r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"
+            ),
+            os.path.expandvars(
+                r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
+            ),
+            os.path.expandvars(
+                r"%LocalAppData%\Google\Chrome\Application\chrome.exe"
+            ),
+        ]
+    elif sys.platform == "darwin":
+        candidates = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            os.path.expanduser(
+                "~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+            ),
+        ]
+    else:
+        candidates = [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+        ]
+    for path in candidates:
+        if Path(path).exists():
+            return path
+    return None
 
 
 def _preflight_check(strict: bool = False) -> list[str]:
@@ -64,33 +94,30 @@ def _preflight_check(strict: bool = False) -> list[str]:
     """
     errors = []
 
+    if not CONFIG_PATH.exists():
+        errors.append(
+            f"Config file not found: {CONFIG_PATH}. "
+            f"Create it from the skill directory template."
+        )
+
     try:
         import playwright  # noqa: F401
     except ImportError:
-        errors.append("playwright not installed. Run: .venv\\Scripts\\pip.exe install playwright")
+        errors.append(f"playwright not installed. Run: {_venv_pip()} install playwright")
 
-    try:
-        from playwright.sync_api import sync_playwright
-
-        p = sync_playwright().start()
-        try:
-            p.chromium.launch(headless=True, channel="chrome").close()
-        except Exception:
-            errors.append(
-                "Playwright browser not installed. "
-                "Run: .venv\\Scripts\\python.exe -m playwright install chrome"
-            )
-        finally:
-            p.stop()
-    except Exception as exc:
-        errors.append(f"Playwright browser check failed: {exc}")
+    chrome_path = _find_system_chrome()
+    if chrome_path is None:
+        errors.append(
+            "System Chrome not found. "
+            f"Install Google Chrome, or run: {_venv_python()} -m playwright install chromium"
+        )
 
     try:
         import aiohttp  # noqa: F401
     except ImportError:
         msg = (
             "aiohttp not installed (needed for image download). "
-            "Run: .venv\\Scripts\\pip.exe install aiohttp"
+            f"Run: {_venv_pip()} install aiohttp"
         )
         if strict:
             errors.append(msg)
@@ -100,7 +127,7 @@ def _preflight_check(strict: bool = False) -> list[str]:
     except ImportError:
         msg = (
             "aiofiles not installed (needed for image download). "
-            "Run: .venv\\Scripts\\pip.exe install aiofiles"
+            f"Run: {_venv_pip()} install aiofiles"
         )
         if strict:
             errors.append(msg)
@@ -110,7 +137,7 @@ def _preflight_check(strict: bool = False) -> list[str]:
     except ImportError:
         errors.append(
             "PyYAML not installed (needed for config loading). "
-            "Run: .venv\\Scripts\\pip.exe install pyyaml"
+            f"Run: {_venv_pip()} install pyyaml"
         )
 
     return errors
@@ -146,8 +173,13 @@ def main() -> None:
     if not args.url:
         parser.error("url is required when not running --preflight")
 
-    config = _load_config()
-    download_images = args.download_images or config["download_images"]
+    try:
+        config = _load_config()
+    except FileNotFoundError as e:
+        print(f"配置错误: {e}")
+        sys.exit(1)
+
+    download_images = args.download_images or config.get("download_images", False)
 
     errors = _preflight_check(strict=bool(download_images))
     if errors:
@@ -160,17 +192,21 @@ def main() -> None:
 
     result = crawl_url(
         url=args.url,
-        output_dir=args.output or config["output_dir"],
+        output_dir=args.output or config.get("output_dir"),
         download_images=download_images,
-        limit=args.limit or config["limit"],
-        delay=args.delay or config["delay"],
-        filename=args.filename or config["filename"],
-        images_dir=args.images_dir or config["images_dir"],
+        limit=args.limit if args.limit is not None else config.get("limit"),
+        delay=args.delay if args.delay is not None else config.get("delay", 2.0),
+        filename=args.filename or config.get("filename"),
+        images_dir=args.images_dir or config.get("images_dir"),
+        headless=config.get("headless", True),
+        max_concurrent=config.get("max_concurrent", 3),
+        max_retries=config.get("max_retries", 3),
+        cookies_file=config.get("cookies_file"),
     )
 
     if result.success:
         if result.article_count > 1:
-            print(f"已抓取 {result.article_count} 篇文章，保存到: {config['output_dir']}")
+            print(f"已抓取 {result.article_count} 篇文章，保存到: {args.output or config.get('output_dir', 'misc/')}")
         else:
             for f in result.files:
                 print(f"已保存到: {f}")

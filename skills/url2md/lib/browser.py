@@ -3,15 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from playwright.async_api import Browser, BrowserContext, Page, Playwright
-
-_playwright: Playwright | None = None
-_browser_type: type[Browser] | None = None
-_browser: Browser | None = None
-_context: BrowserContext | None = None
 
 try:
     from playwright.async_api import async_playwright
@@ -31,7 +22,7 @@ class BrowserManager:
 
     def __init__(self, headless: bool = True):
         if async_playwright is None:
-            raise ImportError("playwright not installed. Run: pip install playwright")
+            raise ImportError("playwright not installed. Run: venv-pip install playwright")
         self.headless = headless
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
@@ -45,8 +36,6 @@ class BrowserManager:
         """创建浏览器上下文."""
         if self._playwright is None:
             self._playwright = await async_playwright().start()
-        if self._playwright is None:
-            raise RuntimeError("Failed to start Playwright")
         if self._browser is None:
             self._browser = await self._playwright.chromium.launch(
                 headless=self.headless,
@@ -103,13 +92,3 @@ class BrowserManager:
         if self._playwright:
             await self._playwright.stop()
             self._playwright = None
-
-
-async def create_browser_context(
-    headless: bool = True,
-    cookies_file: str | None = None,
-) -> BrowserManager:
-    """创建浏览器管理器（便捷函数）."""
-    manager = BrowserManager(headless=headless)
-    await manager.create_context(cookies_file=cookies_file)
-    return manager
