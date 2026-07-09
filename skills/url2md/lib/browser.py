@@ -20,10 +20,25 @@ DEFAULT_USER_AGENT = (
 class BrowserManager:
     """浏览器管理器."""
 
-    def __init__(self, headless: bool = True):
+    def __init__(
+        self,
+        headless: bool = True,
+        user_agent: str | None = None,
+        browser_channel: str = "chrome",
+        viewport_width: int = 1920,
+        viewport_height: int = 1080,
+        locale: str = "zh-CN",
+        timezone: str = "Asia/Shanghai",
+    ):
         if async_playwright is None:
             raise ImportError("playwright not installed. Run: venv-pip install playwright")
         self.headless = headless
+        self._user_agent = user_agent
+        self._browser_channel = browser_channel
+        self._viewport_width = viewport_width
+        self._viewport_height = viewport_height
+        self._locale = locale
+        self._timezone = timezone
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
@@ -39,7 +54,7 @@ class BrowserManager:
         if self._browser is None:
             self._browser = await self._playwright.chromium.launch(
                 headless=self.headless,
-                channel="chrome",
+                channel=self._browser_channel,
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--disable-dev-shm-usage",
@@ -48,10 +63,10 @@ class BrowserManager:
             )
         if self._context is None:
             self._context = await self._browser.new_context(
-                user_agent=user_agent or DEFAULT_USER_AGENT,
-                viewport={"width": 1920, "height": 1080},
-                locale="zh-CN",
-                timezone_id="Asia/Shanghai",
+                user_agent=user_agent or self._user_agent or DEFAULT_USER_AGENT,
+                viewport={"width": self._viewport_width, "height": self._viewport_height},
+                locale=self._locale,
+                timezone_id=self._timezone,
             )
         if cookies_file and Path(cookies_file).exists():
             import json

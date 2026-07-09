@@ -6,6 +6,40 @@ from lib.api import CrawlResult, crawl_url, _run_async
 from lib.browser import BrowserManager
 
 
+class TestBrowserManagerConfig:
+    def test_custom_user_agent(self):
+        from lib.browser import BrowserManager, DEFAULT_USER_AGENT
+        manager = BrowserManager(headless=True, user_agent="CustomUA/1.0")
+        assert manager._user_agent == "CustomUA/1.0"
+
+    def test_default_user_agent(self):
+        from lib.browser import BrowserManager, DEFAULT_USER_AGENT
+        manager = BrowserManager(headless=True)
+        assert manager._user_agent is None
+
+    def test_custom_browser_channel(self):
+        from lib.browser import BrowserManager
+        manager = BrowserManager(headless=True, browser_channel="chromium")
+        assert manager._browser_channel == "chromium"
+
+    def test_default_browser_channel(self):
+        from lib.browser import BrowserManager
+        manager = BrowserManager(headless=True)
+        assert manager._browser_channel == "chrome"
+
+    def test_custom_viewport(self):
+        from lib.browser import BrowserManager
+        manager = BrowserManager(headless=True, viewport_width=1280, viewport_height=720)
+        assert manager._viewport_width == 1280
+        assert manager._viewport_height == 720
+
+    def test_custom_locale(self):
+        from lib.browser import BrowserManager
+        manager = BrowserManager(headless=True, locale="en-US", timezone="America/New_York")
+        assert manager._locale == "en-US"
+        assert manager._timezone == "America/New_York"
+
+
 class TestCrawlResult:
     def test_defaults(self):
         r = CrawlResult(success=True)

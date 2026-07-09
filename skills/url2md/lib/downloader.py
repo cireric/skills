@@ -139,6 +139,7 @@ async def download_images(
     max_concurrent: int = 3,
     referer: str | None = None,
     max_retries: int = 3,
+    timeout: int = 30,
 ) -> dict[str, str]:
     """批量下载图片（支持去重）."""
     if not image_urls:
@@ -165,7 +166,7 @@ async def download_images(
             filename = f"img_{index:03d}.{ext}"
             save_path = os.path.join(output_dir, filename)
             success = await download_single_image(
-                url, save_path, session=session, referer=referer, max_retries=max_retries
+                url, save_path, timeout=timeout, session=session, referer=referer, max_retries=max_retries
             )
             if success:
                 return url, save_path

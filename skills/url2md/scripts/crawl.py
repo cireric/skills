@@ -202,6 +202,21 @@ def main() -> None:
         max_concurrent=config.get("max_concurrent", 3),
         max_retries=config.get("max_retries", 3),
         cookies_file=config.get("cookies_file"),
+        user_agent=config.get("user_agent"),
+        browser_channel=config.get("browser_channel", "chrome"),
+        viewport_width=config.get("viewport_width", 1920),
+        viewport_height=config.get("viewport_height", 1080),
+        locale=config.get("locale", "zh-CN"),
+        timezone=config.get("timezone", "Asia/Shanghai"),
+        labels=config.get("labels"),
+        scroll_step_delay=config.get("scroll_step_delay", 0.3),
+        scroll_settle_delay=config.get("scroll_settle_delay", 0.5),
+        max_scroll_no_change=config.get("max_scroll_no_change", 3),
+        image_width=config.get("image_width", 600),
+        image_download_timeout=config.get("image_download_timeout", 30),
+        delay_jitter=config.get("delay_jitter", 3.0),
+        backoff_base=config.get("backoff_base", 1.0),
+        backoff_max_wait=config.get("backoff_max_wait", 60.0),
     )
 
     if result.success:

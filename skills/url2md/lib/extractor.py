@@ -11,8 +11,21 @@ from .selectors import Platform, get_platform_config, is_article_page
 
 logger = logging.getLogger(__name__)
 
-MAX_SCROLL_NO_CHANGE = 3
-TAIL_SCAN_LINES = 30
+DEFAULT_MAX_SCROLL_NO_CHANGE = 3
+DEFAULT_TAIL_SCAN_LINES = 30
+DEFAULT_SCROLL_STEP_DELAY = 0.3
+DEFAULT_SCROLL_SETTLE_DELAY = 0.5
+DEFAULT_IMAGE_WIDTH = 600
+
+_DEFAULT_NOISE_HTML_PATTERNS = [
+    (r'<div[^>]*class="[^"]*qr-code[^"]*"[^>]*>.*?</div>', ""),
+    (r'<div[^>]*class="[^"]*recommend[^"]*"[^>]*>.*?</div>', ""),
+    (r'<div[^>]*class="[^"]*ad[^"]*"[^>]*>.*?</div>', ""),
+    (r'<div[^>]*id="[^"]*ad[^"]*"[^>]*>.*?</div>', ""),
+    (r'<section[^>]*class="[^"]*mp_profile_popup[^"]*"[^>]*>.*?</section>', ""),
+    (r'<section[^>]*class="[^"]*js_ad[^"]*"[^>]*>.*?</section>', ""),
+    (r'<a[^>]*class="[^"]*appmsg_card[^"]*"[^>]*>.*?</a>', ""),
+]
 
 
 class ExtractError(Exception):
@@ -21,7 +34,7 @@ class ExtractError(Exception):
     pass
 
 
-def clean_image_url(url: str) -> str:
+def clean_image_url(url: str, platform: Platform | None = None) -> str:
     """清理图片 URL，移除不必要的参数."""
     if not url:
         return url
@@ -31,7 +44,12 @@ def clean_image_url(url: str) -> str:
         keep_params = []
         if parsed.query:
             params = parse_qs(parsed.query)
-            for key in ["wx_fmt", "tp"]:
+            if platform is not None:
+                config = get_platform_config(platform)
+                keep_keys = config.get("keep_query_params", [])
+            else:
+                keep_keys = ["wx_fmt", "tp"]
+            for key in keep_keys:
                 if key in params:
                     keep_params.append((key, params[key][0]))
         new_query = urlencode(keep_params) if keep_params else ""
@@ -43,19 +61,19 @@ def clean_image_url(url: str) -> str:
         return url.split("?")[0].split("#")[0]
 
 
-def remove_noise_elements(content: str) -> str:
-    """移除内容中的噪音元素（广告、推荐等）."""
-    noise_patterns = [
-        (r'<div[^>]*class="[^"]*qr-code[^"]*"[^>]*>.*?</div>', ""),
-        (r'<div[^>]*class="[^"]*recommend[^"]*"[^>]*>.*?</div>', ""),
-        (r'<div[^>]*class="[^"]*ad[^"]*"[^>]*>.*?</div>', ""),
-        (r'<div[^>]*id="[^"]*ad[^"]*"[^>]*>.*?</div>', ""),
-        (r'<section[^>]*class="[^"]*mp_profile_popup[^"]*"[^>]*>.*?</section>', ""),
-        (r'<section[^>]*class="[^"]*js_ad[^"]*"[^>]*>.*?</section>', ""),
-        (r'<a[^>]*class="[^"]*appmsg_card[^"]*"[^>]*>.*?</a>', ""),
-    ]
-    for pattern, replacement in noise_patterns:
-        content = re.sub(pattern, replacement, content, flags=re.DOTALL | re.IGNORECASE)
+def remove_noise_elements(content: str, platform: Platform | None = None) -> str:
+    """移除内容中的噪音元素（广告、推荐等）.
+
+    当 platform 为 None 时，使用内置默认模式（向后兼容）。
+    当 platform 指定时，从 platforms.yaml 的 noise_html_patterns 读取。
+    """
+    if platform is not None:
+        config = get_platform_config(platform)
+        patterns = config.get("noise_html_patterns", [])
+    else:
+        patterns = [p for p, _ in _DEFAULT_NOISE_HTML_PATTERNS]
+    for pattern in patterns:
+        content = re.sub(pattern, "", content, flags=re.DOTALL | re.IGNORECASE)
     return content
 
 
@@ -75,23 +93,23 @@ class ArticleData:
             self.images = []
 
 
-async def _scroll_page(page) -> None:
+async def _scroll_page(page, step_delay: float = DEFAULT_SCROLL_STEP_DELAY, settle_delay: float = DEFAULT_SCROLL_SETTLE_DELAY) -> None:
     """滚动页面以加载所有内容."""
-    await page.evaluate("""
-        async () => {
+    await page.evaluate(f"""
+        async () => {{
             const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
             const scrollHeight = document.documentElement.scrollHeight;
             const viewportHeight = window.innerHeight;
             const steps = Math.ceil(scrollHeight / viewportHeight);
 
-            for (let i = 0; i < steps; i++) {
+            for (let i = 0; i < steps; i++) {{
                 window.scrollTo(0, viewportHeight * i);
-                await delay(300);
-            }
+                await delay({int(step_delay * 1000)});
+            }}
             window.scrollTo(0, 0);
-        }
+        }}
     """)
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(settle_delay)
 
 
 async def _extract_field(page, selector: str | None, fallback_method=None) -> str:
@@ -108,11 +126,14 @@ async def _extract_field(page, selector: str | None, fallback_method=None) -> st
     return fallback_method() if fallback_method else ""
 
 
-async def extract_article(page, platform: Platform) -> ArticleData | None:
+async def extract_article(page, platform: Platform, scroll_step_delay: float = DEFAULT_SCROLL_STEP_DELAY, scroll_settle_delay: float = DEFAULT_SCROLL_SETTLE_DELAY) -> ArticleData | None:
     """提取文章内容."""
     try:
         config = get_platform_config(platform)
-        await _scroll_page(page)
+        wait_selector = config.get("wait_selector")
+        if wait_selector:
+            await page.wait_for_selector(wait_selector)
+        await _scroll_page(page, step_delay=scroll_step_delay, settle_delay=scroll_settle_delay)
         title = await _extract_field(page, config.get("title_selector"))
         if not title:
             title = await page.title()
@@ -138,7 +159,7 @@ async def extract_article(page, platform: Platform) -> ArticleData | None:
                     try:
                         src = await img.get_attribute("data-src") or await img.get_attribute("src")
                         if src and not src.startswith("data:"):
-                            src = clean_image_url(src)
+                            src = clean_image_url(src, platform=platform)
                             if src and src not in images:
                                 images.append(src)
                     except Exception as e:
@@ -172,7 +193,7 @@ async def _extract_links_from_elements(page, selector: str, links: set) -> None:
             logger.debug(f"提取链接失败: {e}")
 
 
-async def extract_list_links(page, platform: Platform, scroll: bool = True) -> list[str]:
+async def extract_list_links(page, platform: Platform, scroll: bool = True, max_scroll_no_change: int = DEFAULT_MAX_SCROLL_NO_CHANGE) -> list[str]:
     """提取列表页的文章链接."""
     try:
         config = get_platform_config(platform)
@@ -181,7 +202,7 @@ async def extract_list_links(page, platform: Platform, scroll: bool = True) -> l
         if scroll and config.get("needs_scroll", False):
             prev_count = 0
             no_change_count = 0
-            while no_change_count < MAX_SCROLL_NO_CHANGE:
+            while no_change_count < max_scroll_no_change:
                 scroll_distance = random.randint(300, 800)
                 await page.evaluate(f"window.scrollBy(0, {scroll_distance})")
                 await asyncio.sleep(random.uniform(0.5, 1.5))
@@ -200,7 +221,7 @@ async def extract_list_links(page, platform: Platform, scroll: bool = True) -> l
         raise ExtractError(f"提取列表链接失败: {e}") from e
 
 
-def convert_img_tag(img_tag: str) -> str:
+def convert_img_tag(img_tag: str, platform: Platform | None = None, image_width: int = DEFAULT_IMAGE_WIDTH) -> str:
     """将 img 标签转换为 Markdown 格式."""
     src_match = re.search(r'(?:data-)?src=["\']([^"\']+)["\']', img_tag)
     alt_match = re.search(r'alt=["\']([^"\']*)["\']', img_tag)
@@ -208,8 +229,8 @@ def convert_img_tag(img_tag: str) -> str:
         return ""
     src = src_match.group(1)
     alt = alt_match.group(1) if alt_match else "image"
-    src = clean_image_url(src)
-    return f'\n![{alt}]({src}){{width="600"}}\n'
+    src = clean_image_url(src, platform=platform)
+    return f'\n![{alt}]({src}){{width="{image_width}"}}\n'
 
 
 _HTML_TO_MD_STEPS: list[tuple[str, str | re.Pattern, str]] = [
@@ -245,8 +266,8 @@ _HTML_TO_MD_STEPS: list[tuple[str, str | re.Pattern, str]] = [
 ]
 
 
-def _convert_html_to_markdown(content: str) -> str:
-    content = remove_noise_elements(content)
+def _convert_html_to_markdown(content: str, platform: Platform | None = None, image_width: int = DEFAULT_IMAGE_WIDTH) -> str:
+    content = remove_noise_elements(content, platform=platform)
     for _name, pattern, replacement in _HTML_TO_MD_STEPS:
         content = re.sub(pattern, replacement, content, flags=re.DOTALL)
     content = re.sub(
@@ -255,14 +276,14 @@ def _convert_html_to_markdown(content: str) -> str:
         content,
         flags=re.DOTALL,
     )
-    content = re.sub(r"<img[^>]*>", lambda m: convert_img_tag(m.group(0)), content)
+    content = re.sub(r"<img[^>]*>", lambda m: convert_img_tag(m.group(0), platform=platform, image_width=image_width), content)
     content = re.sub(r"!\[.*?\]\(data:image[^)]+\)", "", content)
     content = re.sub(r"<[^>]+>", "", content)
     content = re.sub(r"\n{3,}", "\n\n", content)
     return content.strip()
 
 
-def truncate_tail_noise(content: str, markers: list[str], scan_lines: int = TAIL_SCAN_LINES) -> str:
+def truncate_tail_noise(content: str, markers: list[str], scan_lines: int = DEFAULT_TAIL_SCAN_LINES) -> str:
     """截断 Markdown 文末噪音区域.
 
     只在最后 scan_lines 行内扫描噪音标记词，从首个匹配行截断。
@@ -284,20 +305,29 @@ def truncate_tail_noise(content: str, markers: list[str], scan_lines: int = TAIL
     return content
 
 
-def convert_to_markdown(article: ArticleData, platform: Platform | None = None) -> str:
+_DEFAULT_LABELS = {
+    "author": "作者：",
+    "date": "发布时间：",
+    "source": "来源：",
+}
+
+
+def convert_to_markdown(article: ArticleData, platform: Platform | None = None, labels: dict[str, str] | None = None, image_width: int = DEFAULT_IMAGE_WIDTH) -> str:
     """将文章转换为 Markdown 格式."""
+    if labels is None:
+        labels = _DEFAULT_LABELS
     lines = []
     lines.append(f"# {article.title}")
     lines.append("")
     if article.author:
-        lines.append(f"**作者：** {article.author}")
+        lines.append(f"**{labels.get('author', _DEFAULT_LABELS['author'])}** {article.author}")
     if article.date:
-        lines.append(f"**发布时间：** {article.date}")
-    lines.append(f"**来源：** {article.url}")
+        lines.append(f"**{labels.get('date', _DEFAULT_LABELS['date'])}** {article.date}")
+    lines.append(f"**{labels.get('source', _DEFAULT_LABELS['source'])}** {article.url}")
     lines.append("")
     lines.append("---")
     lines.append("")
-    content = _convert_html_to_markdown(article.content)
+    content = _convert_html_to_markdown(article.content, platform=platform, image_width=image_width)
     if platform is not None:
         config = get_platform_config(platform)
         markers = config.get("tail_noise_markers", [])

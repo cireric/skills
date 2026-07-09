@@ -6,20 +6,45 @@
 output_dir: "docs/misc/"
 filename: null                # Custom filename (single article only; null = auto from title)
 
+# Markdown labels (for internationalization)
+labels:
+  author: "作者："
+  date: "发布时间："
+  source: "来源："
+
 # Images
 download_images: false
 images_dir: null              # null = <output_dir>/images/
 
 # Rate limiting
 delay: 2.0                    # Base delay between requests (seconds)
+delay_jitter: 3.0             # Max random jitter added to delay (seconds)
 max_concurrent: 3             # Max concurrent image downloads
 
 # Browser
 headless: true
+user_agent: null              # null = default User-Agent string
+browser_channel: "chrome"     # "chrome" (system Chrome) or "chromium" (Playwright bundled)
+viewport_width: 1920
+viewport_height: 1080
+locale: "zh-CN"
+timezone: "Asia/Shanghai"
 cookies_file: null            # Path to cookies JSON (null = no cookies)
 
 # List crawl
 limit: null                   # Max articles per list page (null = all)
 
+# Scroll
+scroll_step_delay: 0.3        # Delay between scroll steps (seconds)
+scroll_settle_delay: 0.5      # Wait after all scrolling completes (seconds)
+max_scroll_no_change: 3       # Stop scrolling after N consecutive scrolls with no new content
+
+# Extraction
+tail_scan_lines: 30           # Lines from end to scan for noise markers
+image_width: 600              # Default image width in Markdown output (px)
+image_download_timeout: 30    # Per-image download timeout (seconds)
+
 # Retry
 max_retries: 3                # Per-image retry count
+backoff_base: 1.0             # Exponential backoff base (seconds)
+backoff_max_wait: 60.0        # Max backoff wait (seconds)

@@ -1,3 +1,6 @@
+import asyncio
+from unittest.mock import AsyncMock
+
 from lib.extractor import (
     clean_image_url,
     convert_img_tag,
@@ -6,6 +9,33 @@ from lib.extractor import (
     remove_noise_elements,
     truncate_tail_noise,
 )
+from lib.selectors import Platform
+
+
+class TestExtractArticleWaitsForSelector:
+    def test_waits_for_wait_selector(self):
+        from lib.extractor import extract_article
+        page = AsyncMock()
+        page.url = "https://mp.weixin.qq.com/s/test"
+        page.title = AsyncMock(return_value="Test Title")
+        content_elem = AsyncMock()
+        content_elem.inner_html = AsyncMock(return_value="<p>Content</p>")
+        page.query_selector = AsyncMock(return_value=content_elem)
+        page.query_selector_all = AsyncMock(return_value=[])
+        asyncio.run(extract_article(page, Platform.WECHAT))
+        page.wait_for_selector.assert_awaited_once_with("#js_content")
+
+    def test_no_wait_when_no_wait_selector(self):
+        from lib.extractor import extract_article
+        page = AsyncMock()
+        page.url = "https://example.com/article"
+        page.title = AsyncMock(return_value="Test Title")
+        content_elem = AsyncMock()
+        content_elem.inner_html = AsyncMock(return_value="<p>Content</p>")
+        page.query_selector = AsyncMock(return_value=content_elem)
+        page.query_selector_all = AsyncMock(return_value=[])
+        asyncio.run(extract_article(page, Platform.GENERIC))
+        page.wait_for_selector.assert_not_awaited()
 
 
 class TestCleanImageUrl:
@@ -13,13 +43,17 @@ class TestCleanImageUrl:
         assert clean_image_url("https://x.com/img.jpg&amp;w=1") == "https://x.com/img.jpg&w=1"
 
     def test_keep_wx_fmt(self):
-        url = clean_image_url("https://mmbiz.qpic.cn/img?wx_fmt=png&other=1&tp=webp")
+        url = clean_image_url("https://mmbiz.qpic.cn/img?wx_fmt=png&other=1&tp=webp", platform=Platform.WECHAT)
         assert "wx_fmt=png" in url
         assert "other=1" not in url
 
-    def test_strip_all_params(self):
+    def test_strip_all_params_no_platform(self):
         url = clean_image_url("https://x.com/img.jpg?random=1&foo=2")
         assert "?" not in url
+
+    def test_generic_strips_wx_fmt(self):
+        url = clean_image_url("https://mmbiz.qpic.cn/img?wx_fmt=png&other=1", platform=Platform.GENERIC)
+        assert "wx_fmt" not in url
 
     def test_empty(self):
         assert clean_image_url("") == ""
@@ -31,14 +65,24 @@ class TestCleanImageUrl:
 class TestRemoveNoiseElements:
     def test_ad_div(self):
         html = '<div class="ad-banner">Buy now</div><p>Content</p>'
-        result = remove_noise_elements(html)
+        result = remove_noise_elements(html, platform=Platform.WECHAT)
         assert "Buy now" not in result
         assert "Content" in result
 
     def test_qr_code(self):
         html = '<div class="qr-code-popup">Scan me</div><p>Text</p>'
-        result = remove_noise_elements(html)
+        result = remove_noise_elements(html, platform=Platform.WECHAT)
         assert "Scan me" not in result
+
+    def test_wechat_patterns_not_applied_to_generic(self):
+        html = '<div class="qr-code-popup">Scan me</div><p>Text</p>'
+        result = remove_noise_elements(html, platform=Platform.GENERIC)
+        assert "Scan me" in result
+
+    def test_no_platform_applies_all_patterns(self):
+        html = '<div class="ad-banner">Buy now</div><p>Content</p>'
+        result = remove_noise_elements(html)
+        assert "Buy now" not in result
 
 
 class TestConvertImgTag:
@@ -80,6 +124,18 @@ class TestConvertToMarkdown:
         )
         md = convert_to_markdown(article)
         assert "作者" not in md
+
+    def test_custom_labels(self):
+        article = ArticleData(
+            title="Test",
+            author="Author",
+            date="2024-01-01",
+            url="https://example.com",
+            content="<p>Hello</p>",
+        )
+        md = convert_to_markdown(article, labels={"author": "Author:", "date": "Date:", "source": "Source:"})
+        assert "**Author:** Author" in md
+        assert "**Source:** https://example.com" in md
 
 
 class TestTruncateTailNoise:
