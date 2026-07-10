@@ -73,23 +73,24 @@ class TestValidateScopeMissingFields:
         errors = validate_scope(data)
         assert any(e.field == "goal_type" for e in errors)
 
-    def test_missing_depth(self):
+    def test_missing_depth_optional(self):
         data = _scope()
         del data["depth"]
         errors = validate_scope(data)
-        assert any(e.field == "depth" for e in errors)
+        assert not any(e.field == "depth" for e in errors)
 
-    def test_missing_audience(self):
+    def test_missing_audience_optional(self):
         data = _scope()
         del data["audience"]
         errors = validate_scope(data)
-        assert any(e.field == "audience" for e in errors)
+        assert not any(e.field == "audience" for e in errors)
 
-    def test_missing_search_directions(self):
+    def test_missing_both_depth_and_audience_optional(self):
         data = _scope()
-        del data["search_directions"]
+        del data["depth"]
+        del data["audience"]
         errors = validate_scope(data)
-        assert any(e.field == "search_directions" for e in errors)
+        assert not any(e.field in ("depth", "audience") for e in errors)
 
 
 class TestValidateScopeTypeErrors:
@@ -109,14 +110,6 @@ class TestValidateScopeTypeErrors:
         errors = validate_scope(_scope(audience=True))
         assert any(e.field == "audience" and "expected str" in e.message for e in errors)
 
-    def test_search_directions_not_list(self):
-        errors = validate_scope(_scope(search_directions="AI"))
-        assert any(e.field == "search_directions" and "expected list" in e.message for e in errors)
-
-    def test_search_directions_non_str_items(self):
-        errors = validate_scope(_scope(search_directions=[1, 2]))
-        assert any(e.field == "search_directions" and "only strings" in e.message for e in errors)
-
 
 class TestValidateScopeEnumErrors:
     def test_invalid_goal_type(self):
@@ -133,10 +126,6 @@ class TestValidateScopeEnumErrors:
 
 
 class TestValidateScopeEdgeCases:
-    def test_empty_search_directions(self):
-        errors = validate_scope(_scope(search_directions=[]))
-        assert any(e.field == "search_directions" and "non-empty" in e.message for e in errors)
-
     def test_report_language_empty_str(self):
         errors = validate_scope(_scope(report_language=""))
         assert any(e.field == "report_language" for e in errors)
@@ -348,46 +337,6 @@ class TestValidateCollectedErrors:
     def test_source_tier_optional(self):
         errors = validate_collected([{"url": "https://a.com", "title": "T", "snippet": "S"}])
         assert not any("source_tier" in e.field for e in errors)
-
-
-class TestValidateCollectedCoveredDirections:
-    def test_valid_covered_directions(self):
-        data = [
-            {"url": "https://a.com", "title": "A", "snippet": "S", "covered_directions": ["AI", "ML"]},
-            {"url": "https://b.com", "title": "B", "snippet": "S", "covered_directions": ["security"]},
-        ]
-        errors = validate_collected(data)
-        assert errors == []
-
-    def test_max_three_items(self):
-        data = [{"url": "https://a.com", "title": "A", "snippet": "S", "covered_directions": ["a", "b", "c"]}]
-        errors = validate_collected(data)
-        assert errors == []
-
-    def test_more_than_three_items_fails(self):
-        data = [{"url": "https://a.com", "title": "A", "snippet": "S", "covered_directions": ["a", "b", "c", "d"]}]
-        errors = validate_collected(data)
-        assert any("covered_directions" in e.field and "at most 3" in e.message for e in errors)
-
-    def test_non_list_fails(self):
-        data = [{"url": "https://a.com", "title": "A", "snippet": "S", "covered_directions": "AI"}]
-        errors = validate_collected(data)
-        assert any("covered_directions" in e.field and "expected list" in e.message for e in errors)
-
-    def test_non_string_item_fails(self):
-        data = [{"url": "https://a.com", "title": "A", "snippet": "S", "covered_directions": ["AI", 42]}]
-        errors = validate_collected(data)
-        assert any("covered_directions[1]" in e.field and "non-empty string" in e.message for e in errors)
-
-    def test_empty_string_fails(self):
-        data = [{"url": "https://a.com", "title": "A", "snippet": "S", "covered_directions": ["AI", ""]}]
-        errors = validate_collected(data)
-        assert any("covered_directions[1]" in e.field and "non-empty string" in e.message for e in errors)
-
-    def test_without_covered_directions_passes(self):
-        data = [{"url": "https://a.com", "title": "A", "snippet": "S"}]
-        errors = validate_collected(data)
-        assert not any("covered_directions" in e.field for e in errors)
 
 
 class TestClaimSourceVerification:

@@ -1,142 +1,78 @@
 # Subagent Delegation Template
 
-When delegating section writing to independent agent calls in Phase 3a, follow these rules:
+When delegating section writing to independent agent calls in Phase 3a, follow these rules.
 
-## Delegation Rules
+## JSON Schema
 
-1. **One section per agent call** — never write all sections in a single call. This prevents token-limit compression and ensures each section gets full output capacity.
-2. **Write content FIRST, extract claims AFTER** — within each call, first write the complete Markdown narrative (tables, comparisons, detailed parameters, architecture breakdowns), then extract structured claims from what you wrote.
-3. **Embed allowed URL list in every subagent prompt** — extract all URLs from `collected.json` and include them in the prompt as the **only** valid `source_urls`. Any `source_url` not in this list will be caught by the `analysis→review` gate's url_traceability check and block progression. Format:
+Each subagent must output a JSON object with these EXACT fields (no others):
 
-   ```
-   ## Allowed source URLs (use ONLY these in source_urls)
-   - https://example.com/article1
-   - https://example.com/article2
-   ...
-   ```
-
-4. **Specify output path with `.workdir/` prefix in every subagent prompt** — subagents must write their output to `<project_root>/.workdir/`, NOT the project root. Include this instruction explicitly:
-
-   ```
-   ## Output path
-   Write your section JSON to: <project_root>/.workdir/analysis_section_<id>.json
-   Do NOT write to the project root.
-   ```
-
-5. **Include JSON schema in every subagent prompt** — embed the exact expected structure to minimize schema violations:
-
-   ```
-    ## Required JSON structure
-    Write a single JSON object with these EXACT fields (no others):
+```json
+{
+  "id": "<section_id>",
+  "title": "<section title>",
+  "content": "<full Markdown content, must NOT start with ## >",
+  "depth_strategy": "<overview|deep_dive|comparison|methodology>",
+  "key_insights": [
     {
-      "id": "<section_id>",
-      "title": "<section title>",
-      "content": "<full Markdown content, must NOT start with ## >",
-      "depth_strategy": "<overview|deep_dive|comparison|methodology>",
-      "key_insights": [
-        {
-          "text": "<insight statement with causal direction or key finding>",
-          "source_urls": ["<url from allowed list>"]
-        }
-      ],
-      "tensions": [
-        {
-          "description": "<description of disagreement or conflict between sources>",
-          "sources": ["<url from allowed list>"]
-        }
-      ],
-      "claims": [
-        {
-          "text": "<claim statement>",
-          "source_urls": ["<url from allowed list>"],
-          "evidence_type": "official_data|independent_benchmark|third_party_estimate|qualitative_trend|expert_opinion",
-          "confidence": "high|medium|low",
-          "precision": "exact|range|qualitative",
-          "source_metadata": { "test_conditions": "...", "test_date": "...", "source_type": "..." }
-        }
-      ]
+      "text": "<insight statement with causal direction or key finding>",
+      "source_urls": ["<url from allowed list>"]
     }
-    - Use "id" NOT "section_id"
-    - Use "source_urls" NOT "sources"
-    - "claims" is REQUIRED, use [] if no claims
-    - "key_insights" is REQUIRED for panoramic/exploratory sections (min 2), optional otherwise
-    - "tensions" is optional — include only when sources genuinely disagree
-    - "depth_strategy" is REQUIRED — must be one of: overview, deep_dive, comparison, methodology
-    - Do NOT add fields like "word_count", "language", etc.
-   ```
+  ],
+  "tensions": [
+    {
+      "description": "<description of disagreement or conflict between sources>",
+      "sources": ["<url from allowed list>"]
+    }
+  ],
+  "claims": [
+    {
+      "text": "<claim statement>",
+      "source_urls": ["<url from allowed list>"],
+      "evidence_type": "official_data|independent_benchmark|third_party_estimate|qualitative_trend|expert_opinion",
+      "confidence": "high|medium|low",
+      "precision": "exact|range|qualitative",
+      "source_metadata": { "test_conditions": "...", "test_date": "...", "source_type": "..." }
+    }
+  ]
+}
+```
+
+- Use "id" NOT "section_id"
+- Use "source_urls" NOT "sources"
+- "claims" is REQUIRED, use [] if no claims
+- "key_insights" is REQUIRED for panoramic/exploratory sections (min 2), optional otherwise
+- "tensions" is optional — include only when sources genuinely disagree
+- "depth_strategy" is REQUIRED — must be one of: overview, deep_dive, comparison, methodology
+- Do NOT add fields like "word_count", "language", etc.
 
 ## Source Content Injection
 
-When constructing each subagent prompt, the orchestrator MUST inject source references for URLs relevant to that section:
+When constructing each subagent prompt, the orchestrator MUST inject ALL source references from collected.json:
 
-1. Identify which URLs are relevant to the section (from section plan + source_hints)
-2. For each relevant URL, inject:
-   - The source title (from collected.json)
+1. For each entry in collected.json, inject:
+   - The source title
    - The `source_file` path so the subagent can read the full original text via the Read tool
-3. Include in the subagent prompt under a "## Source Content" heading:
+   - The `snippet` (1-2 sentence summary for relevance screening)
+2. Include in the subagent prompt under a "## Source Content" heading:
+
    ```
    ## Source Content
-   For each source, the title and source_file path are provided below. You MUST use the Read tool on the source_file path to read the original text before writing any claim — titles alone are for relevance screening, not for content extraction.
+   For each source, the title, snippet, and source_file path are provided below. You MUST use the Read tool on the source_file path to read the original text before writing any claim — titles and snippets are for relevance screening, not for content extraction. Select sources relevant to your section based on the snippet content.
 
    ### [URL1](url1)
    - Title: <title from collected.json>
+   - Snippet: <snippet from collected.json>
    - source_file: sources/abc123def456.md
 
    ### [URL2](url2)
    - Title: <title from collected.json>
+   - Snippet: <snippet from collected.json>
    - source_file: sources/def789ghi012.md
    ```
-4. This ensures subagents read full original text rather than paraphrasing previews
 
-## Deep-Dive Topic Injection
+## Assembly Step 2: Write content FIRST, extract claims AFTER
 
-When the section plan includes `deep_dive_topics`, the orchestrator MUST inject them into the subagent prompt. This is critical for panoramic/exploratory sections where the orchestrator has selected key findings for deep argumentation.
-
-Inject deep-dive topics under a "## Deep-Dive Topics" heading in the subagent prompt:
-
-```
-## Deep-Dive Topics
-You MUST write ≥ 2 deep-dive paragraphs in this section. Each deep-dive paragraph
-argues one key finding with 3+ sources. The orchestrator has identified these topics
-as the most important findings in this direction:
-
-1. **<topic_1>** — Suggested sources: <url1>, <url2>, <url3>
-   Selection criterion: <tension|impact|mechanism>
-
-2. **<topic_2>** — Suggested sources: <url4>, <url5>
-   Selection criterion: <tension|impact|mechanism>
-
-You may use sources beyond the suggested ones. The suggested sources are advisory,
-not exhaustive. If you find a more important finding than the suggested topics while
-writing, you may substitute it — but you must still write ≥ 2 deep-dive paragraphs
-and each must satisfy at least one selection criterion (tension, impact, or mechanism).
-```
-
-## Depth Strategy Injection
-
-The orchestrator MUST inject the section's depth strategy into the subagent prompt. This determines the content organization rules the subagent must follow.
-
-```
-## Depth Strategy: <overview|deep_dive|comparison|methodology>
-Follow the content organization rules for this strategy from writing-guide.md.
-```
-
-For **overview** strategy sections, the subagent must produce:
-- 1-2 paragraphs of breadth-first summary
-- ≥ 2 deep-dive anchor paragraphs (each with 3+ sources, satisfying tension/impact/mechanism)
-- Optional: 1 tension paragraph, 1 action paragraph (only if source-supported)
-
-For **deep_dive** strategy sections, the subagent must produce:
-- Full analysis with structured comparison tables
-- Every major claim argued with 2+ sources
-- Contradictions surfaced with resolution conditions
-
-For **comparison** strategy sections, the subagent must produce:
-- Comparison matrix, key decision factors, not-recommended scenarios
-- See writing-guide.md "Recommendation Structure" for full requirements
-
-For **methodology** strategy sections, the subagent must produce:
-- Data sources, test conditions, cross-source comparison limitations, date range
+Within each call, first write the complete Markdown narrative (tables, comparisons, detailed parameters, architecture breakdowns), then extract structured claims from what you wrote.
 
 ## Assembly Step
 

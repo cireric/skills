@@ -15,9 +15,6 @@ from scripts.proceed import (
 from scripts.reporter import build_front_matter, generate_report
 from scripts.report_checks import run_report_checks
 from scripts.search_gate import SearchGate
-
-
-
 def _make_source_file(workdir, url, content="x" * 6000):
     h = compute_url_hash(url)
     sources_dir = workdir / "sources"
@@ -32,8 +29,8 @@ def _write_analysis_section_files(workdir, analysis):
 
 
 def _make_collected_entry(url, title, snippet, source_tier,
-                          covered_directions=None, fetch_failed=False,
-                          source_file=None):
+                           fetch_failed=False,
+                           source_file=None):
     entry = {
         "url": url,
         "title": title,
@@ -41,8 +38,6 @@ def _make_collected_entry(url, title, snippet, source_tier,
         "source_tier": source_tier,
         "fetched_content": snippet[:200],
     }
-    if covered_directions is not None:
-        entry["covered_directions"] = covered_directions
     if fetch_failed:
         entry["fetch_failed"] = True
     if source_file is not None:
@@ -86,15 +81,9 @@ class TestTechSelectionHappyPath:
                     title=f"Source {url}",
                     snippet="Rust backend Go backend performance",
                     source_tier=tier,
-                    covered_directions=directions,
                     source_file=sf,
                 ))
         _write_json(workdir / "collected.json", collected)
-
-        search_plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
-        for task in search_plan["tasks"]:
-            task["status"] = "completed"
-        _write_json(workdir / "search_plan.json", search_plan)
 
         ok, errors = proceeds(workdir, "search", "analysis")
         assert ok, f"search→analysis failed: {errors}"
@@ -207,6 +196,9 @@ class TestAcademicResearchChinese:
             "https://cnki.net/article/001",
             "https://semanticscholar.org/paper/abc",
             "https://aclanthology.org/2024.acl-long.1",
+            "https://arxiv.org/abs/2401.0102",
+            "https://arxiv.org/abs/2401.0103",
+            "https://semanticscholar.org/paper/def",
         ]
         for url in tier1_urls:
             sf = _make_source_file(workdir, url)
@@ -215,15 +207,9 @@ class TestAcademicResearchChinese:
                 title=f"Paper on LLM code generation",
                 snippet="大语言模型 代码生成 应用 研究",
                 source_tier=1,
-                covered_directions=directions,
                 source_file=sf,
             ))
         _write_json(workdir / "collected.json", collected)
-
-        search_plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
-        for task in search_plan["tasks"]:
-            task["status"] = "completed"
-        _write_json(workdir / "search_plan.json", search_plan)
 
         ok, errors = proceeds(workdir, "search", "analysis")
         assert ok, f"search→analysis failed: {errors}"
@@ -331,15 +317,9 @@ class TestMarketAnalysisDegraded:
                 title=f"Source on AI agents {tier}",
                 snippet="AI agent framework market trends 2026",
                 source_tier=tier,
-                covered_directions=directions,
                 source_file=sf,
             ))
         _write_json(workdir / "collected.json", collected)
-
-        search_plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
-        for task in search_plan["tasks"]:
-            task["status"] = "completed"
-        _write_json(workdir / "search_plan.json", search_plan)
 
         ok, errors = proceeds(workdir, "search", "analysis")
         assert ok, f"search→analysis failed: {errors}"
@@ -432,21 +412,21 @@ class TestFactCheckMinimal:
 
         url1 = "https://arxiv.org/abs/rust-memory-safety"
         url2 = "https://doc.rust-lang.org/book/ch04-00.html"
+        url3 = "https://reddit.com/r/rust/memory_safety"
         sf1 = _make_source_file(workdir, url1, content="x" * 6000)
+        sf3 = _make_source_file(workdir, url3, content="x" * 6000)
         collected = [
             _make_collected_entry(
                 url=url1, title="Rust Memory Safety", snippet="Rust memory safety ownership",
-                source_tier=1, covered_directions=directions, source_file=sf1),
+                source_tier=1, source_file=sf1),
             _make_collected_entry(
                 url=url2, title="Rust Book Ownership", snippet="Rust ownership system memory safe",
                 source_tier=2, fetch_failed=True),
+            _make_collected_entry(
+                url=url3, title="Reddit Rust Memory Safety", snippet="Rust memory safety discussion",
+                source_tier=4, source_file=sf3),
         ]
         _write_json(workdir / "collected.json", collected)
-
-        search_plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
-        for task in search_plan["tasks"]:
-            task["status"] = "completed"
-        _write_json(workdir / "search_plan.json", search_plan)
 
         sg = SearchGate(workdir)
         fidelity = sg._check_source_fidelity()
@@ -562,15 +542,9 @@ class TestExploratoryDeepDive:
                 title=f"Agentic coding source tier {tier}",
                 snippet="agentic coding trends AI assistants",
                 source_tier=tier,
-                covered_directions=directions,
                 source_file=sf,
             ))
         _write_json(workdir / "collected.json", collected)
-
-        search_plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
-        for task in search_plan["tasks"]:
-            task["status"] = "completed"
-        _write_json(workdir / "search_plan.json", search_plan)
 
         ok, errors = proceeds(workdir, "search", "analysis")
         assert ok, f"search→analysis failed: {errors}"
@@ -654,16 +628,13 @@ class TestSearchGateDirectChecks:
             _make_collected_entry(
                 url="https://arxiv.org/abs/test1", title="Paper 1",
                 snippet="deep learning research", source_tier=1,
-                covered_directions=["deep learning"],
                 source_file=_make_source_file(workdir, "https://arxiv.org/abs/test1")),
             _make_collected_entry(
                 url="https://arxiv.org/abs/test2", title="Paper 2",
                 snippet="deep learning methods", source_tier=1,
-                covered_directions=["deep learning"],
                 source_file=_make_source_file(workdir, "https://arxiv.org/abs/test2")),
         ]
         _write_json(workdir / "collected.json", collected)
-        _make_completed_search_plan(workdir, directions=["deep learning"])
 
         sg = SearchGate(workdir)
         tier_check = sg._check_tier_coverage()
@@ -688,34 +659,6 @@ class TestSearchGateDirectChecks:
         sg = SearchGate(workdir)
         fidelity = sg._check_source_fidelity()
         assert fidelity.passed, f"source_fidelity should pass: {fidelity.message}"
-
-    def test_topic_coverage_with_covered_directions(self, tmp_path):
-        workdir = tmp_path
-        _make_scope(workdir, goal_type="tech_selection", depth="standard",
-                     search_directions=["Rust performance", "Go concurrency"])
-        url = "https://example.com/covered"
-        collected = [
-            _make_collected_entry(
-                url=url, title="Test", snippet="test",
-                source_tier=2, covered_directions=["Rust performance", "Go concurrency"],
-                source_file=_make_source_file(workdir, url)),
-            _make_collected_entry(
-                url="https://example.com/covered2", title="Test2",
-                snippet="Rust performance Go concurrency",
-                source_tier=3,
-                source_file=_make_source_file(workdir, "https://example.com/covered2")),
-            _make_collected_entry(
-                url="https://example.com/covered3", title="Test3",
-                snippet="Rust Go backend comparison",
-                source_tier=4,
-                source_file=_make_source_file(workdir, "https://example.com/covered3")),
-        ]
-        _write_json(workdir / "collected.json", collected)
-        _make_completed_search_plan(workdir, directions=["Rust performance", "Go concurrency"])
-
-        sg = SearchGate(workdir)
-        tc = sg._check_topic_coverage()
-        assert tc.passed, f"topic_coverage should pass: {tc.message}"
 
 
 class TestReportChecksDirect:
@@ -752,8 +695,12 @@ class TestPipelineStateConsistency:
         workdir = tmp_path / "workdir"
         workdir.mkdir()
         config = {
-            "sources": {"4": {"sources": [{"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com"}]}},
-            "routes": {"exploratory": {"entry_tier": 4, "path": [4]}},
+            "sources": {
+                "4": {"sources": [{"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com"}]},
+                "3": {"sources": [{"name": "Medium", "domain": "medium.com"}]},
+                "2": {"sources": [{"name": "GitHub", "domain": "github.com"}]},
+            },
+            "routes": {"exploratory": {"entry_tier": 4, "path": [4, 3, 2]}},
         }
 
         _make_scope(workdir, goal_type="exploratory", depth="quick",
@@ -761,21 +708,20 @@ class TestPipelineStateConsistency:
         proceeds(workdir, "scope", "search", config)
         assert detect_current_phase(workdir) == "post_search"
 
-        url = "https://example.com/state-test"
-        sf = _make_source_file(workdir, url)
-        _write_json(workdir / "collected.json", [
-            _make_collected_entry(url=url, title="t1 info", snippet="t1",
-                                  source_tier=4, source_file=sf,
-                                  covered_directions=["t1"]),
-        ])
-        _make_completed_search_plan(workdir, directions=["t1"])
+        collected = []
+        for i, tier in enumerate([4, 3, 2]):
+            url = f"https://example.com/state-test-{i}"
+            sf = _make_source_file(workdir, url)
+            collected.append(_make_collected_entry(url=url, title=f"t1 info {i}", snippet="t1",
+                                                  source_tier=tier, source_file=sf))
+        _write_json(workdir / "collected.json", collected)
 
         proceeds(workdir, "search", "analysis")
         assert detect_current_phase(workdir) == "post_analysis"
 
         analysis = {"topic": "t", "goal_type": "exploratory", "sections": [
             {"id": "overview", "title": "Overview", "content": "test overview", "claims": [],
-             "key_insights": [{"text": "insight 1", "source_urls": [url]}, {"text": "insight 2", "source_urls": [url]}]},
+             "key_insights": [{"text": "insight 1", "source_urls": [collected[0]["url"]]}, {"text": "insight 2", "source_urls": [collected[1]["url"]]}]},
             {"id": "findings", "title": "Findings", "content": "test findings", "claims": []},
         ]}
         _write_json(workdir / "analysis.json", analysis)

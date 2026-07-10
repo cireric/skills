@@ -24,6 +24,7 @@ from scripts.report_checks import (
     check_report_overlong_lines,
     check_report_refs_visibility,
     check_report_table_delimiters,
+    check_report_table_suggestion,
     check_report_unclosed_code_blocks,
     run_report_checks,
 )
@@ -53,7 +54,7 @@ class TestCheckReportDanglingRefs:
         assert result.passed
         assert result.level == "BLOCKER"
 
-    def test_dangling_ref_warns(self, tmp_path):
+    def test_dangling_ref_blocks(self, tmp_path):
         md = """Text cites [&#91;1&#93;](#refs) but no definition here.
 
 ## References
@@ -117,7 +118,7 @@ class TestCheckReportOrphanedDefs:
         assert result.passed
         assert result.level == "BLOCKER"
 
-    def test_orphaned_def_warns(self, tmp_path):
+    def test_orphaned_def_blocks(self, tmp_path):
         md = """Nothing cited in body.
 
 ## References
@@ -278,26 +279,26 @@ review_status: draft
         assert result.passed
         assert result.level == "BLOCKER"
 
-    def test_no_front_matter_warns(self, tmp_path):
+    def test_no_front_matter_blocks(self, tmp_path):
         _write_md(tmp_path / "report.md", "No front matter here.")
         result = check_report_front_matter(tmp_path / "report.md")
         assert not result.passed
         assert "No YAML front matter" in result.message
 
-    def test_unclosed_front_matter_warns(self, tmp_path):
+    def test_unclosed_front_matter_blocks(self, tmp_path):
         _write_md(tmp_path / "report.md", "---\ntopic: AI\ngoal_type: tech\n")
         result = check_report_front_matter(tmp_path / "report.md")
         assert not result.passed
         assert "not properly closed" in result.message
 
-    def test_missing_required_fields_warns(self, tmp_path):
+    def test_missing_required_fields_blocks(self, tmp_path):
         _write_md(tmp_path / "report.md", "---\ntopic: AI\ngoal_type: tech\n---\n")
         result = check_report_front_matter(tmp_path / "report.md")
         assert not result.passed
         assert "missing required fields" in result.message
         assert "date" in result.message or "review_status" in result.message
 
-    def test_empty_front_matter_warns(self, tmp_path):
+    def test_empty_front_matter_blocks(self, tmp_path):
         _write_md(tmp_path / "report.md", "---\n---\nBody.")
         result = check_report_front_matter(tmp_path / "report.md")
         assert not result.passed
@@ -502,11 +503,11 @@ Content with cite [&#91;1&#93;](#refs).
 """
         _write_md(tmp_path / "report.md", md)
         results = run_report_checks(tmp_path / "report.md")
-        assert len(results) == 10
+        assert len(results) == 11
         for r in results:
             assert isinstance(r, CheckResult)
 
-    def test_levels_are_warn_or_blocker(self, tmp_path):
+    def test_blocker_and_warn_levels(self, tmp_path):
         md = """---
 topic: AI
 goal_type: tech_selection
@@ -529,8 +530,8 @@ Content.
                 assert r.level == "WARN", f"{r.name} should be WARN (got {r.level})"
 
 
-class TestF1F2F9BlockerUpgrade:
-    """L4: F1 (dangling refs), F2 (orphaned defs), 9 (front matter) are BLOCKER."""
+class TestF1F2F9BlockerLevel:
+    """F1 (dangling refs), F2 (orphaned defs), 9 (front matter) are BLOCKER."""
 
     def test_dangling_refs_is_blocker_level(self, tmp_path):
         md = """Text cites [&#91;1&#93;](#refs) but no definition.
@@ -612,4 +613,61 @@ class TestInlineCitationWithMarkers:
         path = tmp_path / "report.md"
         path.write_text(report, encoding="utf-8")
         result = check_report_dangling_refs(path)
+        assert result.passed
+
+
+class TestCheckReportTableSuggestion:
+    """ADR 0044: WARN if section has ≥4 claims — suggest using Markdown tables."""
+
+    def _setup(self, tmp_path, sections):
+        import json
+        workdir = tmp_path / "reports" / ".." / ".workdir"
+        workdir.mkdir(parents=True, exist_ok=True)
+        analysis = {"topic": "test", "goal_type": "exploratory", "sections": sections}
+        (workdir / "analysis.json").write_text(json.dumps(analysis), encoding="utf-8")
+        report_path = tmp_path / "reports" / "report.md"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text("---\ntopic: T\ngoal_type: other\n---\nBody\n", encoding="utf-8")
+        return report_path
+
+    def test_no_analysis_json_passes(self, tmp_path):
+        report_path = tmp_path / "report.md"
+        report_path.write_text("body", encoding="utf-8")
+        result = check_report_table_suggestion(report_path)
+        assert result.passed
+        assert result.name == "table_suggestion"
+
+    def test_section_with_3_claims_passes(self, tmp_path):
+        sections = [{"id": "s1", "title": "Overview", "claims": [{"text": f"c{i}"} for i in range(3)]}]
+        result = check_report_table_suggestion(self._setup(tmp_path, sections))
+        assert result.passed
+
+    def test_section_with_4_claims_warns(self, tmp_path):
+        sections = [{"id": "s1", "title": "Ecosystem", "claims": [{"text": f"c{i}"} for i in range(4)]}]
+        result = check_report_table_suggestion(self._setup(tmp_path, sections))
+        assert not result.passed
+        assert result.level == "WARN"
+        assert "Ecosystem" in result.message
+        assert "4 claims" in result.message
+
+    def test_multiple_sections_above_threshold(self, tmp_path):
+        sections = [
+            {"id": "s1", "title": "A", "claims": [{"text": f"c{i}"} for i in range(4)]},
+            {"id": "s2", "title": "B", "claims": [{"text": f"c{i}"} for i in range(5)]},
+        ]
+        result = check_report_table_suggestion(self._setup(tmp_path, sections))
+        assert not result.passed
+        assert "'A' has 4 claims" in result.message
+        assert "'B' has 5 claims" in result.message
+
+    def test_repair_hints_present(self, tmp_path):
+        sections = [{"id": "s1", "title": "T", "claims": [{"text": f"c{i}"} for i in range(4)]}]
+        result = check_report_table_suggestion(self._setup(tmp_path, sections))
+        assert not result.passed
+        assert len(result.repair_hints) > 0
+        assert "Markdown tables" in result.repair_hints[0]
+
+    def test_section_without_claims_field_passes(self, tmp_path):
+        sections = [{"id": "s1", "title": "No claims"}]
+        result = check_report_table_suggestion(self._setup(tmp_path, sections))
         assert result.passed

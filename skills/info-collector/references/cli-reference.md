@@ -6,8 +6,26 @@
 | `gateway` | Run all gateway checks standalone (useful for debugging) |
 | `report [flags]` | Generate final report from analysis.json |
 | `source <goal_type>` | Show recommended sources for a goal_type |
+| `fetch <url> [flags]` | Fetch single URL and save as source file |
+| `batch-fetch [flags]` | Batch-process multiple URLs from stdin, update collected.json |
 | `clean` | Remove `.workdir/` |
 | `reset --phase <X>` | Reset pipeline to a given phase (scope, search, analysis, review) |
+
+## Fetch Command Flags
+
+| Flag | Description |
+|------|-------------|
+| `--tier N` | Source tier (auto-inferred if omitted) |
+| `--no-playwright` | Skip Playwright fallback |
+| `--from-stdin` | Read fetched content from stdin instead of autonomous fetch |
+
+## Batch-Fetch Command Flags
+
+| Flag | Description |
+|------|-------------|
+| `--from-stdin` | Read batch JSON from stdin (array of `{url, content, tier?}`) |
+| `--pending` | List URLs that still need fetching |
+| `--workdir PATH` | Path to .workdir (default: auto-detect) |
 
 ## Report Command Flags
 

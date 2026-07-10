@@ -20,13 +20,11 @@ class TestResetScope:
         _write_json(tmp_path / "collected.json", [{"url": "https://a.com"}])
         _write_json(tmp_path / "analysis.json", {"topic": "test", "sections": []})
         (tmp_path / "review_report.md").write_text("review")
-        (tmp_path / "search_plan.json").write_text("{}")
         cmd_reset(_make_args("scope"))
         assert not (tmp_path / "scope.json").exists()
         assert not (tmp_path / "collected.json").exists()
         assert not (tmp_path / "analysis.json").exists()
         assert not (tmp_path / "review_report.md").exists()
-        assert not (tmp_path / "search_plan.json").exists()
 
     def test_phase_after_reset(self, tmp_path, monkeypatch):
         monkeypatch.setattr("scripts.cli.WORKDIR", tmp_path)

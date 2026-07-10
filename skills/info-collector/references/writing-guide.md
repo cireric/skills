@@ -1,5 +1,7 @@
 # Writing Guide for analysis.json Content
 
+> **定位**：建议参考的品味指南，不强制遵守。
+
 ## Content Quality
 
 **Content quality is the #1 priority.** The `content` field is rendered as-is in the final report by reporter.py. If the content is thin, the final report will be thin. Write as if you are writing the final report section.
@@ -129,12 +131,12 @@ This section must use explicit "not recommended" language so readers can quickly
 
 ## Depth Strategy (Per-Section)
 
-Each section's content organization follows a depth strategy determined by goal_type × section id. The orchestrator specifies the strategy in the section plan; the writer must follow it.
+Each section's content organization follows a depth strategy determined by goal_type × section id. The orchestrator specifies the strategy in the section plan as a reference template — the writer may adapt it. deep_dive_topics in the section plan are advisory suggestions (not enforced); source_hints are removed — all collected.json sources are injected into each subagent prompt with title + snippet + source_file, letting the subagent self-select relevant sources.
 
 ### Strategy: overview (panoramic/exploratory sections, overview sections)
 
 - 1-2 paragraphs of breadth-first summary covering the direction's landscape
-- **≥ 2 deep-dive anchors** — each anchor is a paragraph that argues one key finding with 3+ sources
+- Deep-dive anchors — paragraphs that argue key findings with 3+ sources
 - Deep-dive anchor selection criteria (the finding must satisfy at least one):
   - **Tension**: multiple sources disagree or give different conclusions
   - **Impact**: the finding changes the reader's action or judgment
@@ -168,14 +170,14 @@ Each section's content organization follows a depth strategy determined by goal_
 | goal_type | section id | depth strategy |
 |-----------|-----------|---------------|
 | panoramic_understanding, exploratory, background_check | overview | overview |
-| panoramic_understanding, exploratory, background_check | other sections | overview (with ≥ 2 deep-dive anchors) |
+| panoramic_understanding, exploratory, background_check | other sections | overview (with deep-dive anchors) |
 | tech_selection, competitive_comparison | overview | overview (brief) |
 | tech_selection, competitive_comparison | comparison, recommendation | comparison |
 | tech_selection, competitive_comparison | methodology | methodology |
 | feasibility_assessment, market_analysis, academic_research | methodology | methodology |
 | feasibility_assessment, market_analysis, academic_research | other sections | deep_dive |
 | fact_check | * | deep_dive |
-| other | * | overview (with ≥ 2 deep-dive anchors) |
+| other | * | overview (with deep-dive anchors) |
 
 ## Synthesis Guard
 

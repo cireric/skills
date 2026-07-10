@@ -1,43 +1,20 @@
-# Search Strategy Template
+# Search Strategy Guide
 
-## Tier-Based Search Order
+> **定位**：建议参考的搜索策略，不强制遵守。
 
-Execute searches by tier, starting from the broadest community sources and narrowing to authoritative ones:
+## Free Search Approach
 
-1. **Tier 4 — Community breadth scan**: Search Reddit, Hacker News, Stack Overflow for current discussions, pain points, and emerging themes. Use broad queries to map the topic landscape.
+Search freely using the topic and scope_description as guidance. Use a mix of source tiers. There is no search_plan.json to follow — you decide your own search strategy.
 
-2. **Tier 3 — Industry depth articles**: Search Medium, IEEE Spectrum, MIT Technology Review, and vendor blogs for structured analysis, case studies, and expert opinions. Use targeted queries from Tier 4 findings.
+### Suggested tier mix
 
-3. **Tier 1 — Academic validation**: Search arXiv, Google Scholar for peer-reviewed evidence, benchmarks, and formal frameworks. Use precise technical terms from Tier 3 findings.
+1. **Tier 4 — Community breadth scan**: Search Reddit, Hacker News, Stack Overflow for current discussions, pain points, and emerging themes.
+2. **Tier 3 — Industry depth articles**: Search Medium, IEEE Spectrum, MIT Technology Review, and vendor blogs for structured analysis, case studies, and expert opinions.
+3. **Tier 1 — Academic validation**: Search arXiv, Google Scholar for peer-reviewed evidence, benchmarks, and formal frameworks.
 
-## Per-Round Strategy
+### When search gate BLOCKERs fire
 
-| Round | Focus | Target | Query Style | MUST DO |
-|-------|-------|--------|-------------|---------|
-| 1 | Breadth | Tier 4 + Tier 3 | Broad English queries; scan for key themes | Update search_plan.json task statuses after round |
-| 2 | Depth | Tier 3 + Tier 1 | Targeted queries based on Round 1 findings | **MUST fetch full content** for Tier 1 sources using `webfetch` |
-| 3 | Gap-fill | Any tier | Follow up on uncovered directions; verify specific claims | Update search_plan.json; fetch any remaining full content |
-
-## Search Plan Compliance (MANDATORY)
-
-`search_plan.json` is generated automatically by `proceed --from scope --to search`. It contains one task per (direction × tier) combination. You MUST follow it:
-
-### Before searching
-1. Read `search_plan.json`
-2. Identify tasks with `status: "pending"` for the current round's tier
-
-### During searching
-3. For each pending task, execute a search using that task's `site_queries` and `query_language`
-4. Use `site:` queries (e.g., `site:arxiv.org human-AI delegation`) rather than generic queries
-
-### After each search round
-5. For each task that now has ≥ `min_sources` matching results: set `status: "completed"` and update `collected_count`
-6. For tasks that are not applicable to this research: set `status: "skipped"` (add a note explaining why)
-7. Write the updated `search_plan.json` back to disk
-
-### Before running `proceed --from search --to analysis`
-8. Verify every direction has at least one `completed` task
-9. If any direction has zero completed tasks → search more before proceeding
+Consult the repair_hints for suggested sources from config.json. repair_hints are generated from config.json's source lists and provide concrete site_query suggestions (e.g., "tier 2 零覆盖 → try site:github.com, site:en.wikipedia.org").
 
 ## Full Content Fetch (MANDATORY)
 

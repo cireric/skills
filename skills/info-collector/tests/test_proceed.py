@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts.lib.exceptions import ArtifactError
 from scripts.lib.utils import compute_url_hash
 from scripts.lib.constants import (
@@ -11,11 +13,11 @@ from scripts.lib.constants import (
     ARTIFACT_PIPELINE_STATE,
     ARTIFACT_REVIEW_REPORT,
     ARTIFACT_SCOPE,
-    ARTIFACT_SEARCH_PLAN,
 )
 from scripts.proceed import (
     _check_scope_schema,
     _check_review_report_exists,
+    _fill_scope_defaults,
     _gate_analysis,
     _gate_final,
     _repair_json_text,
@@ -37,7 +39,6 @@ def _write_scope_and_collected(workdir):
     sources_dir.mkdir(parents=True, exist_ok=True)
     (sources_dir / f"{h}.md").write_text("test content", encoding="utf-8")
     _write_json(workdir / "collected.json", [{"url": url, "title": "x", "snippet": "d1", "source_tier": 4, "fetched_content": "x" * 500, "source_file": f"sources/{h}.md"}])
-    _make_completed_search_plan(workdir, directions=["d1"])
 
 
 class TestDetectCurrentPhase:
@@ -108,19 +109,17 @@ class TestProceeds:
         assert "Phase mismatch" in errors[0]
 
     def test_search_gate_passes(self, tmp_path):
-        _make_scope(tmp_path)
-        entries = [
-            {"url": "https://a.com", "title": "AI News", "snippet": "About AI", "fetched_content": "x" * 300},
-            {"url": "https://b.com", "title": "ML Update", "snippet": "About ML", "fetched_content": "x" * 300},
-        ]
+        _make_scope(tmp_path, goal_type="exploratory", depth="quick")
+        entries = []
         sources_dir = tmp_path / "sources"
         sources_dir.mkdir(parents=True, exist_ok=True)
-        for entry in entries:
-            h = compute_url_hash(entry["url"])
-            entry["source_file"] = f"sources/{h}.md"
+        for i, tier in enumerate([4, 3, 2]):
+            url = f"https://s{i}.example.com"
+            h = compute_url_hash(url)
+            entry = {"url": url, "title": f"Source {i}", "snippet": f"About topic {i}", "fetched_content": "x" * 300, "source_tier": tier, "source_file": f"sources/{h}.md"}
             (sources_dir / f"{h}.md").write_text("x" * 2100, encoding="utf-8")
+            entries.append(entry)
         _write_json(tmp_path / "collected.json", entries)
-        _make_completed_search_plan(tmp_path)
         ok, errors = proceeds(tmp_path, "search", "analysis")
         assert ok, errors
 
@@ -264,6 +263,49 @@ class TestProceeds:
         _write_json(tmp_path / "review_report.md", {})
         ok, errors = proceeds(tmp_path, "review", "final")
         assert ok, errors
+
+
+class TestScopeDefaultsAutoFill:
+    def test_missing_depth_filled_with_standard(self, tmp_path):
+        scope = {"topic": "t", "goal_type": "exploratory", "scope_description": "d", "search_directions": ["AI"]}
+        _write_json(tmp_path / "scope.json", scope)
+        _fill_scope_defaults(tmp_path)
+        result = json.loads((tmp_path / "scope.json").read_text(encoding="utf-8"))
+        assert result["depth"] == "standard"
+        assert result["audience"] == "general"
+
+    def test_missing_audience_filled_with_general(self, tmp_path):
+        scope = {"topic": "t", "goal_type": "exploratory", "depth": "quick", "scope_description": "d", "search_directions": ["AI"]}
+        _write_json(tmp_path / "scope.json", scope)
+        _fill_scope_defaults(tmp_path)
+        result = json.loads((tmp_path / "scope.json").read_text(encoding="utf-8"))
+        assert result["depth"] == "quick"
+        assert result["audience"] == "general"
+
+    def test_both_missing_filled(self, tmp_path):
+        scope = {"topic": "t", "goal_type": "exploratory", "scope_description": "d", "search_directions": ["AI"]}
+        _write_json(tmp_path / "scope.json", scope)
+        _fill_scope_defaults(tmp_path)
+        result = json.loads((tmp_path / "scope.json").read_text(encoding="utf-8"))
+        assert result["depth"] == "standard"
+        assert result["audience"] == "general"
+
+    def test_existing_values_not_overwritten(self, tmp_path):
+        scope = {"topic": "t", "goal_type": "exploratory", "depth": "deep", "audience": "CTO", "scope_description": "d", "search_directions": ["AI"]}
+        _write_json(tmp_path / "scope.json", scope)
+        _fill_scope_defaults(tmp_path)
+        result = json.loads((tmp_path / "scope.json").read_text(encoding="utf-8"))
+        assert result["depth"] == "deep"
+        assert result["audience"] == "CTO"
+
+    def test_scope_gate_auto_fills_and_passes(self, tmp_path):
+        scope = {"topic": "t", "goal_type": "exploratory", "scope_description": "d", "search_directions": ["AI"]}
+        _write_json(tmp_path / "scope.json", scope)
+        ok, errors = proceeds(tmp_path, "scope", "search")
+        assert ok, errors
+        result = json.loads((tmp_path / "scope.json").read_text(encoding="utf-8"))
+        assert result["depth"] == "standard"
+        assert result["audience"] == "general"
 
 
 class TestGetGatewayResults:
@@ -613,12 +655,13 @@ class TestGateFinalOnlyBlocksBlocker:
         assert errors == [], f"WARN-only failures should not block: {errors}"
 
     def test_blocker_blocks_final(self, tmp_path, monkeypatch):
+        """F1/F2/9 are BLOCKER — missing front matter blocks the final gate."""
         report = "No front matter, no references."
         report_path = tmp_path / "report.md"
         report_path.write_text(report, encoding="utf-8")
         monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
         errors = _gate_final(tmp_path)
-        assert len(errors) > 0
+        assert errors, "BLOCKER report checks should block: front matter is missing"
         assert any("report_front_matter" in e for e in errors)
 
 
@@ -631,51 +674,32 @@ class TestCleanupTransitionRejected:
         assert "Invalid transition" in errors[0]
 
 
-class TestSearchPlanStatus:
-    def test_search_plan_includes_status_field(self, tmp_path):
-        workdir = tmp_path / ".workdir"
-        workdir.mkdir()
-        scope = {
-            "topic": "t", "goal_type": "exploratory", "depth": "quick",
-            "audience": "engineer", "scope_description": "d",
-            "search_directions": ["AI trends"],
-        }
-        _write_json(workdir / "scope.json", scope)
-        config = {
-            "sources": {"4": {"sources": [{"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com"}]}},
-            "routes": {"exploratory": {"entry_tier": 4, "path": [4]}},
-        }
-        proceeds(workdir, "scope", "search", config)
-        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
-        for task in plan["tasks"]:
-            assert "status" in task
-            assert task["status"] == "pending"
-            assert "collected_count" in task
-            assert task["collected_count"] == 0
-            assert "skip_reason" in task
-            assert task["skip_reason"] == ""
-
-
 class TestIntegrationMediumComplexity:
     def test_state_file_survives_review_self_loop(self, tmp_path):
         workdir = tmp_path / ".workdir"
         workdir.mkdir()
         config = {
-            "sources": {"4": {"sources": [{"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com"}]}},
-            "routes": {"exploratory": {"entry_tier": 4, "path": [4]}},
+            "sources": {
+                "4": {"sources": [{"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com"}]},
+                "3": {"sources": [{"name": "Medium", "domain": "medium.com"}]},
+                "2": {"sources": [{"name": "GitHub", "domain": "github.com"}]},
+            },
+            "routes": {"exploratory": {"entry_tier": 4, "path": [4, 3, 2]}},
         }
         scope = {"topic": "t", "goal_type": "exploratory", "depth": "quick", "audience": "engineer", "scope_description": "d", "search_directions": ["d1"]}
         _write_json(workdir / "scope.json", scope)
         proceeds(workdir, "scope", "search", config)
         assert detect_current_phase(workdir) == "post_search"
-        collected = [{"url": "https://example.com", "title": "d1 info", "snippet": "d1", "source_tier": 4, "fetched_content": "x" * 500}]
-        h = compute_url_hash("https://example.com")
-        sources_dir = workdir / "sources"
-        sources_dir.mkdir(parents=True, exist_ok=True)
-        (sources_dir / f"{h}.md").write_text("x" * 2100, encoding="utf-8")
-        collected[0]["source_file"] = f"sources/{h}.md"
+        collected = []
+        for i, tier in enumerate([4, 3, 2]):
+            url = f"https://example.com/{i}"
+            h = compute_url_hash(url)
+            sources_dir = workdir / "sources"
+            sources_dir.mkdir(parents=True, exist_ok=True)
+            (sources_dir / f"{h}.md").write_text("x" * 2100, encoding="utf-8")
+            collected.append({"url": url, "title": f"d1 info {i}", "snippet": "d1", "source_tier": tier, "fetched_content": "x" * 500, "source_file": f"sources/{h}.md"})
         _write_json(workdir / "collected.json", collected)
-        _make_completed_search_plan(workdir, directions=["d1"])
+
         proceeds(workdir, "search", "analysis")
         assert detect_current_phase(workdir) == "post_analysis"
         analysis = {"topic": "t", "goal_type": "exploratory", "sections": [
@@ -772,171 +796,8 @@ class TestGateAnalysisChecksAllBlockers:
         assert not any("content_concreteness" in e for e in errors)
 
 
-class TestSearchPlanLanguageSplit:
-    def test_mixed_en_zh_sources_creates_separate_tasks(self, tmp_path):
-        workdir = tmp_path / ".workdir"
-        workdir.mkdir()
-        scope = {
-            "topic": "t", "goal_type": "exploratory", "depth": "quick",
-            "audience": "engineer", "scope_description": "d",
-            "search_directions": ["AI"],
-        }
-        _write_json(workdir / "scope.json", scope)
-        config = {
-            "sources": {
-                "3": {
-                    "sources": [
-                        {"name": "Medium", "domain": "medium.com", "site_query": "medium.com AI", "language": "en"},
-                        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com AI", "language": "zh"},
-                    ]
-                },
-            },
-            "routes": {"exploratory": {"entry_tier": 3, "path": [3]}},
-        }
-        proceeds(workdir, "scope", "search", config)
-        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
-        en_tasks = [t for t in plan["tasks"] if t["query_language"] == "en"]
-        zh_tasks = [t for t in plan["tasks"] if t["query_language"] == "zh"]
-        assert len(en_tasks) == 1
-        assert len(zh_tasks) == 1
-        assert en_tasks[0]["site_queries"] == ["medium.com AI"]
-        assert zh_tasks[0]["site_queries"] == ["zhihu.com AI"]
-
-    def test_en_only_sources_creates_only_en_task(self, tmp_path):
-        workdir = tmp_path / ".workdir"
-        workdir.mkdir()
-        scope = {
-            "topic": "t", "goal_type": "exploratory", "depth": "quick",
-            "audience": "engineer", "scope_description": "d",
-            "search_directions": ["AI"],
-        }
-        _write_json(workdir / "scope.json", scope)
-        config = {
-            "sources": {
-                "3": {
-                    "sources": [
-                        {"name": "Medium", "domain": "medium.com", "site_query": "medium.com AI"},
-                        {"name": "Dev.to", "domain": "dev.to", "site_query": "dev.to AI"},
-                    ]
-                },
-            },
-            "routes": {"exploratory": {"entry_tier": 3, "path": [3]}},
-        }
-        proceeds(workdir, "scope", "search", config)
-        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
-        assert len(plan["tasks"]) == 1
-        assert plan["tasks"][0]["query_language"] == "en"
-        assert len(plan["tasks"][0]["site_queries"]) == 2
-
-    def test_zh_only_sources_creates_only_zh_task(self, tmp_path):
-        workdir = tmp_path / ".workdir"
-        workdir.mkdir()
-        scope = {
-            "topic": "t", "goal_type": "exploratory", "depth": "quick",
-            "audience": "engineer", "scope_description": "d",
-            "search_directions": ["AI"],
-        }
-        _write_json(workdir / "scope.json", scope)
-        config = {
-            "sources": {
-                "3": {
-                    "sources": [
-                        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com AI", "language": "zh"},
-                        {"name": "CSDN", "domain": "csdn.net", "site_query": "csdn.net AI", "language": "zh"},
-                    ]
-                },
-            },
-            "routes": {"exploratory": {"entry_tier": 3, "path": [3]}},
-        }
-        proceeds(workdir, "scope", "search", config)
-        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
-        assert len(plan["tasks"]) == 1
-        assert plan["tasks"][0]["query_language"] == "zh"
-        assert len(plan["tasks"][0]["site_queries"]) == 2
-
-    def test_fetch_hints_per_language_group(self, tmp_path):
-        workdir = tmp_path / ".workdir"
-        workdir.mkdir()
-        scope = {
-            "topic": "t", "goal_type": "academic_research", "depth": "quick",
-            "audience": "engineer", "scope_description": "d",
-            "search_directions": ["AI"],
-        }
-        _write_json(workdir / "scope.json", scope)
-        config = {
-            "sources": {
-                "1": {
-                    "sources": [
-                        {"name": "arXiv", "domain": "arxiv.org", "site_query": "arxiv.org AI", "language": "en"},
-                        {"name": "CNKI", "domain": "cnki.net", "site_query": "cnki.net AI", "language": "zh"},
-                    ]
-                },
-            },
-            "routes": {"academic_research": {"entry_tier": 1, "path": [1]}},
-        }
-        proceeds(workdir, "scope", "search", config)
-        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
-        en_task = next(t for t in plan["tasks"] if t["query_language"] == "en")
-        zh_task = next(t for t in plan["tasks"] if t["query_language"] == "zh")
-        assert "fetch_hints" in en_task
-        assert "full paper" in en_task["fetch_hints"].lower()
-        assert zh_task.get("fetch_hints", "") == ""
-
-    def test_multiple_directions_doubles_tasks(self, tmp_path):
-        workdir = tmp_path / ".workdir"
-        workdir.mkdir()
-        scope = {
-            "topic": "t", "goal_type": "exploratory", "depth": "quick",
-            "audience": "engineer", "scope_description": "d",
-            "search_directions": ["AI", "ML"],
-        }
-        _write_json(workdir / "scope.json", scope)
-        config = {
-            "sources": {
-                "3": {
-                    "sources": [
-                        {"name": "Medium", "domain": "medium.com", "site_query": "medium.com", "language": "en"},
-                        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com", "language": "zh"},
-                    ]
-                },
-            },
-            "routes": {"exploratory": {"entry_tier": 3, "path": [3]}},
-        }
-        proceeds(workdir, "scope", "search", config)
-        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
-        assert len(plan["tasks"]) == 4
-        en_tasks = [t for t in plan["tasks"] if t["query_language"] == "en"]
-        zh_tasks = [t for t in plan["tasks"] if t["query_language"] == "zh"]
-        assert len(en_tasks) == 2
-        assert len(zh_tasks) == 2
-
-    def test_no_is_chinese_tier_logic(self, tmp_path):
-        workdir = tmp_path / ".workdir"
-        workdir.mkdir()
-        scope = {
-            "topic": "t", "goal_type": "exploratory", "depth": "quick",
-            "audience": "engineer", "scope_description": "d",
-            "search_directions": ["AI"],
-        }
-        _write_json(workdir / "scope.json", scope)
-        config = {
-            "sources": {
-                "3": {
-                    "sources": [
-                        {"name": "SomeCN", "domain": "example.com.cn", "site_query": "example.com.cn AI", "language": "en"},
-                    ]
-                },
-            },
-            "routes": {"exploratory": {"entry_tier": 3, "path": [3]}},
-        }
-        proceeds(workdir, "scope", "search", config)
-        plan = json.loads((workdir / "search_plan.json").read_text(encoding="utf-8"))
-        assert len(plan["tasks"]) == 1
-        assert plan["tasks"][0]["query_language"] == "en"
-
-
 class TestGateReviewOnlyChecksReviewItems:
-    """L3: _gate_review only checks claim_verified and claim_source_relevance."""
+    """L3: _gate_review blocks on review_report_exists BLOCKER, advisory on other checks."""
 
     def test_review_gate_ignores_section_coverage_issues(self, tmp_path):
         _write_scope_and_collected(tmp_path)
@@ -955,9 +816,10 @@ class TestGateReviewOnlyChecksReviewItems:
                 ],
             },
         )
-        _write_json(tmp_path / "review_report.md", {})
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
         _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "review")
+        assert ok
         assert not any("section_coverage" in e for e in errors)
 
     def test_review_gate_passes_with_unverified_claims(self, tmp_path):
@@ -977,7 +839,7 @@ class TestGateReviewOnlyChecksReviewItems:
                 ],
             },
         )
-        _write_json(tmp_path / "review_report.md", {})
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
         _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "review")
         assert ok
@@ -1001,7 +863,7 @@ class TestGateReviewNoLongerBlocks:
                 ],
             },
         )
-        _write_json(tmp_path / "review_report.md", {})
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
         _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "review")
         assert ok
@@ -1023,11 +885,55 @@ class TestGateReviewNoLongerBlocks:
                 ],
             },
         )
-        _write_json(tmp_path / "review_report.md", {})
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
         _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "review")
         assert ok
         assert errors == []
+
+    def test_review_to_final_blocks_without_review_report(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Content.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                    },
+                ],
+            },
+        )
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "final")
+        assert not ok
+        assert any("review_report_exists" in e for e in errors)
+
+    def test_review_to_final_passes_with_review_report(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Content.",
+                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                    },
+                ],
+            },
+        )
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "final")
+        assert ok
 
 
 class TestSourceVerificationWriteBack:
@@ -1078,7 +984,7 @@ class TestSourceVerificationWriteBack:
 
 
 class TestReviewReportExistsCheck:
-    """review_report_exists gate check for review→final transition."""
+    """review_report_exists gate check — BLOCKER level (review is mandatory, ADR 0028)."""
 
     def test_blocks_when_review_report_missing(self, tmp_path):
         result = _check_review_report_exists(tmp_path)
@@ -1193,7 +1099,6 @@ class TestEmptyArtifactHandling:
     def test_empty_collected_json_blocks(self, tmp_path):
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
-        _make_completed_search_plan(tmp_path)
         _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_search"})
         _write_json(tmp_path / ARTIFACT_COLLECTED, [])
         ok, errors = proceeds(tmp_path, "search", "analysis")
@@ -1202,7 +1107,6 @@ class TestEmptyArtifactHandling:
     def test_empty_analysis_json_blocks(self, tmp_path):
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
-        _make_completed_search_plan(tmp_path)
         _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_search"})
         _write_json(tmp_path / ARTIFACT_ANALYSIS, {})
         ok, errors = proceeds(tmp_path, "analysis", "review")
@@ -1229,15 +1133,7 @@ class TestEmptyArtifactHandling:
         _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "final")
         assert not ok
-
-    def test_empty_search_plan_yields_blockers(self, tmp_path):
-        _make_scope(tmp_path)
-        _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
-        _make_completed_search_plan(tmp_path)
-        _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_search"})
-        _write_json(tmp_path / ARTIFACT_SEARCH_PLAN, {"tasks": []})
-        ok, errors = proceeds(tmp_path, "search", "analysis")
-        assert not ok
+        assert any("review_report_exists" in e for e in errors)
 
 
 class TestInvalidPhaseTransitions:
@@ -1251,7 +1147,6 @@ class TestInvalidPhaseTransitions:
     def test_search_to_scope_backward(self, tmp_path):
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
-        _make_completed_search_plan(tmp_path)
         _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_search"})
         ok, errors = proceeds(tmp_path, "search", "scope")
         assert not ok
@@ -1260,7 +1155,6 @@ class TestInvalidPhaseTransitions:
     def test_analysis_to_search_backward(self, tmp_path):
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
-        _make_completed_search_plan(tmp_path)
         _write_json(
             tmp_path / "analysis.json",
             {"topic": "T", "goal_type": "tech_selection", "sections": []},
@@ -1318,11 +1212,137 @@ class TestInvalidPhaseTransitions:
         assert ok
 
 
+class TestRepairHintsInOutput:
+    """repair_hints appear in output when gate fails with repair_hints."""
+
+    def test_gateway_cmd_prints_repair_hints(self, tmp_path, capsys, monkeypatch):
+        from scripts.artifact_checks import CheckResult
+
+        fake_results = [
+            CheckResult("test_check", "BLOCKER", False, "something broke", repair_hints=["fix A", "fix B"]),
+            CheckResult("ok_check", "BLOCKER", True, "all good"),
+            CheckResult("warn_check", "WARN", False, "minor issue", repair_hints=["try X"]),
+        ]
+        monkeypatch.setattr("scripts.proceed.get_gateway_results", lambda w: fake_results)
+        import scripts.cli as cli_mod
+        monkeypatch.setattr(cli_mod, "WORKDIR", tmp_path)
+
+        import argparse
+        args = argparse.Namespace()
+        with pytest.raises(SystemExit):
+            cli_mod.cmd_gateway(args)
+        captured = capsys.readouterr()
+        assert "→ fix A" in captured.out
+        assert "→ fix B" in captured.out
+        assert "→ try X" in captured.out
+
+    def test_gateway_cmd_no_hints_when_empty(self, tmp_path, capsys, monkeypatch):
+        from scripts.artifact_checks import CheckResult
+
+        fake_results = [
+            CheckResult("test_check", "BLOCKER", False, "something broke"),
+        ]
+        monkeypatch.setattr("scripts.proceed.get_gateway_results", lambda w: fake_results)
+        import scripts.cli as cli_mod
+        monkeypatch.setattr(cli_mod, "WORKDIR", tmp_path)
+
+        import argparse
+        args = argparse.Namespace()
+        with pytest.raises(SystemExit):
+            cli_mod.cmd_gateway(args)
+        captured = capsys.readouterr()
+        assert "→" not in captured.out
+
+    def test_gate_analysis_includes_repair_hints_in_errors(self, tmp_path, monkeypatch):
+        from scripts.artifact_checks import CheckResult
+
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://a.com"}])
+        _write_json(tmp_path / "analysis.json", {"topic": "T", "goal_type": "tech_selection", "sections": []})
+
+        fake_results = [
+            CheckResult("url_traceability", "BLOCKER", False, "bad urls", repair_hints=["check source_urls", "add missing URLs"]),
+            CheckResult("section_coverage", "BLOCKER", True, "ok"),
+        ]
+        monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: fake_results)
+        monkeypatch.setattr("scripts.lib.schemas.validate_analysis", lambda a: [])
+        monkeypatch.setattr("scripts.claim_validator.apply_source_verification", lambda w: None)
+
+        errors = _gate_analysis(tmp_path)
+        error_text = "\n".join(errors)
+        assert "→ check source_urls" in error_text
+        assert "→ add missing URLs" in error_text
+
+    def test_gate_analysis_no_hints_when_empty(self, tmp_path, monkeypatch):
+        from scripts.artifact_checks import CheckResult
+
+        _make_scope(tmp_path)
+        _write_json(tmp_path / "collected.json", [{"url": "https://a.com"}])
+        _write_json(tmp_path / "analysis.json", {"topic": "T", "goal_type": "tech_selection", "sections": []})
+
+        fake_results = [
+            CheckResult("url_traceability", "BLOCKER", False, "bad urls"),
+        ]
+        monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: fake_results)
+        monkeypatch.setattr("scripts.lib.schemas.validate_analysis", lambda a: [])
+        monkeypatch.setattr("scripts.claim_validator.apply_source_verification", lambda w: None)
+
+        errors = _gate_analysis(tmp_path)
+        assert not any("→" in e for e in errors)
+
+    def test_gate_search_prints_repair_hints_for_blocker(self, tmp_path, capsys, monkeypatch):
+        from scripts.artifact_checks import CheckResult
+
+        fake_results = [
+            CheckResult("min_sources", "BLOCKER", False, "too few", repair_hints=["add more sources"]),
+            CheckResult("topic_coverage", "WARN", False, "partial", repair_hints=["search broader"]),
+        ]
+        monkeypatch.setattr("scripts.proceed.SearchGate", lambda w, c: type("SG", (), {"check": lambda s: fake_results})())
+
+        from scripts.proceed import _gate_search
+        blockers = _gate_search(tmp_path, None)
+        captured = capsys.readouterr()
+        assert "→ add more sources" in captured.err
+        assert "→ search broader" in captured.err
+
+    def test_gate_review_prints_repair_hints(self, tmp_path, capsys, monkeypatch):
+        from scripts.artifact_checks import CheckResult
+
+        fake_results = [
+            CheckResult("some_check", "WARN", False, "advisory", repair_hints=["consider fixing"]),
+        ]
+        monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: fake_results)
+        monkeypatch.setattr("scripts.proceed._get_goal_type", lambda w: "exploratory")
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+
+        from scripts.proceed import _gate_review
+        errors = _gate_review(tmp_path, to_phase="final")
+        captured = capsys.readouterr()
+        assert "→ consider fixing" in captured.err
+        assert errors == []
+
+    def test_gate_final_includes_repair_hints(self, tmp_path, monkeypatch):
+        from scripts.artifact_checks import CheckResult
+
+        report_path = tmp_path / "report.md"
+        report_path.write_text("bad report", encoding="utf-8")
+        monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
+
+        fake_results = [
+            CheckResult("report_front_matter", "BLOCKER", False, "missing front matter", repair_hints=["add YAML front matter"]),
+        ]
+        monkeypatch.setattr("scripts.proceed.run_report_checks", lambda p: fake_results)
+
+        from scripts.proceed import _gate_final
+        errors = _gate_final(tmp_path)
+        error_text = "\n".join(errors)
+        assert "→ add YAML front matter" in error_text
+
+
 class TestCorruptedJsonWithRepairableContent:
     def test_gate_analysis_repairs_unescaped_quotes(self, tmp_path):
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://example.com"}])
-        _make_completed_search_plan(tmp_path)
         _write_json(tmp_path / ARTIFACT_PIPELINE_STATE, {"current_phase": "post_search"})
         raw = '{"topic": "AI", "goal_type": "exploratory", "sections": [{"id": "s1", "title": "Overview of "AI" trends", "content": "C", "claims": []}]}'
         (tmp_path / ARTIFACT_ANALYSIS).write_text(raw, encoding="utf-8")

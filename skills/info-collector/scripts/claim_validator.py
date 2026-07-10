@@ -470,8 +470,12 @@ class ClaimValidator:
                     msg += f" (did you mean {suggestions[0]}?)"
                 details.append(msg)
             return CheckResult("ref_marker_validity", "BLOCKER", False,
-                               f"{len(missing)} {{ref:URL}} markers reference URLs not in collected.json: "
-                               f"{'; '.join(details)}{'...' if len(missing) > 3 else ''}")
+                                f"{len(missing)} {{ref:URL}} markers reference URLs not in collected.json: "
+                                f"{'; '.join(details)}{'...' if len(missing) > 3 else ''}",
+                                repair_hints=[
+                                    f"The following {{ref:URL}} markers are not in collected.json: "
+                                    f"{', '.join(missing)}. Remove or replace these markers, ensuring all referenced URLs exist in collected.json"
+                                ])
         return CheckResult("ref_marker_validity", "BLOCKER", True,
                            f"All {len(all_refs)} {{ref:URL}} markers reference valid collected.json URLs")
 
@@ -489,9 +493,26 @@ class ClaimValidator:
                     if norm not in content_urls:
                         violations.append(f"sections.{sec_id}.claims[{ci}]: {norm}")
         if violations:
+            claim_texts = []
+            for sec in self._sections:
+                sec_id = sec.get("id", "?")
+                content = sec.get("content", "")
+                content_urls = set()
+                for match in _REF_MARKER_RE.finditer(content):
+                    content_urls.add(normalize_url(match.group(1).strip()))
+                for ci, claim in enumerate(sec.get("claims", [])):
+                    for url in claim.get("source_urls", []):
+                        norm = normalize_url(url)
+                        if norm not in content_urls:
+                            claim_texts.append(claim.get("text", "")[:40])
             return CheckResult("claim_source_ref_coverage", "BLOCKER", False,
-                               f"{len(violations)} claim source_urls not referenced in content: "
-                               f"{violations[:3]}{'...' if len(violations) > 3 else ''}")
+                                f"{len(violations)} claim source_urls not referenced in content: "
+                                f"{violations[:3]}{'...' if len(violations) > 3 else ''}",
+                                repair_hints=[
+                                    f"The following claims have source_urls not appearing as {{ref:URL}} markers in their section's content: "
+                                    f"{', '.join(claim_texts[:5])}{'...' if len(claim_texts) > 5 else ''}. "
+                                    f"Add {{ref:URL}} markers for these source URLs in the section content"
+                                ])
         return CheckResult("claim_source_ref_coverage", "BLOCKER", True,
                            "All claim source_urls are referenced in section content")
 

@@ -4,36 +4,33 @@ Owns all validation logic that determines whether the search phase
 produced sufficient material to proceed to analysis. Public interface:
 
     SearchGate(workdir, config).check() -> list[CheckResult]
+
+ADR 0042: Removed topic_coverage, search_plan_compliance,
+domain_concentration, tier_task_completion. min_sources and
+tier_coverage upgraded to BLOCKER with repair hints from config.
 """
 
 from __future__ import annotations
 
-import string
 from pathlib import Path
-from urllib.parse import urlparse
 
-from .artifact_checks import CheckResult, _read_artifact
+from .artifact_checks import CheckResult
 from .lib.constants import (
     ARTIFACT_COLLECTED,
     ARTIFACT_SCOPE,
-    ARTIFACT_SEARCH_PLAN,
-    _CHINESE_STOP_WORDS,
-    _COVERAGE_THRESHOLD,
-    _DEPTH_MIN_SOURCES_PER_DIRECTION,
-    _ENGLISH_STOP_WORDS,
-    _MAX_COVERED_DIRECTIONS,
+    _DEPTH_MIN_SOURCES,
     _SOURCE_FIDELITY_MISSING_RATIO_BLOCKER,
     _SOURCE_FIDELITY_EXEMPT_RATIO_WARN,
     _SOURCE_FIDELITY_SHALLOW_RATIO_BLOCKER,
     _SOURCE_FIDELITY_SHALLOW_CHARS,
     _SOURCE_FIDELITY_THIN_RATIO_WARN,
     _SOURCE_FIDELITY_THIN_CHARS,
+    _SOURCE_FIDELITY_SNIPPET_OVERLAP_RATIO_BLOCKER,
+    _SOURCE_FIDELITY_SNIPPET_OVERLAP_THRESHOLD,
 )
 from .lib.exceptions import ArtifactError
-from .lib.source_router import get_default_min_sources, get_route
-from .lib.utils import read_json, tokenize_cjk_aware
-
-_STOP_WORDS = _ENGLISH_STOP_WORDS | _CHINESE_STOP_WORDS
+from .lib.source_router import get_route
+from .lib.utils import read_json
 
 
 class SearchGate:
@@ -44,7 +41,6 @@ class SearchGate:
         self.config = config
         self._scope: dict | None = None
         self._collected: list | None = None
-        self._search_plan: dict | None = None
 
         try:
             self._scope = read_json(workdir / ARTIFACT_SCOPE)
@@ -58,14 +54,6 @@ class SearchGate:
         except ArtifactError:
             pass
 
-        try:
-            self._search_plan = read_json(workdir / ARTIFACT_SEARCH_PLAN)
-        except ArtifactError:
-            pass
-
-    _DOMAIN_CONCENTRATION_WARN = 0.50
-    _TIER_COMPLETED_WARN_RATIO = 0.50
-
     def check(self) -> list[CheckResult]:
         """Run all search-gate checks. Returns list of CheckResult."""
         return [
@@ -73,11 +61,7 @@ class SearchGate:
             self._check_collected_schema(),
             self._check_min_sources(),
             self._check_tier_coverage(),
-            self._check_topic_coverage(),
             self._check_source_fidelity(),
-            self._check_search_plan_compliance(),
-            self._check_domain_concentration(),
-            self._check_tier_task_completion(),
         ]
 
     @property
@@ -86,17 +70,11 @@ class SearchGate:
             return self._scope.get("goal_type", "other")
         return "other"
 
-    @property
-    def _search_directions(self) -> set[str]:
-        if self._scope:
-            return set(self._scope.get("search_directions", []))
-        return set()
-
     def _check_collected_exists(self) -> CheckResult:
         if self._collected is None:
-            return CheckResult("collected_exists", "BLOCKER", False, "Cannot read collected.json")
+            return CheckResult("collected_exists", "BLOCKER", False, "Cannot read collected.json", repair_hints=["Search for sources and build collected.json with at least one entry"])
         if len(self._collected) < 1:
-            return CheckResult("collected_exists", "BLOCKER", False, "collected.json must have at least 1 entry")
+            return CheckResult("collected_exists", "BLOCKER", False, "collected.json must have at least 1 entry", repair_hints=["Search for sources and build collected.json with at least one entry"])
         return CheckResult("collected_exists", "BLOCKER", True)
 
     def _check_collected_schema(self) -> CheckResult:
@@ -106,24 +84,26 @@ class SearchGate:
         errors = validate_collected(self._collected)
         if errors:
             detail = "; ".join(f"{e.field}: {e.message}" for e in errors)
-            return CheckResult("collected_schema", "BLOCKER", False, detail)
+            return CheckResult("collected_schema", "BLOCKER", False, detail, repair_hints=["Fix collected.json schema: each entry needs url, title, snippet, source_tier fields"])
         return CheckResult("collected_schema", "BLOCKER", True)
 
     def _check_min_sources(self) -> CheckResult:
         if self._collected is None:
-            return CheckResult("min_sources", "WARN", True, "Skipped (no collected.json)")
-        goal_type = self._goal_type
-        min_src = get_default_min_sources(goal_type, self.config)
+            return CheckResult("min_sources", "BLOCKER", True, "Skipped (no collected.json)")
+        depth = self._scope.get("depth", "standard") if self._scope else "standard"
+        min_src = _DEPTH_MIN_SOURCES.get(depth, 5)
         if len(self._collected) < min_src:
+            repair_hints = self._build_all_tier_repair_hints()
             return CheckResult(
-                "min_sources", "WARN", False,
-                f"min_sources warning: {len(self._collected)} < {min_src} (configurable WARN)",
+                "min_sources", "BLOCKER", False,
+                f"min_sources BLOCKER: {len(self._collected)} < {min_src} (depth='{depth}')",
+                repair_hints=repair_hints,
             )
-        return CheckResult("min_sources", "WARN", True)
+        return CheckResult("min_sources", "BLOCKER", True)
 
     def _check_tier_coverage(self) -> CheckResult:
         if self._collected is None:
-            return CheckResult("tier_coverage", "WARN", True, "Skipped (no collected.json)")
+            return CheckResult("tier_coverage", "BLOCKER", True, "Skipped (no collected.json)")
         goal_type = self._goal_type
         route = get_route(goal_type, self.config)
         route_path = route.get("path", [])
@@ -132,10 +112,12 @@ class SearchGate:
             covered_tiers = {entry.get("source_tier") for entry in self._collected if entry.get("source_tier")}
             missing_required = [t for t in route_path if t not in covered_tiers]
             if missing_required:
+                repair_hints = self._build_tier_repair_hints(missing_required)
                 return CheckResult(
-                    "tier_coverage", "WARN", False,
-                    f"tier_coverage WARN: route requires tiers {route_path}, "
+                    "tier_coverage", "BLOCKER", False,
+                    f"tier_coverage BLOCKER: route requires tiers {route_path}, "
                     f"but tiers {missing_required} have no sources in collected.json",
+                    repair_hints=repair_hints,
                 )
             missing_optional = [t for t in optional_tiers if t not in covered_tiers]
             if missing_optional:
@@ -143,87 +125,7 @@ class SearchGate:
                     f"  [INFO] tier_coverage: optional tiers {missing_optional} have no sources (non-blocking)",
                     file=__import__("sys").stderr,
                 )
-        return CheckResult("tier_coverage", "WARN", True)
-
-    def _check_topic_coverage(self) -> CheckResult:
-        if self._collected is None or self._scope is None:
-            return CheckResult("topic_coverage", "BLOCKER", False, "Cannot read collected.json or scope.json")
-        needed = self._search_directions
-        if not needed:
-            return CheckResult("topic_coverage", "BLOCKER", True)
-
-        covered: set[str] = set()
-        direction_counts: dict[str, int] = {d: 0 for d in needed}
-
-        for entry in self._collected:
-            cd = entry.get("covered_directions")
-            if cd is None:
-                continue
-            if not isinstance(cd, list):
-                continue
-            if len(cd) > _MAX_COVERED_DIRECTIONS:
-                continue
-            invalid = [d for d in cd if d not in needed]
-            if invalid:
-                continue
-            for d in cd:
-                covered.add(d)
-                direction_counts[d] += 1
-
-        for entry in self._collected:
-            if entry.get("covered_directions") is not None:
-                continue
-            combined_text = (
-                entry.get("title", "")
-                + " " + entry.get("snippet", "")
-                + " " + entry.get("fetched_content", "")[:500]
-            ).lower()
-            for direction in needed:
-                tokens = self._tokenize_direction(direction)
-                if not tokens:
-                    continue
-                matched = sum(1 for t in tokens if t in combined_text)
-                if matched / len(tokens) >= _COVERAGE_THRESHOLD:
-                    covered.add(direction)
-                    direction_counts[direction] += 1
-
-        depth = self._scope.get("depth", "standard")
-        min_per_direction = _DEPTH_MIN_SOURCES_PER_DIRECTION.get(depth, 3)
-
-        messages: list[str] = []
-        for direction in needed:
-            count = direction_counts.get(direction, 0)
-            if count < min_per_direction:
-                messages.append(
-                    f"per_direction_min_sources WARN: direction '{direction}' "
-                    f"has {count} sources, depth='{depth}' requires {min_per_direction}"
-                )
-
-        missing = needed - covered
-        if missing:
-            for d in missing:
-                if self._has_cjk_tokens([d]):
-                    messages.append(
-                        f"topic_coverage WARN (CJK direction): search direction not covered: {d}"
-                    )
-                else:
-                    return CheckResult(
-                        "topic_coverage", "BLOCKER", False,
-                        f"topic_coverage BLOCKER: search direction not covered: {d}",
-                    )
-                tokens = self._tokenize_direction(d)
-                if tokens:
-                    suggestions = [t for t in tokens if not self._is_stop_word(t)]
-                    if suggestions:
-                        messages.append(
-                            f"  Suggestion: try searching for '{d}' with keywords: {', '.join(suggestions[:5])}"
-                        )
-
-        if messages:
-            has_blocker = any("BLOCKER" in m for m in messages)
-            level = "BLOCKER" if has_blocker else "WARN"
-            return CheckResult("topic_coverage", level, False, "; ".join(messages))
-        return CheckResult("topic_coverage", "BLOCKER", True)
+        return CheckResult("tier_coverage", "BLOCKER", True)
 
     def _check_source_fidelity(self) -> CheckResult:
         if self._collected is None:
@@ -234,6 +136,7 @@ class SearchGate:
         shallow_count = 0
         thin_count = 0
         fetch_failed_count = 0
+        snippet_overlap_count = 0
         total = len(self._collected)
         for entry in self._collected:
             if entry.get("fetch_failed", False):
@@ -248,7 +151,8 @@ class SearchGate:
                 missing_count += 1
                 continue
             try:
-                content_len = len(source_path.read_text(encoding="utf-8"))
+                file_content = source_path.read_text(encoding="utf-8")
+                content_len = len(file_content)
             except OSError:
                 missing_count += 1
                 continue
@@ -256,11 +160,16 @@ class SearchGate:
                 shallow_count += 1
             elif content_len < _SOURCE_FIDELITY_THIN_CHARS:
                 thin_count += 1
+            snippet = entry.get("snippet", "")
+            if snippet and content_len >= _SOURCE_FIDELITY_SHALLOW_CHARS:
+                if self._snippet_overlap_ratio(file_content, snippet) > _SOURCE_FIDELITY_SNIPPET_OVERLAP_THRESHOLD:
+                    snippet_overlap_count += 1
         checked = total - fetch_failed_count
         ratio = missing_count / checked if checked > 0 else 0
         exempt_ratio = fetch_failed_count / total if total > 0 else 0
         shallow_ratio = shallow_count / checked if checked > 0 else 0
         thin_ratio = thin_count / checked if checked > 0 else 0
+        snippet_overlap_ratio = snippet_overlap_count / checked if checked > 0 else 0
         parts = []
         if missing_count > 0:
             parts.append(f"{missing_count}/{checked} entries have no source file")
@@ -268,15 +177,22 @@ class SearchGate:
             parts.append(f"{shallow_count}/{checked} entries have source files < {_SOURCE_FIDELITY_SHALLOW_CHARS} chars (summary-only, not full content)")
         if thin_count > 0:
             parts.append(f"{thin_count}/{checked} entries have source files < {_SOURCE_FIDELITY_THIN_CHARS} chars")
+        if snippet_overlap_count > 0:
+            parts.append(f"{snippet_overlap_count}/{checked} entries have source files with >{_SOURCE_FIDELITY_SNIPPET_OVERLAP_THRESHOLD:.0%} snippet overlap (likely summary, not full text)")
         if fetch_failed_count > 0:
             parts.append(f"{fetch_failed_count}/{total} entries have fetch_failed=true (exempt)")
         msg = "; ".join(parts) if parts else "all entries have source files with sufficient depth"
         if checked == 0:
             return CheckResult("source_fidelity", "BLOCKER", True, msg)
         if ratio > _SOURCE_FIDELITY_MISSING_RATIO_BLOCKER:
-            return CheckResult("source_fidelity", "BLOCKER", False, f"{missing_count}/{checked} entries ({ratio:.0%}) lack source files — re-fetch with full content before proceeding")
+            pct = f"{ratio:.0%}"
+            return CheckResult("source_fidelity", "BLOCKER", False, f"{missing_count}/{checked} entries ({ratio:.0%}) lack source files — re-fetch with full content before proceeding", repair_hints=[f"{pct} of source files are missing. Re-fetch full content using fetch tools for the URLs without source files"])
         if shallow_ratio > _SOURCE_FIDELITY_SHALLOW_RATIO_BLOCKER:
-            return CheckResult("source_fidelity", "BLOCKER", False, f"{shallow_count}/{checked} entries ({shallow_ratio:.0%}) have source files < {_SOURCE_FIDELITY_SHALLOW_CHARS} chars — search-result highlights are NOT sufficient; re-fetch full article content")
+            pct = f"{shallow_ratio:.0%}"
+            return CheckResult("source_fidelity", "BLOCKER", False, f"{shallow_count}/{checked} entries ({shallow_ratio:.0%}) have source files < {_SOURCE_FIDELITY_SHALLOW_CHARS} chars — search-result highlights are NOT sufficient; re-fetch full article content", repair_hints=[f"{pct} of source files are too short (<{_SOURCE_FIDELITY_SHALLOW_CHARS} chars). Re-fetch full article content — search-result snippets are not sufficient for analysis"])
+        if snippet_overlap_ratio > _SOURCE_FIDELITY_SNIPPET_OVERLAP_RATIO_BLOCKER:
+            pct = f"{snippet_overlap_ratio:.0%}"
+            return CheckResult("source_fidelity", "BLOCKER", False, f"{snippet_overlap_count}/{checked} entries ({snippet_overlap_ratio:.0%}) have source files with >{_SOURCE_FIDELITY_SNIPPET_OVERLAP_THRESHOLD:.0%} snippet overlap — source files appear to be summaries of snippets, not full article text (ADR 0040)", repair_hints=[f"{pct} of source files have high snippet overlap — they appear to be rewrites of search snippets, not full articles. Re-fetch original content from the source URL"])
         if exempt_ratio > _SOURCE_FIDELITY_EXEMPT_RATIO_WARN:
             parts.append(f"high exempt ratio: {exempt_ratio:.0%}")
             return CheckResult("source_fidelity", "WARN", False, "; ".join(parts))
@@ -286,195 +202,96 @@ class SearchGate:
             return CheckResult("source_fidelity", "WARN", False, msg)
         return CheckResult("source_fidelity", "BLOCKER", True, msg)
 
-    def _reverse_compute_direction_coverage(self) -> dict[str, int]:
-        """Reverse-compute per-direction collected counts from collected.json.
+    def _build_tier_repair_hints(self, missing_tiers: list[int]) -> list[str]:
+        """Build repair hints for missing tiers by querying config sources."""
+        hints: list[str] = []
+        if not self.config:
+            return hints
+        sources = self.config.get("sources", {})
+        for tier in missing_tiers:
+            tier_data = sources.get(str(tier), {})
+            tier_sources = tier_data.get("sources", [])
+            by_lang: dict[str, list[dict]] = {}
+            for s in tier_sources:
+                lang = s.get("language", "en")
+                by_lang.setdefault(lang, []).append(s)
+            parts = [f"Tier {tier} 零覆盖"]
+            for lang, lang_sources in sorted(by_lang.items()):
+                names = [s.get("name", s.get("domain", "")) for s in lang_sources]
+                site_queries = [s.get("site_query", "") for s in lang_sources if s.get("site_query")]
+                lang_parts: list[str] = []
+                if names:
+                    lang_parts.append(f"sources({lang}): {', '.join(names)}")
+                if site_queries:
+                    lang_parts.append(f"try({lang}): {', '.join(site_queries)}")
+                parts.extend(lang_parts)
+            if len(parts) > 1:
+                hints.append(" → ".join(parts))
+        return hints
 
-        Method C (ADR 0034): covered_directions takes priority;
-        entries without covered_directions fall back to token-based matching.
-        Returns {direction: count}.
+    def _build_all_tier_repair_hints(self) -> list[str]:
+        """Build repair hints listing ALL route tiers (for min_sources check)."""
+        hints: list[str] = []
+        if not self.config:
+            return hints
+        goal_type = self._goal_type
+        route = get_route(goal_type, self.config)
+        route_path = route.get("path", [])
+        route_optional = route.get("optional_tiers", [])
+        all_tiers = route_path + [t for t in route_optional if t not in route_path]
+        sources = self.config.get("sources", {})
+        for tier in all_tiers:
+            tier_data = sources.get(str(tier), {})
+            tier_sources = tier_data.get("sources", [])
+            by_lang: dict[str, list[dict]] = {}
+            for s in tier_sources:
+                lang = s.get("language", "en")
+                by_lang.setdefault(lang, []).append(s)
+            parts = [f"Tier {tier}"]
+            for lang, lang_sources in sorted(by_lang.items()):
+                names = [s.get("name", s.get("domain", "")) for s in lang_sources]
+                site_queries = [s.get("site_query", "") for s in lang_sources if s.get("site_query")]
+                lang_parts: list[str] = []
+                if names:
+                    lang_parts.append(f"sources({lang}): {', '.join(names)}")
+                if site_queries:
+                    lang_parts.append(f"try({lang}): {', '.join(site_queries)}")
+                parts.extend(lang_parts)
+            if len(parts) > 1:
+                hints.append(" → ".join(parts))
+            if len(parts) > 1:
+                hints.append(" → ".join(parts))
+        return hints
+
+    @staticmethod
+    def _snippet_overlap_ratio(file_content: str, snippet: str) -> float:
+        """Compute what fraction of file_content is covered by snippet.
+
+        A summary that merely restates the snippet will have a high ratio
+        (snippet covers most of the short file). A genuine full article will
+        have a low ratio (snippet is a tiny fraction of the file).
+
+        Uses word-level matching for Latin text, character-level for CJK.
+        Returns 0.0 if file_content is empty.
         """
-        if self._collected is None or self._scope is None:
-            return {}
-        needed = self._search_directions
-        direction_counts: dict[str, int] = {d: 0 for d in needed}
-
-        for entry in self._collected:
-            cd = entry.get("covered_directions")
-            if cd and isinstance(cd, list) and len(cd) <= _MAX_COVERED_DIRECTIONS:
-                invalid = [d for d in cd if d not in needed]
-                if not invalid:
-                    for d in cd:
-                        direction_counts[d] = direction_counts.get(d, 0) + 1
-                    continue
-
-            combined_text = (
-                entry.get("title", "")
-                + " " + entry.get("snippet", "")
-                + " " + entry.get("fetched_content", "")[:500]
-            ).lower()
-            for direction in needed:
-                tokens = self._tokenize_direction(direction)
-                if not tokens:
-                    continue
-                matched = sum(1 for t in tokens if t in combined_text)
-                if matched / len(tokens) >= _COVERAGE_THRESHOLD:
-                    direction_counts[direction] = direction_counts.get(direction, 0) + 1
-
-        return direction_counts
-
-    def _check_search_plan_compliance(self) -> CheckResult:
-        if self._search_plan is None:
-            return CheckResult("search_plan_compliance", "BLOCKER", False, "search_plan.json not found")
-        tasks = self._search_plan.get("tasks", [])
-        if not tasks:
-            return CheckResult("search_plan_compliance", "BLOCKER", False, "search_plan.json has no tasks")
-
-        directions_in_plan = set(t.get("direction", "") for t in tasks)
-
-        # Classify tasks: skipped without skip_reason treated as pending (ADR 0033)
-        genuinely_completed = []
-        properly_skipped = []
-        for t in tasks:
-            status = t.get("status", "pending")
-            if status == "completed":
-                genuinely_completed.append(t)
-            elif status == "skipped":
-                if t.get("skip_reason"):
-                    properly_skipped.append(t)
-            # pending and skipped-without-reason are not completed
-
-        directions_with_completed = set(t.get("direction", "") for t in genuinely_completed)
-        directions_all_skipped = set()
-        for d in directions_in_plan:
-            dir_tasks = [t for t in tasks if t.get("direction") == d]
-            has_completed = any(t.get("status") == "completed" for t in dir_tasks)
-            has_unjustified_skip = any(
-                t.get("status") == "skipped" and not t.get("skip_reason") for t in dir_tasks
-            )
-            if not has_completed and not has_unjustified_skip:
-                all_properly_skipped = all(
-                    t.get("status") == "skipped" and t.get("skip_reason") for t in dir_tasks
-                )
-                if all_properly_skipped:
-                    directions_all_skipped.add(d)
-
-        # Reverse-compute collected counts (ADR 0034)
-        reverse_counts = self._reverse_compute_direction_coverage()
-
-        # Verify completed tasks have actual collected entries
-        directions_with_actual_results = set()
-        for d in directions_in_plan:
-            if reverse_counts.get(d, 0) > 0:
-                directions_with_actual_results.add(d)
-
-        # Direction-level BLOCKER: every direction must have completed task
-        # with actual results, OR be properly skipped entirely
-        directions_missing = directions_in_plan - directions_with_actual_results - directions_all_skipped
-
-        unjustified_skips = [t for t in tasks if t.get("status") == "skipped" and not t.get("skip_reason")]
-
-        parts = []
-        if directions_missing:
-            parts.append(
-                f"Directions without collected results or justified skips: "
-                f"{', '.join(sorted(directions_missing))}"
-            )
-        if unjustified_skips:
-            parts.append(
-                f"{len(unjustified_skips)} tasks skipped without skip_reason (treated as pending)"
-            )
-
-        if directions_missing:
-            return CheckResult(
-                "search_plan_compliance", "BLOCKER", False,
-                "; ".join(parts),
-            )
-        if unjustified_skips:
-            return CheckResult(
-                "search_plan_compliance", "WARN", False,
-                "; ".join(parts),
-            )
-        return CheckResult(
-            "search_plan_compliance", "BLOCKER", True,
-            f"{len(genuinely_completed)}/{len(tasks)} tasks completed, "
-            f"{len(properly_skipped)} properly skipped, "
-            f"directions with all tasks skipped: {len(directions_all_skipped)}",
-        )
-
-    def _check_domain_concentration(self) -> CheckResult:
-        if self._collected is None:
-            return CheckResult("domain_concentration", "WARN", True, "Skipped (no collected.json)")
-        domain_counts: dict[str, int] = {}
-        for entry in self._collected:
-            url = entry.get("url", "")
-            try:
-                domain = urlparse(url).hostname or ""
-            except Exception:
-                domain = ""
-            if domain:
-                domain_counts[domain] = domain_counts.get(domain, 0) + 1
-        if not domain_counts:
-            return CheckResult("domain_concentration", "WARN", True, "No domains found")
-        total = sum(domain_counts.values())
-        top_domain = max(domain_counts, key=domain_counts.get)
-        top_ratio = domain_counts[top_domain] / total
-        if top_ratio > self._DOMAIN_CONCENTRATION_WARN:
-            return CheckResult(
-                "domain_concentration", "WARN", False,
-                f"{domain_counts[top_domain]}/{total} sources ({top_ratio:.0%}) from {top_domain} "
-                f"— consider diversifying sources across domains",
-            )
-        return CheckResult("domain_concentration", "WARN", True)
-
-    def _check_tier_task_completion(self) -> CheckResult:
-        if self._search_plan is None:
-            return CheckResult("tier_task_completion", "WARN", True, "search_plan.json not found")
-        tasks = self._search_plan.get("tasks", [])
-        if not tasks:
-            return CheckResult("tier_task_completion", "WARN", True, "No tasks in search_plan.json")
-        tier_stats: dict[int, dict[str, int]] = {}
-        for task in tasks:
-            tier = task.get("tier", 0)
-            status = task.get("status", "pending")
-            stats = tier_stats.setdefault(tier, {"completed": 0, "total": 0})
-            stats["total"] += 1
-            if status == "completed":
-                stats["completed"] += 1
-        low_completion: list[str] = []
-        for tier in sorted(tier_stats):
-            stats = tier_stats[tier]
-            if stats["total"] > 0:
-                ratio = stats["completed"] / stats["total"]
-                if ratio < self._TIER_COMPLETED_WARN_RATIO and tier <= 2:
-                    low_completion.append(
-                        f"Tier {tier}: {stats['completed']}/{stats['total']} tasks completed ({ratio:.0%})"
-                    )
-        if low_completion:
-            return CheckResult(
-                "tier_task_completion", "WARN", False,
-                f"Low Tier 1-2 task completion: {'; '.join(low_completion)} — "
-                f"consider retrying with alternative search queries or platform-native APIs",
-            )
-        return CheckResult("tier_task_completion", "WARN", True)
-
-    @staticmethod
-    def _is_stop_word(token: str) -> bool:
-        if len(token) <= 1:
-            return True
-        if all(c in string.punctuation for c in token):
-            return True
-        if token in _STOP_WORDS:
-            return True
-        return False
-
-    @staticmethod
-    def _tokenize_direction(direction: str) -> list[str]:
-        return [t for t in tokenize_cjk_aware(direction, lowercase=True) if not SearchGate._is_stop_word(t)]
-
-    @staticmethod
-    def _has_cjk_tokens(directions: list[str]) -> bool:
-        for d in directions:
-            for ch in d:
-                if '\u4e00' <= ch <= '\u9fff':
-                    return True
-        return False
+        if not file_content or not file_content.strip():
+            return 0.0
+        content_lower = file_content.lower().strip()
+        snippet_lower = snippet.lower().strip()
+        if not snippet_lower:
+            return 0.0
+        has_cjk = any('\u4e00' <= ch <= '\u9fff' for ch in snippet_lower)
+        if has_cjk:
+            content_chars = [ch for ch in content_lower if not ch.isspace()]
+            snippet_chars = [ch for ch in snippet_lower if not ch.isspace()]
+            if not content_chars:
+                return 0.0
+            snippet_set = set(snippet_chars)
+            matched_in_content = sum(1 for ch in content_chars if ch in snippet_set)
+            return matched_in_content / len(content_chars)
+        content_words = content_lower.split()
+        snippet_words = set(snippet_lower.split())
+        if not content_words:
+            return 0.0
+        matched_in_content = sum(1 for w in content_words if w in snippet_words)
+        return matched_in_content / len(content_words)

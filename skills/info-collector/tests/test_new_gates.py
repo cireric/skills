@@ -38,7 +38,6 @@ class TestSourceFidelityContentDepth:
             (f"https://example.com/{i}", "x" * 5000) for i in range(5)
         ])
         _write_json(tmp_path / "collected.json", entries)
-        _make_completed_search_plan(tmp_path)
         results = SearchGate(tmp_path).check()
         sf = _find_result(results, "source_fidelity")
         assert sf is not None
@@ -51,7 +50,6 @@ class TestSourceFidelityContentDepth:
             for i in range(10)
         ])
         _write_json(tmp_path / "collected.json", entries)
-        _make_completed_search_plan(tmp_path)
         results = SearchGate(tmp_path).check()
         sf = _find_result(results, "source_fidelity")
         assert sf is not None
@@ -66,7 +64,6 @@ class TestSourceFidelityContentDepth:
             for i in range(5)
         ])
         _write_json(tmp_path / "collected.json", entries)
-        _make_completed_search_plan(tmp_path)
         results = SearchGate(tmp_path).check()
         sf = _find_result(results, "source_fidelity")
         assert sf is not None
@@ -79,7 +76,6 @@ class TestSourceFidelityContentDepth:
             for i in range(5)
         ])
         _write_json(tmp_path / "collected.json", entries)
-        _make_completed_search_plan(tmp_path)
         results = SearchGate(tmp_path).check()
         sf = _find_result(results, "source_fidelity")
         assert sf is not None
@@ -94,7 +90,6 @@ class TestSourceFidelityContentDepth:
         ])
         entries.append({"url": "https://example.com/failed", "title": "T", "snippet": "S", "source_tier": 3, "fetch_failed": True, "fetched_content": ""})
         _write_json(tmp_path / "collected.json", entries)
-        _make_completed_search_plan(tmp_path)
         results = SearchGate(tmp_path).check()
         sf = _find_result(results, "source_fidelity")
         assert sf is not None
@@ -120,7 +115,6 @@ class TestSubagentDelegation:
         result = check_subagent_delegation(tmp_path)
         assert not result.passed
         assert result.level == "BLOCKER"
-        assert "analysis_section_" in result.message
 
     def test_multi_section_all_files_pass(self, tmp_path):
         analysis = {"topic": "T", "goal_type": "panoramic_understanding", "sections": [
@@ -133,7 +127,7 @@ class TestSubagentDelegation:
         result = check_subagent_delegation(tmp_path)
         assert result.passed
 
-    def test_multi_section_partial_files_warn(self, tmp_path):
+    def test_multi_section_partial_files_blocker(self, tmp_path):
         analysis = {"topic": "T", "goal_type": "panoramic_understanding", "sections": [
             {"id": "overview", "title": "Overview", "content": "text", "depth_strategy": "overview", "key_insights": [], "tensions": [], "claims": []},
             {"id": "tools", "title": "Tools", "content": "text", "depth_strategy": "overview", "key_insights": [], "tensions": [], "claims": []},
@@ -142,7 +136,7 @@ class TestSubagentDelegation:
         (tmp_path / "analysis_section_overview.json").write_text("{}", encoding="utf-8")
         result = check_subagent_delegation(tmp_path)
         assert not result.passed
-        assert result.level == "WARN"
+        assert result.level == "BLOCKER"
         assert "tools" in result.message
 
     def test_no_analysis_file_skipped(self, tmp_path):

@@ -32,16 +32,7 @@ def _make_scope(workdir, goal_type="tech_selection", depth="standard",
     _write_json(workdir / "scope.json", data)
 
 
-def _make_completed_search_plan(workdir, directions=None):
-    if directions is None:
-        scope = json.loads((workdir / "scope.json").read_text(encoding="utf-8"))
-        directions = scope.get("search_directions", ["AI", "ML"])
-    tasks = [{"direction": d, "tier": 4, "status": "completed", "collected_count": 1, "skip_reason": ""} for d in directions]
-    _write_json(workdir / "search_plan.json", {"tasks": tasks})
-
-
 @pytest.fixture(autouse=True)
 def _inject_helpers(request):
     request.module._write_json = _write_json
     request.module._make_scope = _make_scope
-    request.module._make_completed_search_plan = _make_completed_search_plan

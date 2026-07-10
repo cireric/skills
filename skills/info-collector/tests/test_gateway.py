@@ -12,6 +12,7 @@ from scripts.artifact_checks import (
     check_recommendation_structure,
     check_section_coverage,
     check_source_tier_balance,
+    check_subagent_delegation,
     check_url_traceability,
     run_all,
 )
@@ -707,6 +708,18 @@ class TestCheckResultDataclass:
         assert not r.passed
         assert r.message == "err"
 
+    def test_default_repair_hints_empty(self):
+        r = CheckResult(name="x", level="BLOCKER", passed=True)
+        assert r.repair_hints == []
+
+    def test_custom_repair_hints(self):
+        r = CheckResult(name="x", level="BLOCKER", passed=False, message="err", repair_hints=["fix A", "fix B"])
+        assert r.repair_hints == ["fix A", "fix B"]
+
+    def test_old_code_without_repair_hints_still_works(self):
+        r = CheckResult(name="x", level="WARN", passed=True, message="ok")
+        assert r.repair_hints == []
+
 
 class TestCheckKeyInsightsCoverage:
     def test_non_exploratory_skipped(self, tmp_path):
@@ -820,3 +833,152 @@ class TestCheckKeyInsightsCoverage:
         assert not result.passed
         assert "key_insights[0]" in result.message
         assert "1 source_urls" in result.message
+
+
+class TestRepairHintsArtifactExists:
+    def test_missing_file_has_repair_hints(self, tmp_path):
+        result = check_artifact_exists(tmp_path)
+        assert not result.passed
+        assert len(result.repair_hints) > 0
+        assert "scope.json" in result.repair_hints[0]
+        assert "collected.json" in result.repair_hints[0]
+        assert "analysis.json" in result.repair_hints[0]
+
+    def test_all_present_no_repair_hints(self, tmp_path):
+        for name in ("scope.json", "collected.json", "analysis.json"):
+            _write_json(tmp_path / name, {})
+        result = check_artifact_exists(tmp_path)
+        assert result.passed
+        assert result.repair_hints == []
+
+
+class TestRepairHintsUrlTraceability:
+    def test_untraceable_url_has_repair_hints(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {"sections": [{"claims": [{"source_urls": ["https://example.com/b"]}]}]},
+        )
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://example.com/a"}],
+        )
+        result = check_url_traceability(tmp_path)
+        assert not result.passed
+        assert len(result.repair_hints) > 0
+        assert "https://example.com/b" in result.repair_hints[0]
+        assert "collected.json" in result.repair_hints[0]
+
+    def test_all_traceable_no_repair_hints(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {"sections": [{"claims": [{"source_urls": ["https://example.com/a"]}]}]},
+        )
+        _write_json(
+            tmp_path / "collected.json",
+            [{"url": "https://example.com/a"}],
+        )
+        result = check_url_traceability(tmp_path)
+        assert result.passed
+        assert result.repair_hints == []
+
+
+class TestRepairHintsSectionCoverage:
+    def test_missing_section_has_repair_hints(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {"sections": [{"id": "overview"}]},
+        )
+        result = check_section_coverage(tmp_path, "tech_selection")
+        assert not result.passed
+        assert len(result.repair_hints) > 0
+        assert "comparison" in result.repair_hints[0]
+        assert "goal_type=tech_selection" in result.repair_hints[0]
+
+    def test_exploratory_missing_overview_has_repair_hints(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {"sections": [{"id": "findings"}, {"id": "methodology"}]},
+        )
+        result = check_section_coverage(tmp_path, "panoramic_understanding")
+        assert not result.passed
+        assert len(result.repair_hints) > 0
+        assert "overview" in result.repair_hints[0]
+
+    def test_all_present_no_repair_hints(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {"sections": [{"id": "overview"}, {"id": "comparison"}, {"id": "recommendation"}, {"id": "methodology"}]},
+        )
+        result = check_section_coverage(tmp_path, "tech_selection")
+        assert result.passed
+        assert result.repair_hints == []
+
+
+class TestRepairHintsAnalysisSchema:
+    def test_schema_failure_has_repair_hints(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {"goal_type": "tech_selection", "sections": []},
+        )
+        result = check_analysis_schema(tmp_path)
+        assert not result.passed
+        assert len(result.repair_hints) > 0
+        assert "id" in result.repair_hints[0]
+        assert "title" in result.repair_hints[0]
+        assert "content" in result.repair_hints[0]
+        assert "text" in result.repair_hints[0]
+        assert "source_urls" in result.repair_hints[0]
+
+    def test_valid_schema_no_repair_hints(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "Test",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "Overview",
+                        "content": "Content",
+                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                    }
+                ],
+            },
+        )
+        result = check_analysis_schema(tmp_path)
+        assert result.passed
+        assert result.repair_hints == []
+
+
+class TestRepairHintsSubagentDelegation:
+    def test_no_section_files_has_repair_hints(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "overview", "title": "Overview", "content": "Content"},
+                    {"id": "comparison", "title": "Comparison", "content": "Content"},
+                ],
+            },
+        )
+        result = check_subagent_delegation(tmp_path)
+        assert not result.passed
+        assert len(result.repair_hints) > 0
+        assert "2 sections" in result.repair_hints[0]
+        assert "analysis_section_" in result.repair_hints[0]
+
+    def test_with_section_files_no_repair_hints(self, tmp_path):
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "sections": [
+                    {"id": "overview", "title": "Overview", "content": "Content"},
+                    {"id": "comparison", "title": "Comparison", "content": "Content"},
+                ],
+            },
+        )
+        _write_json(tmp_path / "analysis_section_overview.json", {"id": "overview"})
+        _write_json(tmp_path / "analysis_section_comparison.json", {"id": "comparison"})
+        result = check_subagent_delegation(tmp_path)
+        assert result.passed
+        assert result.repair_hints == []

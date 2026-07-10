@@ -588,6 +588,7 @@ class TestCheckRefMarkerValidity:
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "ref_marker_validity")
         assert result.passed
+        assert result.repair_hints == []
 
     def test_blocks_when_marker_url_not_in_collected(self, tmp_path):
         _write_json(
@@ -608,6 +609,9 @@ class TestCheckRefMarkerValidity:
         result = _get_result(results, "ref_marker_validity")
         assert not result.passed
         assert result.level == "BLOCKER"
+        assert len(result.repair_hints) > 0
+        assert "https://b.com" in result.repair_hints[0]
+        assert "collected.json" in result.repair_hints[0]
 
     def test_warns_when_no_markers(self, tmp_path):
         _write_json(
@@ -649,6 +653,7 @@ class TestCheckClaimSourceRefCoverage:
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "claim_source_ref_coverage")
         assert result.passed
+        assert result.repair_hints == []
 
     def test_blocks_when_claim_source_not_in_content(self, tmp_path):
         _write_json(
@@ -669,6 +674,9 @@ class TestCheckClaimSourceRefCoverage:
         result = _get_result(results, "claim_source_ref_coverage")
         assert not result.passed
         assert result.level == "BLOCKER"
+        assert len(result.repair_hints) > 0
+        assert "C" in result.repair_hints[0]
+        assert "{ref:URL}" in result.repair_hints[0]
 
     def test_passes_when_shared_url_appears_once(self, tmp_path):
         _write_json(

@@ -12,7 +12,6 @@ from .lib.utils import config_path, find_project_root, ensure_dir, read_json, wr
 from .artifact_checks import CheckResult, run_all as run_gateway
 from .report_checks import run_report_checks
 from .search_gate import SearchGate
-from .lib.source_router import get_route, recommend_sources
 from .lib.exceptions import ArtifactError
 from .lib.constants import (
     ARTIFACT_ANALYSIS,
@@ -20,8 +19,6 @@ from .lib.constants import (
     ARTIFACT_PIPELINE_STATE,
     ARTIFACT_REVIEW_REPORT,
     ARTIFACT_SCOPE,
-    ARTIFACT_SEARCH_PLAN,
-    _DEPTH_MIN_SOURCES_PER_DIRECTION,
     _NON_EXACT_EVIDENCE_TYPES,
     _VALID_CONFIDENCE,
     _VALID_EVIDENCE_TYPES,
@@ -221,61 +218,6 @@ def _get_goal_type(workdir: Path) -> str:
         return "other"
 
 
-def _build_fetch_hints(sources: list[dict]) -> str:
-    tier_domains = [s.get("domain", "") for s in sources]
-    if any("arxiv.org" in d for d in tier_domains):
-        return "MUST fetch full paper content (not just abstract) using exa_web_fetch_exa; search-result snippets are insufficient for Tier 1 academic sources"
-    if any("github.com" in d for d in tier_domains):
-        return "Prefer fetching README, key source files, or documentation rather than just the repo listing"
-    return ""
-
-
-def _generate_search_plan(workdir: Path, config: dict | None = None) -> None:
-    """Generate search_plan.json based on route × search_directions (ADR 0011)."""
-    scope = read_json(workdir / ARTIFACT_SCOPE)
-    goal_type = scope.get("goal_type", "other")
-    directions = scope.get("search_directions", [])
-    depth = scope.get("depth", "standard")
-
-    route = get_route(goal_type, config)
-    route_path = route.get("path", [])
-    rec = recommend_sources(goal_type, config)
-    recommended = rec.get("recommended_sources", {})
-
-    min_per_direction = _DEPTH_MIN_SOURCES_PER_DIRECTION.get(depth, 3)
-
-    tasks = []
-    for direction in directions:
-        for tier in route_path:
-            tier_sources = recommended.get(tier, [])
-            en_sources = [s for s in tier_sources if s.get("language", "en") == "en"]
-            zh_sources = [s for s in tier_sources if s.get("language", "en") == "zh"]
-
-            if en_sources:
-                site_queries = [s.get("site_query", s.get("domain", "")) for s in en_sources]
-                fetch_hints = _build_fetch_hints(en_sources)
-                task = {
-                    "direction": direction, "tier": tier, "query_language": "en",
-                    "site_queries": site_queries, "fetch_hints": fetch_hints,
-                    "min_sources": min_per_direction, "status": "pending", "collected_count": 0,
-                    "skip_reason": "",
-                }
-                tasks.append(task)
-
-            if zh_sources:
-                site_queries = [s.get("site_query", s.get("domain", "")) for s in zh_sources]
-                fetch_hints = _build_fetch_hints(zh_sources)
-                task = {
-                    "direction": direction, "tier": tier, "query_language": "zh",
-                    "site_queries": site_queries, "fetch_hints": fetch_hints,
-                    "min_sources": min_per_direction, "status": "pending", "collected_count": 0,
-                    "skip_reason": "",
-                }
-                tasks.append(task)
-
-    write_json({"goal_type": goal_type, "depth": depth, "route": route_path, "tasks": tasks}, workdir / ARTIFACT_SEARCH_PLAN)
-
-
 def _find_report_path(workdir: Path) -> Path | None:
     """Find the latest .md report file in the configured output directory."""
     project_root = find_project_root()
@@ -294,10 +236,35 @@ def _find_report_path(workdir: Path) -> Path | None:
     return md_files[0] if md_files else None
 
 
+def _format_check_result(r: CheckResult, prefix: str = "  ") -> list[str]:
+    """Format a failed CheckResult as output lines, including repair_hints."""
+    lines = [f"{prefix}{r.message}"]
+    for hint in r.repair_hints:
+        lines.append(f"{prefix}→ {hint}")
+    return lines
+
+
+def _fill_scope_defaults(workdir: Path) -> None:
+    """Fill optional depth/audience defaults in scope.json if missing."""
+    scope_path = workdir / ARTIFACT_SCOPE
+    try:
+        scope = read_json(scope_path)
+    except ArtifactError:
+        return
+    changed = False
+    if "depth" not in scope:
+        scope["depth"] = "standard"
+        changed = True
+    if "audience" not in scope:
+        scope["audience"] = "general"
+        changed = True
+    if changed:
+        write_json(scope, scope_path)
+
+
 def _gate_scope(workdir: Path, config: dict | None) -> list[str]:
+    _fill_scope_defaults(workdir)
     errors = _check_scope_schema(workdir)
-    if not errors:
-        _generate_search_plan(workdir, config)
     return errors
 
 
@@ -309,8 +276,12 @@ def _gate_search(workdir: Path, config: dict | None) -> list[str]:
             continue
         if r.level == "BLOCKER":
             blockers.append(r.message)
+            for hint in r.repair_hints:
+                print(f"  → {hint}", file=sys.stderr)
         else:
             print(f"  [WARN] {r.message}", file=sys.stderr)
+            for hint in r.repair_hints:
+                print(f"  → {hint}", file=sys.stderr)
     return blockers
 
 
@@ -348,7 +319,10 @@ def _gate_analysis(workdir: Path) -> list[str]:
             r for r in gateway_results
             if r.level == "BLOCKER" and not r.passed and r.name in analysis_check_names
         ]
-        errors.extend(f"[BLOCKER] {b.name}: {b.message}" for b in blockers)
+        for b in blockers:
+            errors.append(f"[BLOCKER] {b.name}: {b.message}")
+            for hint in b.repair_hints:
+                errors.append(f"  → {hint}")
         for r in gateway_results:
             if r.level == "INFO":
                 print(f"  [INFO] {r.message}", file=sys.stderr)
@@ -360,31 +334,46 @@ def _gate_analysis(workdir: Path) -> list[str]:
 def _check_review_report_exists(workdir: Path) -> CheckResult:
     """Check that review_report.md exists and is non-empty.
 
-    Review is mandatory (minimum: degraded/inline). BLOCKER if the file is
-    missing or empty — indicates review was not performed.
+    Review is mandatory (ADR 0028, minimum: degraded).
+    Missing review_report.md is BLOCKER — the agent must have
+    auto-started a review subagent and produced a review report.
     """
     report_path = workdir / ARTIFACT_REVIEW_REPORT
     if not report_path.exists():
-        return CheckResult("review_report_exists", "BLOCKER", False, "review_report.md does not exist — subagent may have failed silently")
+        return CheckResult("review_report_exists", "BLOCKER", False, "review_report.md does not exist — review subagent may have failed silently")
     try:
         content = report_path.read_text(encoding="utf-8")
     except OSError:
         return CheckResult("review_report_exists", "BLOCKER", False, "Cannot read review_report.md")
     if not content.strip():
-        return CheckResult("review_report_exists", "BLOCKER", False, "review_report.md is empty — subagent may have failed silently")
+        return CheckResult("review_report_exists", "BLOCKER", False, "review_report.md is empty — review subagent may have failed silently")
     return CheckResult("review_report_exists", "BLOCKER", True)
 
 
 def _gate_review(workdir: Path, to_phase: str = "review") -> list[str]:
-    gateway_results = run_gateway(workdir, _get_goal_type(workdir))
-    for r in gateway_results:
-        if not r.passed:
-            print(f"  [ADVISORY] {r.name}: {r.message}", file=sys.stderr)
+    """Review gate: blocks on BLOCKER-level failures.
+
+    - analysis→review: just passes through. Review is an agent-level concern
+      (SKILL.md instructs the agent to auto-start a review subagent).
+    - review→final: runs advisory gateway checks + BLOCKER on missing review_report.md.
+    """
+    errors: list[str] = []
     if to_phase == "final":
+        gateway_results = run_gateway(workdir, _get_goal_type(workdir))
+        for r in gateway_results:
+            if not r.passed:
+                print(f"  [ADVISORY] {r.name}: {r.message}", file=sys.stderr)
+                for hint in r.repair_hints:
+                    print(f"  → {hint}", file=sys.stderr)
         rr_check = _check_review_report_exists(workdir)
         if not rr_check.passed:
-            return [f"[BLOCKER] {rr_check.name}: {rr_check.message}"]
-    return []
+            if rr_check.level == "BLOCKER":
+                errors.append(f"[BLOCKER] {rr_check.name}: {rr_check.message}")
+                for hint in rr_check.repair_hints:
+                    errors.append(f"  → {hint}")
+            else:
+                print(f"  [WARN] {rr_check.name}: {rr_check.message}", file=sys.stderr)
+    return errors
 
 
 def _gate_final(workdir: Path) -> list[str]:
@@ -393,7 +382,12 @@ def _gate_final(workdir: Path) -> list[str]:
         return ["No report file found in output directory for 3d verification"]
     report_results = run_report_checks(report_path)
     blockers = [r for r in report_results if r.level == "BLOCKER" and not r.passed]
-    return [f"[BLOCKER] {b.name}: {b.message}" for b in blockers]
+    errors: list[str] = []
+    for b in blockers:
+        errors.append(f"[BLOCKER] {b.name}: {b.message}")
+        for hint in b.repair_hints:
+            errors.append(f"  → {hint}")
+    return errors
 
 
 def proceeds(
@@ -420,6 +414,12 @@ def proceeds(
         "review": lambda: _gate_review(workdir, to_phase),
         "final": lambda: _gate_final(workdir),
     }.get(from_phase)
+
+    # Retry limits (SKILL.md-level instruction, not auto-loop):
+    #   gate2 (search→analysis): max 3 retries;
+    #     after limit, print "Search gate retry limit (3) reached. Pausing for human review."
+    #   gate3 (analysis→review): max 2 retries;
+    #     after limit, print "Analysis gate retry limit (2) reached. Pausing for human review."
 
     errors = gate_fn() if gate_fn else []
 

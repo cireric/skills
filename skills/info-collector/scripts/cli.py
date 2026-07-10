@@ -47,6 +47,9 @@ def cmd_gateway(args: argparse.Namespace) -> None:
     for r in results:
         status = "PASS" if r.passed else "FAIL"
         print(f"  [{r.level:7s}] {r.name}: {status}  {r.message}")
+        if not r.passed and r.repair_hints:
+            for hint in r.repair_hints:
+                print(f"  → {hint}")
     if any(not r.passed for r in results if r.level == "BLOCKER"):
         sys.exit(1)
 
@@ -220,6 +223,11 @@ def cmd_fetch(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cmd_batch_fetch(args: argparse.Namespace) -> None:
+    from .batch_fetch import cmd_batch_fetch as _impl
+    _impl(args)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Info-Collector Skill CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -256,6 +264,12 @@ def main() -> None:
     p_fetch.add_argument("--no-playwright", action="store_true", help="Skip Playwright fallback")
     p_fetch.add_argument("--from-stdin", action="store_true", help="Read fetched content from stdin")
     p_fetch.set_defaults(func=cmd_fetch)
+
+    p_batch = sub.add_parser("batch-fetch", help="Batch-fetch: save multiple URLs from stdin, update collected.json")
+    p_batch.add_argument("--from-stdin", action="store_true", help="Read batch JSON from stdin")
+    p_batch.add_argument("--pending", action="store_true", help="List URLs that still need fetching")
+    p_batch.add_argument("--workdir", default=None, help="Path to .workdir (default: auto-detect)")
+    p_batch.set_defaults(func=cmd_batch_fetch)
 
     args = parser.parse_args()
     try:

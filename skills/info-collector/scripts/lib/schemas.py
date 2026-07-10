@@ -13,7 +13,6 @@ from __future__ import annotations
 from typing import TypedDict
 
 from .constants import (
-    _MAX_COVERED_DIRECTIONS,
     _VALID_AUDIENCES,
     _VALID_CONFIDENCE,
     _VALID_DEPTH_STRATEGIES,
@@ -72,14 +71,13 @@ class CollectedEntryDict(TypedDict, total=False):
     snippet: str
     source_tier: int
     fetched_content: str
-    covered_directions: list[str]
     vendor_affiliation: str
     source_file: str
 
 
 _SCOPE_REQUIRED_FIELDS = (
-    "topic", "goal_type", "depth", "audience",
-    "scope_description", "search_directions",
+    "topic", "goal_type",
+    "scope_description",
 )
 _ANALYSIS_REQUIRED_FIELDS = ("topic", "goal_type")
 _SECTION_REQUIRED_FIELDS = ("id", "title", "content")
@@ -117,12 +115,11 @@ def validate_scope(data: dict) -> list[ValidationError]:
     if "scope_description" in data and not isinstance(data["scope_description"], str):
         errors.append(_err("scope_description", f"expected str, got {type(data['scope_description']).__name__}"))
     if "search_directions" in data:
-        if not isinstance(data["search_directions"], list):
-            errors.append(_err("search_directions", f"expected list, got {type(data['search_directions']).__name__}"))
-        elif not data["search_directions"]:
-            errors.append(_err("search_directions", "search_directions must be a non-empty list"))
-        elif not all(isinstance(d, str) for d in data["search_directions"]):
-            errors.append(_err("search_directions", "search_directions must contain only strings"))
+        sd = data["search_directions"]
+        if not isinstance(sd, list):
+            errors.append(_err("search_directions", f"expected list, got {type(sd).__name__}"))
+        elif not all(isinstance(d, str) for d in sd):
+            errors.append(_err("search_directions", "all items must be strings"))
     if "report_language" in data:
         rl = data["report_language"]
         if not isinstance(rl, str) or not rl:
@@ -288,16 +285,6 @@ def validate_collected(data: list) -> list[ValidationError]:
             errors.append(_err(f"{prefix}.url", f"expected str, got {type(entry['url']).__name__}"))
         if "source_tier" in entry and not isinstance(entry["source_tier"], int):
             errors.append(_err(f"{prefix}.source_tier", f"expected int, got {type(entry['source_tier']).__name__}"))
-        if "covered_directions" in entry:
-            cd = entry["covered_directions"]
-            if not isinstance(cd, list):
-                errors.append(_err(f"{prefix}.covered_directions", f"expected list, got {type(cd).__name__}"))
-            else:
-                if len(cd) > _MAX_COVERED_DIRECTIONS:
-                    errors.append(_err(f"{prefix}.covered_directions", "at most 3 items allowed"))
-                for k, direction in enumerate(cd):
-                    if not isinstance(direction, str) or not direction:
-                        errors.append(_err(f"{prefix}.covered_directions[{k}]", "each item must be a non-empty string"))
         if "vendor_affiliation" in entry:
             va = entry["vendor_affiliation"]
             if va is not None and (not isinstance(va, str) or not va.strip()):

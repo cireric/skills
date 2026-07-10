@@ -41,16 +41,20 @@ Language for the final report output (e.g., "zh", "en"). Stored in scope.json, f
 _Avoid_: output language
 
 **gate phase responsibility**:
-Each pipeline gate checks only its own phase's concerns. `_gate_analysis` (analysis→review) checks analysis-phase BLOCKERs only (including `ref_marker_validity`, `claim_source_ref_coverage`, `entity_number_conflict`), plus `source_verification_check` (INFO level, never BLOCKER) which writes back `source_verification` and `verified` on claims deterministically. `_gate_review` (review→review, review→final) is advisory-only — it runs all checks but never blocks. The `verified` field is set deterministically by `source_verification_check()` code, not by the review subagent. `_gate_final` (final→cleanup) runs report checks; only BLOCKER-level failures block, WARN are advisory. See ADR 0025, ADR 0027, ADR 0028.
+Each pipeline gate checks only its own phase's concerns. `_gate_analysis` (analysis→review) checks analysis-phase BLOCKERs only (including `ref_marker_validity`, `claim_source_ref_coverage`, `entity_number_conflict`), plus `source_verification_check` (INFO level, never BLOCKER) which writes back `source_verification` and `verified` on claims deterministically. `_gate_review` (review→review, review→final) runs advisory gateway checks and blocks on `review_report_exists` BLOCKER (review is mandatory, ADR 0028). `_gate_final` (final→cleanup) runs report checks; only BLOCKER-level failures block, WARN are advisory. See ADR 0025, ADR 0027, ADR 0028.
 _Avoid_: gate scope, gate coverage, per-gate filtering
 
 **report_checks**:
-The deep module that validates the final report file. Interface: `run_report_checks(report_path) → list[CheckResult]`. Owns 10 checks: 3 BLOCKER (dangling refs F1, orphaned defs F2, front matter 9) + 7 WARN (refs visibility, table delimiters, heading levels, duplicate headings, unclosed code blocks, empty sections, overlong lines). See ADR 0026.
+The deep module that validates the final report file. Interface: `run_report_checks(report_path) → list[CheckResult]`. Owns 10 checks: 3 BLOCKER (dangling refs F1, orphaned defs F2, front matter 9) + 7 WARN (refs visibility, table delimiters, heading levels, duplicate headings, unclosed code blocks, empty sections, overlong lines) + 1 WARN (table_suggestion: sections with ≥4 claims should consider using Markdown tables for structured data presentation, ADR 0044). See ADR 0026.
 _Avoid_: report gateway, report validator, final gate checks
 
 **BLOCKER report checks**:
 The 3 report-level checks that block the final→cleanup transition: `report_dangling_refs` (in-text citation with no source definition), `report_orphaned_defs` (source definition with no in-text citation), `report_front_matter` (missing or malformed YAML front matter). Upgraded from WARN in ADR 0026.
 _Avoid_: hard report checks, mandatory report checks
+
+**review_report_exists**:
+Review gate BLOCKER check that verifies `review_report.md` exists and is non-empty. Review is mandatory (ADR 0028, minimum: degraded inline review). Missing or empty review_report.md blocks the review→final transition. Checked by `_gate_review`, not by `_gate_final`.
+_Avoid_: review check, review gate check
 
 **english_title**:
 An optional field in scope.json providing an English title for the research topic. Required (BLOCKER) when `topic` contains non-ASCII characters. Used as the report filename base, ensuring filenames are ASCII-only.
@@ -117,11 +121,11 @@ _Avoid_: method section, approach section
 _Avoid_: citation numbering, footnote numbering
 
 **topic_coverage**:
-The search→analysis gate check that verifies collected sources cover all search_directions. Uses inline CJK segmentation: each direction is split into tokens, filtered by stop-word sets. A direction is "covered" when a threshold of its tokens appear in collected.json entries' title + snippet, OR when the entry's `covered_directions` field explicitly lists that direction.
+Removed (ADR 0042). Previously checked that collected sources cover all search_directions. Removed because Phase 1 directions cannot anticipate topics discovered during search; locking directions narrows search horizon. Directions discussed during Phase 1 interview remain in conversation context as implicit guidance, but are not enforced by gate.
 _Avoid_: direction coverage, search coverage
 
 **covered_directions**:
-An optional field in collected.json entries where the agent declares which search_directions this source covers. Subset of scope.json's search_directions, max 3 per entry. Overrides token-based direction assignment when present.
+Removed (ADR 0042). Previously an optional field in collected.json entries declaring which search_directions a source covers. No longer needed because search_directions are not gate-enforced; directions exist only as Phase 1 interview context.
 _Avoid_: matched directions, direction tags
 
 **tier_coverage**:
@@ -129,11 +133,11 @@ search→analysis gate check (WARN level) that verifies collected.json contains 
 _Avoid_: source diversity, tier balance
 
 **SearchGate**:
-The deep module that validates whether the search phase produced sufficient material to proceed to analysis. Owns collected_exists, collected_schema, min_sources, topic_coverage, tier_coverage, fetched_content_depth, search_plan_compliance, domain_concentration, and tier_task_completion checks. Interface: `SearchGate(workdir, config).check() → list[CheckResult]`. Internal helpers (tokenization, stop-word filtering, per-direction counting) are private to its implementation.
+The deep module that validates whether the search phase produced sufficient material to proceed to analysis. Owns collected_exists, collected_schema, min_sources, tier_coverage, source_fidelity checks. topic_coverage, search_plan_compliance, domain_concentration, and tier_task_completion removed (ADR 0042). Interface: `SearchGate(workdir, config).check() → list[CheckResult]`. Internal helpers (tokenization, stop-word filtering, per-direction counting) removed with topic_coverage.
 _Avoid_: search validator, search quality checker, search gate checks
 
 **section plan**:
-Phase 3a Step 1 output, extended from `{id, title}` to `{id, title, deep_dive_topics: [{topic, source_hints}], depth_strategy}`. The orchestrator reads scope.json + collected.json and plans each section's depth strategy, deep-dive anchor topics, and suggested sources. source_hints are advisory — subagents are not limited to these sources. depth_strategy determines per-section content organization rules (overview, deep_dive, comparison, methodology).
+Phase 3a Step 1 output: `{id, title, depth_strategy, deep_dive_topics: [{topic}]}`. Serves as a reference template — agent may add, remove, merge, or split sections. deep_dive_topics suggest anchors worth arguing with 3+ sources (advisory, not enforced). source_hints removed (ADR 0043) — subagent prompt injects all collected.json sources with title + source_file + snippet, letting subagent self-select relevant sources. depth_strategy determines per-section content organization rules (overview, deep_dive, comparison, methodology).
 _Avoid_: section outline, section schema
 
 **ClaimValidator**:
@@ -185,8 +189,12 @@ config.json 顶层配置块。提供 fetch 全局默认值：source_dir、shallo
 _Avoid_: fetch config, fetch settings
 
 **search plan**:
-Auto-generated plan (`.workdir/search_plan.json`) produced after scope→search gate passes. Based on goal_type route and search_directions, generates specific search tasks per direction × tier × source language. AI executes the plan rather than free-form searching. `search_plan_compliance` is now a BLOCKER-level check at the direction level (ADR 0033). Tasks may be marked `skipped` with a mandatory `skip_reason` field; skipped tasks without `skip_reason` are treated as pending. `collected_count` values in tasks are ignored — the gate reverse-computes actual counts from collected.json (ADR 0034).
+Removed (ADR 0042). Agent searches freely; config.json sources serve as repair hints when search gate BLOCKERs fire, not as a pre-search plan.
 _Avoid_: search strategy, search outline
+
+**search gate repair routing**:
+When search gate fires a BLOCKER, it queries config.json for the missing dimension's source list and emits concrete repair hints (e.g., "tier 2 零覆盖 → try site:github.com, site:en.wikipedia.org"). config.json's role shifts from "pre-search plan template" to "post-search repair toolbook" (ADR 0042).
+_Avoid_: gate fix hints, repair suggestions
 
 **project root**:
 The directory containing `.git/`. Used as the base for resolving all relative paths (output_dir, WORKDIR). Auto-detected by walking up from CWD. Falls back to CWD if not in a git repository.
@@ -205,24 +213,28 @@ _Avoid_: repo root, workspace root
 - A **Claim** belongs to a section in **analysis.json** and references URLs from **collected.json**
 - **depth** drives minimum source count per search_direction; **depth strategy** drives per-section content organization; these are independent concerns
 - **audience** does not drive deterministic logic
-- **covered_directions** overrides **topic_coverage** token matching when present
+- **covered_directions** overrides **topic_coverage** token matching when present — removed (ADR 0042), both concepts no longer exist
 - **precision: exact** requires **evidence_type: official_data** or **independent_benchmark**
 - A **gate phase responsibility** determines which checks run at each pipeline transition; BLOCKERs caught at earliest stage
 - **BLOCKER report checks** block final→cleanup; the 7 WARN report checks are advisory
+- **review_report_exists** blocks review→final; review is mandatory (ADR 0028)
 - **Reference numbering** uses `{{ref:URL}}` markers in analysis.json; claim.source_urls must be a subset of content `{{ref:URL}}` markers in the same section
 - **ref_marker_validity** and **claim_source_ref_coverage** are analysis-phase BLOCKERs ensuring URL consistency between analysis.json content and collected.json
-- Source **language** field in config.json drives search plan task splitting (per source, not per tier)
-- **deep-dive anchor** selection is performed by the orchestrator in **section plan**; each panoramic/exploratory section must have ≥ 2 anchors
+- Source **language** field in config.json is used by **search gate repair routing** to suggest language-appropriate sources when a direction has zero coverage
+- **search gate repair routing** uses config.json as a post-search repair toolbook: when a BLOCKER fires (topic_coverage, tier_coverage, min_sources), gate queries the relevant tier's source list and emits concrete site_query suggestions
+- **search plan** is removed (ADR 0042); agent searches freely without a pre-search plan
+- **deep-dive anchor** selection is performed by the orchestrator in **section plan** as advisory suggestions; agent may add anchors beyond the plan. Each panoramic/exploratory section must have ≥ 2 deep-dive anchors (enforced by gate, not by plan)
 - **false depth** is prohibited by **synthesis guard** and writing-guide content rules
-- **source fidelity** replaces **fetched_content_depth**: gate now checks `.workdir/sources/` file existence rather than `fetched_content` field character count
-- **fetched_content** field is derived from the written source file (first 200 chars of the file); not from search snippets or LLM summaries. Source file must exist in `.workdir/sources/` before the entry is added to collected.json (ADR 0032).
+- **source fidelity** replaces **fetched_content_depth**: gate now checks `.workdir/sources/` file existence rather than `fetched_content` field character count. Includes snippet overlap heuristic: if >30% of source files have >80% of their content covered by the snippet, BLOCKER (summary-not-full, ADR 0040).
+- **fetched_content** field is derived from the written source file (first 200 chars of the file); populated in Step 2.3 after discovery in Step 2.2. During Step 2.2, `fetched_content` is `""` and `source_file` is `null` (ADR 0039).
 - **UrlRewriter** is the code strategy Protocol — only `rewrite_url()`, no `tools()` or `retries()` (ADR 0038)
 - **FetchStrategy** is the Fetcher-facing Protocol — `rewrite_url` + `tools` + `retries`; always composed from UrlRewriter + config, or config-only, or DefaultStrategy
 - **fetch router** resolves `get_fetch_strategy(source_config) → FetchStrategy`; composes UrlRewriter (if code strategy exists) with config tools/retries as ComposedStrategy (ADR 0038)
 - config.json is the single source of truth for **tools** order; code strategies cannot override it
 - **adaptive retry** by Tier: Tier 1-2 retry twice per tool, Tier 3-4 retry once; 60s global timeout
 - **Fetcher** reads **FetchStrategy** for URL rewrite and tool order; FetchStrategy is declarative, Fetcher is executable
-- **fetch CLI** is the agent-facing interface to **Fetcher**; agent calls CLI, CLI calls Fetcher
+- **fetch CLI** is the agent-facing interface to **Fetcher**; agent calls CLI, CLI calls Fetcher. Two modes: single-URL (`fetch <url>`) and batch (`batch-fetch --from-stdin`).
+- **batch-fetch CLI** processes multiple URLs in one call (ADR 0041). Accepts JSON array of `{url, content, tier?}` via stdin, writes source files via `Fetcher.save_piped()`, updates collected.json automatically. Eliminates agent's opportunity to summarize (the correct path is the easy path). Also has `--pending` mode to list URLs that still need fetching.
 - **pipe mode** bypasses **Fetcher**'s autonomous fetch; agent provides content, CLI does post-processing only (skip cleaning)
 - **content_insufficient** triggers agent to switch from autonomous path to pipe path (exa); `content_insufficient=true` + `fetch_failed=false` means partial content was saved (ADR 0038)
 - **fetch_defaults** in config.json provides global defaults including `playwright_enabled`; source-level `fetch` blocks override per-source; `--no-playwright` CLI flag > `playwright_enabled` config > `True` default

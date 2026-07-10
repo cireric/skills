@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .lib.constants import (
@@ -46,6 +46,7 @@ class CheckResult:
     level: str  # "BLOCKER" | "WARN" | "INFO"
     passed: bool
     message: str = ""
+    repair_hints: list[str] = field(default_factory=list)
 
 def _read_artifact(path: Path, check_name: str, read_error_level: str = "BLOCKER") -> tuple[dict | None, CheckResult | None]:
     """Read a JSON artifact, returning (data, None) on success or (None, CheckResult) on failure.
@@ -68,7 +69,11 @@ def check_artifact_exists(workdir: Path) -> CheckResult:
         if not (workdir / name).exists():
             missing.append(name)
     if missing:
-        return CheckResult("artifact_exists", "BLOCKER", False, f"Missing: {', '.join(missing)}")
+        return CheckResult(
+            "artifact_exists", "BLOCKER", False,
+            f"Missing: {', '.join(missing)}",
+            repair_hints=[f"Missing required artifacts: {', '.join(missing)}. Ensure scope.json, collected.json, and analysis.json exist in .workdir/"],
+        )
     return CheckResult("artifact_exists", "BLOCKER", True)
 
 
@@ -98,7 +103,11 @@ def check_url_traceability(workdir: Path) -> CheckResult:
             detail = "; ".join(untraceable)
         else:
             detail = f"{count} claim URLs not found in collected.json (showing first 5): " + "; ".join(untraceable[:5])
-        return CheckResult("url_traceability", "BLOCKER", False, detail)
+        invalid_urls = [u.split(": ", 1)[-1].split(" (did you mean")[0] for u in untraceable]
+        return CheckResult(
+            "url_traceability", "BLOCKER", False, detail,
+            repair_hints=[f"The following claim source_urls are not in collected.json: {', '.join(invalid_urls)}. Add these URLs to collected.json or update the claims to reference existing URLs"],
+        )
     return CheckResult("url_traceability", "BLOCKER", True)
 
 
@@ -114,6 +123,7 @@ def check_section_coverage(workdir: Path, goal_type: str) -> CheckResult:
                 "BLOCKER",
                 False,
                 "Missing 'overview' section for exploratory goal_type",
+                repair_hints=["Missing required sections: overview. goal_type=exploratory requires these section IDs. Add the missing sections to analysis.json"],
             )
         if len(present) < 2:
             return CheckResult(
@@ -121,6 +131,7 @@ def check_section_coverage(workdir: Path, goal_type: str) -> CheckResult:
                 "BLOCKER",
                 False,
                 f"Exploratory goal_type requires at least 2 sections, found {len(present)}: {', '.join(present)}",
+                repair_hints=[f"Missing required sections: need at least 2 for exploratory goal_type, currently have {', '.join(present)}. goal_type={goal_type} requires these section IDs. Add the missing sections to analysis.json"],
             )
         return CheckResult("section_coverage", "BLOCKER", True)
     required = _REQUIRED_SECTION_IDS.get(goal_type, ["overview", "details"])
@@ -132,6 +143,7 @@ def check_section_coverage(workdir: Path, goal_type: str) -> CheckResult:
             "BLOCKER",
             False,
             f"Missing sections for {goal_type}: {', '.join(missing)}",
+            repair_hints=[f"Missing required sections: {', '.join(missing)}. goal_type={goal_type} requires these section IDs. Add the missing sections to analysis.json"],
         )
     return CheckResult("section_coverage", "BLOCKER", True)
 
@@ -146,7 +158,10 @@ def check_analysis_schema(workdir: Path) -> CheckResult:
     schema_errors = validate_analysis(analysis)
     if schema_errors:
         detail = "; ".join(f"{e.field}: {e.message}" for e in schema_errors)
-        return CheckResult("analysis_schema", "BLOCKER", False, detail)
+        return CheckResult(
+            "analysis_schema", "BLOCKER", False, detail,
+            repair_hints=["analysis.json schema validation failed. Check that sections have id, title, content fields and claims have text, source_urls, evidence_type, confidence, precision"],
+        )
     for section in analysis.get("sections", []):
         content = section.get("content", "")
         if content.startswith("## "):
@@ -409,6 +424,7 @@ def check_subagent_delegation(workdir: Path) -> CheckResult:
             f"analysis.json has {len(sections)} sections but no analysis_section_*.json files found in .workdir/ — "
             f"subagent delegation is required for multi-section reports (see references/subagent-template.md). "
             f"Write each section via a separate subagent call, then merge with JSON merge only.",
+            repair_hints=[f"analysis.json has {len(sections)} sections but no analysis_section_*.json files found in .workdir/. Delegate section writing to subagents, each producing analysis_section_{{id}}.json"],
         )
     missing_ids = []
     for section in sections:
@@ -418,12 +434,53 @@ def check_subagent_delegation(workdir: Path) -> CheckResult:
     if missing_ids:
         return CheckResult(
             "subagent_delegation",
-            "WARN",
+            "BLOCKER",
             False,
             f"Sections without matching analysis_section_*.json: {', '.join(missing_ids)} — "
             f"these sections may not have been written by independent subagents",
         )
     return CheckResult("subagent_delegation", "BLOCKER", True, f"{len(section_files)} section files found for {len(sections)} sections")
+
+
+_SECTION_DEVIATION_THRESHOLD = 0.5
+
+
+def check_section_deviation(workdir: Path) -> CheckResult:
+    """WARN if actual sections deviate >50% from the section plan in analysis.json.
+
+    The section plan is a reference template (ADR 0043) — agent may add, remove,
+    merge, or split sections. But extreme deviation may indicate the agent lost
+    track of the plan. This is advisory, not blocking.
+    """
+    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "section_deviation", "WARN")
+    if err:
+        return err
+    plan_ids = {s.get("id", "") for s in analysis.get("sections", []) if s.get("id")}
+    if not plan_ids:
+        return CheckResult("section_deviation", "WARN", True, "No section IDs in plan, deviation check skipped")
+    section_files = list(workdir.glob("analysis_section_*.json"))
+    if not section_files:
+        return CheckResult("section_deviation", "WARN", True, "No section files, delegation check handles this")
+    file_ids: set[str] = set()
+    for f in section_files:
+        name = f.stem.replace("analysis_section_", "")
+        file_ids.add(name)
+    plan_only = plan_ids - file_ids
+    file_only = file_ids - plan_ids
+    total = len(plan_ids)
+    deviation = (len(plan_only) + len(file_only)) / total if total else 0
+    if deviation > _SECTION_DEVIATION_THRESHOLD:
+        details: list[str] = []
+        if plan_only:
+            details.append(f"planned but not written: {', '.join(sorted(plan_only))}")
+        if file_only:
+            details.append(f"written but not planned: {', '.join(sorted(file_only))}")
+        return CheckResult(
+            "section_deviation", "WARN", False,
+            f"Section deviation {deviation:.0%} exceeds {_SECTION_DEVIATION_THRESHOLD:.0%} threshold — {'; '.join(details)}",
+            repair_hints=["Section plan is a reference template (ADR 0043), but high deviation may indicate lost structure. Consider aligning plan and content."],
+        )
+    return CheckResult("section_deviation", "WARN", True, f"Section deviation {deviation:.0%}")
 
 
 def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
@@ -441,4 +498,5 @@ def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
         check_source_tier_balance(workdir, goal_type),
         check_key_insights_coverage(workdir, goal_type),
         check_subagent_delegation(workdir),
+        check_section_deviation(workdir),
     ] + claim_results
