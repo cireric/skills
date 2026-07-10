@@ -353,9 +353,11 @@ def _check_review_report_exists(workdir: Path) -> CheckResult:
 def _gate_review(workdir: Path, to_phase: str = "review") -> list[str]:
     """Review gate: blocks on BLOCKER-level failures.
 
-    - analysis→review: just passes through. Review is an agent-level concern
-      (SKILL.md instructs the agent to auto-start a review subagent).
-    - review→final: runs advisory gateway checks + BLOCKER on missing review_report.md.
+    - analysis→review / review→review: just passes through. Review is an
+      agent-level concern (SKILL.md instructs the agent to auto-start a
+      review subagent). Gateway checks are not re-run on self-loops.
+    - review→final: runs advisory gateway checks + BLOCKER on missing
+      review_report.md.
     """
     errors: list[str] = []
     if to_phase == "final":

@@ -24,7 +24,6 @@ from scripts.report_checks import (
     check_report_overlong_lines,
     check_report_refs_visibility,
     check_report_table_delimiters,
-    check_report_table_suggestion,
     check_report_unclosed_code_blocks,
     run_report_checks,
 )
@@ -503,7 +502,7 @@ Content with cite [&#91;1&#93;](#refs).
 """
         _write_md(tmp_path / "report.md", md)
         results = run_report_checks(tmp_path / "report.md")
-        assert len(results) == 11
+        assert len(results) == 10
         for r in results:
             assert isinstance(r, CheckResult)
 
@@ -617,57 +616,59 @@ class TestInlineCitationWithMarkers:
 
 
 class TestCheckReportTableSuggestion:
-    """ADR 0044: WARN if section has ≥4 claims — suggest using Markdown tables."""
+    """ADR 0044: WARN if section has ≥4 claims — suggest using Markdown tables.
+    
+    Moved to artifact_checks.py (reads analysis.json, not report file)."""
 
     def _setup(self, tmp_path, sections):
         import json
-        workdir = tmp_path / "reports" / ".." / ".workdir"
-        workdir.mkdir(parents=True, exist_ok=True)
+        from scripts.lib.constants import ARTIFACT_ANALYSIS
         analysis = {"topic": "test", "goal_type": "exploratory", "sections": sections}
-        (workdir / "analysis.json").write_text(json.dumps(analysis), encoding="utf-8")
-        report_path = tmp_path / "reports" / "report.md"
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text("---\ntopic: T\ngoal_type: other\n---\nBody\n", encoding="utf-8")
-        return report_path
+        (tmp_path / ARTIFACT_ANALYSIS).write_text(json.dumps(analysis), encoding="utf-8")
+        return tmp_path
 
     def test_no_analysis_json_passes(self, tmp_path):
-        report_path = tmp_path / "report.md"
-        report_path.write_text("body", encoding="utf-8")
-        result = check_report_table_suggestion(report_path)
+        from scripts.artifact_checks import check_table_suggestion
+        result = check_table_suggestion(tmp_path)
         assert result.passed
         assert result.name == "table_suggestion"
 
     def test_section_with_3_claims_passes(self, tmp_path):
+        from scripts.artifact_checks import check_table_suggestion
         sections = [{"id": "s1", "title": "Overview", "claims": [{"text": f"c{i}"} for i in range(3)]}]
-        result = check_report_table_suggestion(self._setup(tmp_path, sections))
+        result = check_table_suggestion(self._setup(tmp_path, sections))
         assert result.passed
 
     def test_section_with_4_claims_warns(self, tmp_path):
+        from scripts.artifact_checks import check_table_suggestion
         sections = [{"id": "s1", "title": "Ecosystem", "claims": [{"text": f"c{i}"} for i in range(4)]}]
-        result = check_report_table_suggestion(self._setup(tmp_path, sections))
+        result = check_table_suggestion(self._setup(tmp_path, sections))
         assert not result.passed
         assert result.level == "WARN"
         assert "Ecosystem" in result.message
         assert "4 claims" in result.message
 
     def test_multiple_sections_above_threshold(self, tmp_path):
+        from scripts.artifact_checks import check_table_suggestion
         sections = [
             {"id": "s1", "title": "A", "claims": [{"text": f"c{i}"} for i in range(4)]},
             {"id": "s2", "title": "B", "claims": [{"text": f"c{i}"} for i in range(5)]},
         ]
-        result = check_report_table_suggestion(self._setup(tmp_path, sections))
+        result = check_table_suggestion(self._setup(tmp_path, sections))
         assert not result.passed
         assert "'A' has 4 claims" in result.message
         assert "'B' has 5 claims" in result.message
 
     def test_repair_hints_present(self, tmp_path):
+        from scripts.artifact_checks import check_table_suggestion
         sections = [{"id": "s1", "title": "T", "claims": [{"text": f"c{i}"} for i in range(4)]}]
-        result = check_report_table_suggestion(self._setup(tmp_path, sections))
+        result = check_table_suggestion(self._setup(tmp_path, sections))
         assert not result.passed
         assert len(result.repair_hints) > 0
         assert "Markdown tables" in result.repair_hints[0]
 
     def test_section_without_claims_field_passes(self, tmp_path):
+        from scripts.artifact_checks import check_table_suggestion
         sections = [{"id": "s1", "title": "No claims"}]
-        result = check_report_table_suggestion(self._setup(tmp_path, sections))
+        result = check_table_suggestion(self._setup(tmp_path, sections))
         assert result.passed

@@ -202,20 +202,25 @@ class SearchGate:
             return CheckResult("source_fidelity", "WARN", False, msg)
         return CheckResult("source_fidelity", "BLOCKER", True, msg)
 
-    def _build_tier_repair_hints(self, missing_tiers: list[int]) -> list[str]:
-        """Build repair hints for missing tiers by querying config sources."""
+    def _build_tier_hints(self, tiers: list[int], prefix_fn: "Callable[[int], str]") -> list[str]:
+        """Build repair hints for given tiers by querying config sources.
+
+        Args:
+            tiers: Tier numbers to generate hints for.
+            prefix_fn: Returns the prefix string for each tier (e.g. "Tier 2 零覆盖").
+        """
         hints: list[str] = []
         if not self.config:
             return hints
         sources = self.config.get("sources", {})
-        for tier in missing_tiers:
+        for tier in tiers:
             tier_data = sources.get(str(tier), {})
             tier_sources = tier_data.get("sources", [])
             by_lang: dict[str, list[dict]] = {}
             for s in tier_sources:
                 lang = s.get("language", "en")
                 by_lang.setdefault(lang, []).append(s)
-            parts = [f"Tier {tier} 零覆盖"]
+            parts = [prefix_fn(tier)]
             for lang, lang_sources in sorted(by_lang.items()):
                 names = [s.get("name", s.get("domain", "")) for s in lang_sources]
                 site_queries = [s.get("site_query", "") for s in lang_sources if s.get("site_query")]
@@ -229,39 +234,18 @@ class SearchGate:
                 hints.append(" → ".join(parts))
         return hints
 
+    def _build_tier_repair_hints(self, missing_tiers: list[int]) -> list[str]:
+        """Build repair hints for missing tiers by querying config sources."""
+        return self._build_tier_hints(missing_tiers, lambda t: f"Tier {t} 零覆盖")
+
     def _build_all_tier_repair_hints(self) -> list[str]:
         """Build repair hints listing ALL route tiers (for min_sources check)."""
-        hints: list[str] = []
-        if not self.config:
-            return hints
         goal_type = self._goal_type
         route = get_route(goal_type, self.config)
         route_path = route.get("path", [])
         route_optional = route.get("optional_tiers", [])
         all_tiers = route_path + [t for t in route_optional if t not in route_path]
-        sources = self.config.get("sources", {})
-        for tier in all_tiers:
-            tier_data = sources.get(str(tier), {})
-            tier_sources = tier_data.get("sources", [])
-            by_lang: dict[str, list[dict]] = {}
-            for s in tier_sources:
-                lang = s.get("language", "en")
-                by_lang.setdefault(lang, []).append(s)
-            parts = [f"Tier {tier}"]
-            for lang, lang_sources in sorted(by_lang.items()):
-                names = [s.get("name", s.get("domain", "")) for s in lang_sources]
-                site_queries = [s.get("site_query", "") for s in lang_sources if s.get("site_query")]
-                lang_parts: list[str] = []
-                if names:
-                    lang_parts.append(f"sources({lang}): {', '.join(names)}")
-                if site_queries:
-                    lang_parts.append(f"try({lang}): {', '.join(site_queries)}")
-                parts.extend(lang_parts)
-            if len(parts) > 1:
-                hints.append(" → ".join(parts))
-            if len(parts) > 1:
-                hints.append(" → ".join(parts))
-        return hints
+        return self._build_tier_hints(all_tiers, lambda t: f"Tier {t}")
 
     @staticmethod
     def _snippet_overlap_ratio(file_content: str, snippet: str) -> float:

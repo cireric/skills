@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -271,42 +270,8 @@ def check_report_overlong_lines(report_path: Path) -> CheckResult:
     return CheckResult("report_overlong_lines", "WARN", True)
 
 
-def check_report_table_suggestion(report_path: Path) -> CheckResult:
-    """Suggest using Markdown tables for sections with many structured claims.
-    
-    Reads analysis.json (not the report file) to count claims per section.
-    If a section has ≥4 claims, suggests using tables.
-    """
-    workdir = report_path.parent.parent / ".workdir"
-    analysis_path = workdir / "analysis.json"
-    if not analysis_path.exists():
-        return CheckResult("table_suggestion", "WARN", True, "Skipped (no analysis.json)")
-    try:
-        analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return CheckResult("table_suggestion", "WARN", True, "Skipped (cannot read analysis.json)")
-    sections = analysis.get("sections", [])
-    suggestions = []
-    for section in sections:
-        if not isinstance(section, dict):
-            continue
-        claims = section.get("claims", [])
-        if not isinstance(claims, list):
-            continue
-        if len(claims) >= 4:
-            title = section.get("title", section.get("id", "unknown"))
-            suggestions.append(f"'{title}' has {len(claims)} claims — consider using Markdown tables for structured data")
-    if suggestions:
-        return CheckResult(
-            "table_suggestion", "WARN", False,
-            "; ".join(suggestions),
-            repair_hints=["Convert multi-entity comparisons or multi-row data into Markdown tables for better scannability"],
-        )
-    return CheckResult("table_suggestion", "WARN", True)
-
-
 def run_report_checks(report_path: Path) -> list[CheckResult]:
-    """Run all 11 report-level checks on the generated .md file."""
+    """Run all 10 report-level checks on the generated .md file."""
     return [
         check_report_dangling_refs(report_path),
         check_report_orphaned_defs(report_path),
@@ -318,5 +283,4 @@ def run_report_checks(report_path: Path) -> list[CheckResult]:
         check_report_unclosed_code_blocks(report_path),
         check_report_empty_sections(report_path),
         check_report_overlong_lines(report_path),
-        check_report_table_suggestion(report_path),
     ]

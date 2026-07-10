@@ -45,7 +45,7 @@ Each pipeline gate checks only its own phase's concerns. `_gate_analysis` (analy
 _Avoid_: gate scope, gate coverage, per-gate filtering
 
 **report_checks**:
-The deep module that validates the final report file. Interface: `run_report_checks(report_path) → list[CheckResult]`. Owns 10 checks: 3 BLOCKER (dangling refs F1, orphaned defs F2, front matter 9) + 7 WARN (refs visibility, table delimiters, heading levels, duplicate headings, unclosed code blocks, empty sections, overlong lines) + 1 WARN (table_suggestion: sections with ≥4 claims should consider using Markdown tables for structured data presentation, ADR 0044). See ADR 0026.
+The deep module that validates the final report file. Interface: `run_report_checks(report_path) → list[CheckResult]`. Owns 10 checks: 3 BLOCKER (dangling refs F1, orphaned defs F2, front matter 9) + 7 WARN (refs visibility, table delimiters, heading levels, duplicate headings, unclosed code blocks, empty sections, overlong lines). See ADR 0026.
 _Avoid_: report gateway, report validator, final gate checks
 
 **BLOCKER report checks**:

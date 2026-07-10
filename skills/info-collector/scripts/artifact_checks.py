@@ -483,6 +483,38 @@ def check_section_deviation(workdir: Path) -> CheckResult:
     return CheckResult("section_deviation", "WARN", True, f"Section deviation {deviation:.0%}")
 
 
+_TABLE_SUGGESTION_MIN_CLAIMS = 4
+
+
+def check_table_suggestion(workdir: Path) -> CheckResult:
+    """Suggest using Markdown tables for sections with many structured claims.
+
+    Reads analysis.json to count claims per section.
+    If a section has ≥4 claims, suggests using tables (ADR 0044).
+    """
+    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "table_suggestion", "WARN")
+    if err:
+        return err
+    sections = analysis.get("sections", [])
+    suggestions = []
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        claims = section.get("claims", [])
+        if not isinstance(claims, list):
+            continue
+        if len(claims) >= _TABLE_SUGGESTION_MIN_CLAIMS:
+            title = section.get("title", section.get("id", "unknown"))
+            suggestions.append(f"'{title}' has {len(claims)} claims — consider using Markdown tables for structured data")
+    if suggestions:
+        return CheckResult(
+            "table_suggestion", "WARN", False,
+            "; ".join(suggestions),
+            repair_hints=["Convert multi-entity comparisons or multi-row data into Markdown tables for better scannability"],
+        )
+    return CheckResult("table_suggestion", "WARN", True)
+
+
 def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
     from .claim_validator import ClaimValidator
     claim_results = ClaimValidator(workdir, goal_type).check()
@@ -499,4 +531,5 @@ def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
         check_key_insights_coverage(workdir, goal_type),
         check_subagent_delegation(workdir),
         check_section_deviation(workdir),
+        check_table_suggestion(workdir),
     ] + claim_results
