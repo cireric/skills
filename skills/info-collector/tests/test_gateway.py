@@ -36,7 +36,7 @@ class TestCheckUrlTraceability:
         _write_json(
             tmp_path / "analysis.json",
             {
-                "sections": [{"claims": [{"source_urls": ["https://example.com/a"]}]}],
+                "sections": [{"claims": [{"sources": ["https://example.com/a"]}]}],
             },
         )
         _write_json(
@@ -52,7 +52,7 @@ class TestCheckUrlTraceability:
         _write_json(
             tmp_path / "analysis.json",
             {
-                "sections": [{"claims": [{"source_urls": ["https://example.com/b"]}]}],
+                "sections": [{"claims": [{"sources": ["https://example.com/b"]}]}],
             },
         )
         _write_json(
@@ -299,7 +299,7 @@ class TestCheckAnalysisSchema:
                         "id": "overview",
                         "title": "Overview",
                         "content": "Content",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -343,7 +343,7 @@ class TestCheckAnalysisSchemaDuplicateTitle:
                         "id": "overview",
                         "title": "Overview",
                         "content": "## Section Title",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -364,7 +364,7 @@ class TestCheckAnalysisSchemaDuplicateTitle:
                         "id": "overview",
                         "title": "Overview",
                         "content": "Normal content without headings",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -394,8 +394,8 @@ class TestCheckQualityHeuristics:
                 "sections": [
                     {
                         "claims": [
-                            {"source_urls": ["https://a.com", "https://b.com"]},
-                            {"source_urls": ["https://c.com", "https://d.com"]},
+                            {"sources": ["https://a.com", "https://b.com"]},
+                            {"sources": ["https://c.com", "https://d.com"]},
                         ]
                     }
                 ],
@@ -411,9 +411,9 @@ class TestCheckQualityHeuristics:
                 "sections": [
                     {
                         "claims": [
-                            {"source_urls": ["https://a.com"]},
-                            {"source_urls": ["https://b.com"]},
-                            {"source_urls": ["https://c.com", "https://d.com"]},
+                            {"sources": ["https://a.com"]},
+                            {"sources": ["https://b.com"]},
+                            {"sources": ["https://c.com", "https://d.com"]},
                         ]
                     }
                 ],
@@ -586,8 +586,8 @@ class TestCheckSourceTierBalance:
                 "sections": [
                     {
                         "claims": [
-                            {"source_urls": ["https://example.com/a"]},
-                            {"source_urls": ["https://example.com/b"]},
+                            {"sources": ["https://example.com/a"]},
+                            {"sources": ["https://example.com/b"]},
                         ],
                     }
                 ],
@@ -611,10 +611,10 @@ class TestCheckSourceTierBalance:
                 "sections": [
                     {
                         "claims": [
-                            {"source_urls": ["https://example.com/a"]},
-                            {"source_urls": ["https://example.com/b"]},
-                            {"source_urls": ["https://example.com/c"]},
-                            {"source_urls": ["https://example.com/d"]},
+                            {"sources": ["https://example.com/a"]},
+                            {"sources": ["https://example.com/b"]},
+                            {"sources": ["https://example.com/c"]},
+                            {"sources": ["https://example.com/d"]},
                         ],
                     }
                 ],
@@ -641,7 +641,7 @@ class TestCheckSourceTierBalance:
                 "sections": [
                     {
                         "claims": [
-                            {"source_urls": ["https://example.com/a"]},
+                            {"sources": ["https://example.com/a"]},
                         ],
                     }
                 ],
@@ -664,7 +664,7 @@ class TestCheckSourceTierBalance:
                 "sections": [
                     {
                         "claims": [
-                            {"source_urls": ["https://example.com/a"]},
+                            {"sources": ["https://example.com/a"]},
                         ],
                     }
                 ],
@@ -738,8 +738,8 @@ class TestCheckKeyInsightsCoverage:
                         "title": "Overview",
                         "content": "Content",
                         "key_insights": [
-                            {"text": "Finding A", "source_urls": ["https://a.com", "https://b.com"]},
-                            {"text": "Finding B", "source_urls": ["https://c.com", "https://d.com"]},
+                            {"summary": "Finding A", "sources": ["https://a.com", "https://b.com"]},
+                            {"summary": "Finding B", "sources": ["https://c.com", "https://d.com"]},
                         ],
                     },
                     {
@@ -747,8 +747,8 @@ class TestCheckKeyInsightsCoverage:
                         "title": "Findings",
                         "content": "Content",
                         "key_insights": [
-                            {"text": "Finding C", "source_urls": ["https://e.com", "https://f.com"]},
-                            {"text": "Finding D", "source_urls": ["https://g.com", "https://h.com"]},
+                            {"summary": "Finding C", "sources": ["https://e.com", "https://f.com"]},
+                            {"summary": "Finding D", "sources": ["https://g.com", "https://h.com"]},
                         ],
                     },
                 ],
@@ -783,7 +783,7 @@ class TestCheckKeyInsightsCoverage:
                         "id": "overview",
                         "title": "Overview",
                         "content": "Content",
-                        "key_insights": [{"text": "Only one"}],
+                        "key_insights": [{"summary": "Only one"}],
                     },
                 ],
             },
@@ -802,8 +802,8 @@ class TestCheckKeyInsightsCoverage:
                         "title": "Overview",
                         "content": "Content",
                         "key_insights": [
-                            {"text": "Finding A", "source_urls": ["https://a.com", "https://b.com"]},
-                            {"text": "Finding B", "source_urls": ["https://c.com", "https://d.com"]},
+                            {"summary": "Finding A", "sources": ["https://a.com", "https://b.com"]},
+                            {"summary": "Finding B", "sources": ["https://c.com", "https://d.com"]},
                         ],
                     },
                 ],
@@ -822,8 +822,8 @@ class TestCheckKeyInsightsCoverage:
                         "title": "Overview",
                         "content": "Content",
                         "key_insights": [
-                            {"text": "Finding A", "source_urls": ["https://a.com"]},
-                            {"text": "Finding B", "source_urls": ["https://b.com", "https://c.com"]},
+                            {"summary": "Finding A", "sources": ["https://a.com"]},
+                            {"summary": "Finding B", "sources": ["https://b.com", "https://c.com"]},
                         ],
                     },
                 ],
@@ -832,7 +832,7 @@ class TestCheckKeyInsightsCoverage:
         result = check_key_insights_coverage(tmp_path, "panoramic_understanding")
         assert not result.passed
         assert "key_insights[0]" in result.message
-        assert "1 source_urls" in result.message
+        assert "1 sources" in result.message
 
 
 class TestRepairHintsArtifactExists:
@@ -856,7 +856,7 @@ class TestRepairHintsUrlTraceability:
     def test_untraceable_url_has_repair_hints(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
-            {"sections": [{"claims": [{"source_urls": ["https://example.com/b"]}]}]},
+            {"sections": [{"claims": [{"sources": ["https://example.com/b"]}]}]},
         )
         _write_json(
             tmp_path / "collected.json",
@@ -871,7 +871,7 @@ class TestRepairHintsUrlTraceability:
     def test_all_traceable_no_repair_hints(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
-            {"sections": [{"claims": [{"source_urls": ["https://example.com/a"]}]}]},
+            {"sections": [{"claims": [{"sources": ["https://example.com/a"]}]}]},
         )
         _write_json(
             tmp_path / "collected.json",
@@ -926,8 +926,8 @@ class TestRepairHintsAnalysisSchema:
         assert "id" in result.repair_hints[0]
         assert "title" in result.repair_hints[0]
         assert "content" in result.repair_hints[0]
-        assert "text" in result.repair_hints[0]
-        assert "source_urls" in result.repair_hints[0]
+        assert "summary" in result.repair_hints[0]
+        assert "sources" in result.repair_hints[0]
 
     def test_valid_schema_no_repair_hints(self, tmp_path):
         _write_json(
@@ -940,7 +940,7 @@ class TestRepairHintsAnalysisSchema:
                         "id": "overview",
                         "title": "Overview",
                         "content": "Content",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },

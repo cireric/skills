@@ -2,7 +2,7 @@
 
 Each pipeline gate now checks only its own phase's concerns, and BLOCKERs are caught at the earliest possible stage. Previously, `_gate_analysis` only checked `url_traceability`, deferring other analysis-phase BLOCKERs to `_gate_review` or later; `_gate_review` ran the full gateway, meaning review loops could be blocked by analysis-phase issues that should have been caught earlier.
 
-- **Status**: Accepted
+- **Status**: Superseded by ADR-0028, ADR-0029
 
 ## Decision
 

@@ -38,8 +38,8 @@ class ScopeDict(TypedDict, total=False):
 
 
 class ClaimDict(TypedDict, total=False):
-    text: str
-    source_urls: list[str]
+    summary: str
+    sources: list[str]
     evidence_type: str
     confidence: str
     precision: str
@@ -81,7 +81,7 @@ _SCOPE_REQUIRED_FIELDS = (
 )
 _ANALYSIS_REQUIRED_FIELDS = ("topic", "goal_type")
 _SECTION_REQUIRED_FIELDS = ("id", "title", "content")
-_CLAIM_REQUIRED_FIELDS = ("text", "source_urls")
+_CLAIM_REQUIRED_FIELDS = ("summary", "sources")
 _COLLECTED_REQUIRED_FIELDS = ("url", "title", "snippet")
 
 
@@ -212,14 +212,14 @@ def _validate_claims(sec_idx: int, claims: list, errors: list[ValidationError]) 
         for field in _CLAIM_REQUIRED_FIELDS:
             if field not in claim:
                 errors.append(_err(f"{prefix}.{field}", f"missing required field: {field}"))
-        if "source_urls" in claim:
-            urls = claim["source_urls"]
+        if "sources" in claim:
+            urls = claim["sources"]
             if not isinstance(urls, list):
-                errors.append(_err(f"{prefix}.source_urls", f"expected list, got {type(urls).__name__}"))
+                errors.append(_err(f"{prefix}.sources", f"expected list, got {type(urls).__name__}"))
             elif not urls:
-                errors.append(_err(f"{prefix}.source_urls", "source_urls is empty"))
+                errors.append(_err(f"{prefix}.sources", "sources is empty"))
             elif not all(isinstance(u, str) for u in urls):
-                errors.append(_err(f"{prefix}.source_urls", "source_urls must contain only strings"))
+                errors.append(_err(f"{prefix}.sources", "sources must contain only strings"))
         if "evidence_type" in claim and claim["evidence_type"] not in _VALID_EVIDENCE_TYPES:
             errors.append(_err(f"{prefix}.evidence_type", f"invalid evidence_type '{claim['evidence_type']}'"))
         if "confidence" in claim and claim["confidence"] not in _VALID_CONFIDENCE:
@@ -238,16 +238,16 @@ def _validate_key_insights(sec_idx: int, insights: list, errors: list[Validation
         if not isinstance(insight, dict):
             errors.append(_err(prefix, f"expected dict, got {type(insight).__name__}"))
             continue
-        if "text" not in insight:
-            errors.append(_err(f"{prefix}.text", "missing required field: text"))
-        elif not isinstance(insight["text"], str):
-            errors.append(_err(f"{prefix}.text", f"expected str, got {type(insight['text']).__name__}"))
-        if "source_urls" in insight:
-            urls = insight["source_urls"]
+        if "summary" not in insight:
+            errors.append(_err(f"{prefix}.summary", "missing required field: summary"))
+        elif not isinstance(insight["summary"], str):
+            errors.append(_err(f"{prefix}.summary", f"expected str, got {type(insight['summary']).__name__}"))
+        if "sources" in insight:
+            urls = insight["sources"]
             if not isinstance(urls, list):
-                errors.append(_err(f"{prefix}.source_urls", f"expected list, got {type(urls).__name__}"))
+                errors.append(_err(f"{prefix}.sources", f"expected list, got {type(urls).__name__}"))
             elif not all(isinstance(u, str) for u in urls):
-                errors.append(_err(f"{prefix}.source_urls", "source_urls must contain only strings"))
+                errors.append(_err(f"{prefix}.sources", "sources must contain only strings"))
 
 
 def _validate_tensions(sec_idx: int, tensions: list, errors: list[ValidationError]) -> None:
@@ -256,10 +256,10 @@ def _validate_tensions(sec_idx: int, tensions: list, errors: list[ValidationErro
         if not isinstance(tension, dict):
             errors.append(_err(prefix, f"expected dict, got {type(tension).__name__}"))
             continue
-        if "description" not in tension:
-            errors.append(_err(f"{prefix}.description", "missing required field: description"))
-        elif not isinstance(tension["description"], str):
-            errors.append(_err(f"{prefix}.description", f"expected str, got {type(tension['description']).__name__}"))
+        if "summary" not in tension:
+            errors.append(_err(f"{prefix}.summary", "missing required field: summary"))
+        elif not isinstance(tension["summary"], str):
+            errors.append(_err(f"{prefix}.summary", f"expected str, got {type(tension['summary']).__name__}"))
         if "sources" in tension:
             srcs = tension["sources"]
             if not isinstance(srcs, list):

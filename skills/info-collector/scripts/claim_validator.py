@@ -80,7 +80,7 @@ def _number_found_in_source(claim_text: str, source_text: str) -> str:
 
 
 def _is_indirect_source(claim: dict, collected_by_url: dict[str, dict]) -> bool:
-    for url in claim.get("source_urls", []):
+    for url in claim.get("sources", []):
         item = collected_by_url.get(normalize_url(url))
         if item:
             tier = item.get("source_tier", 0)
@@ -95,8 +95,8 @@ def _is_indirect_source(claim: dict, collected_by_url: dict[str, dict]) -> bool:
         if claim.get("precision") in ("exact", "range"):
             return True
 
-    text = claim.get("text", "")
-    source_urls = claim.get("source_urls", [])
+    text = claim.get("summary", "")
+    source_urls = claim.get("sources", [])
     source_hosts: set[str] = set()
     for url in source_urls:
         try:
@@ -156,7 +156,7 @@ def _check_data_variance(section: dict) -> list[str]:
         for claim in claims:
             if claim.get("precision") != "exact":
                 continue
-            text = claim.get("text", "")
+            text = claim.get("summary", "")
             matches = _PRECISE_NUMBER_PATTERN.findall(text)
             for match in matches:
                 num_str = match[0].replace(",", "")
@@ -256,7 +256,7 @@ class ClaimValidator:
     def _check_precision_inflation(self) -> CheckResult:
         warnings: list[str] = []
         for sec_id, si, claim in self._all_claims:
-            text = claim.get("text", "")
+            text = claim.get("summary", "")
             ev = claim.get("evidence_type")
             prec = claim.get("precision")
             if prec == "exact" and ev in ("third_party_estimate", "qualitative_trend", "expert_opinion"):
@@ -267,7 +267,7 @@ class ClaimValidator:
                 )
             if ev == "third_party_estimate" and _PRECISE_NUMBER_PATTERN.search(text):
                 source_texts = []
-                for url in claim.get("source_urls", []):
+                for url in claim.get("sources", []):
                     item = self._collected_by_url.get(normalize_url(url))
                     if item:
                         source_texts.append(_source_text(item, self._workdir))
@@ -349,7 +349,7 @@ class ClaimValidator:
     def _check_claim_dedup(self) -> CheckResult:
         claim_sections: dict[str, list[str]] = {}
         for sec_id, _si, claim in self._all_claims:
-            text = claim.get("text", "").strip()
+            text = claim.get("summary", "").strip()
             if text:
                 claim_sections.setdefault(text, []).append(sec_id)
         duplicates = {text: secs for text, secs in claim_sections.items() if len(secs) > 1}
@@ -379,7 +379,7 @@ class ClaimValidator:
     def _check_entity_number_conflict(self) -> CheckResult:
         entity_numbers: dict[str, dict[str, list[str]]] = {}
         for sec_id, _si, claim in self._all_claims:
-            text = claim.get("text", "")
+            text = claim.get("summary", "")
             for match in self._ENTITY_NUMBER_PATTERN.finditer(text):
                 entity = match.group(1).strip()
                 number = match.group(2).strip()
@@ -432,17 +432,17 @@ class ClaimValidator:
             return "source_indirect"
 
         source_texts = []
-        for url in claim.get("source_urls", []):
+        for url in claim.get("sources", []):
             item = self._collected_by_url.get(normalize_url(url))
             if item:
                 source_texts.append(_source_text(item, self._workdir))
 
         if not source_texts:
-            if _PRECISE_NUMBER_PATTERN.search(claim.get("text", "")):
+            if _PRECISE_NUMBER_PATTERN.search(claim.get("summary", "")):
                 return "source_absent"
             return "source_confirmed"
 
-        results = [_number_found_in_source(claim.get("text", ""), src) for src in source_texts]
+        results = [_number_found_in_source(claim.get("summary", ""), src) for src in source_texts]
         if any(r == "source_confirmed" for r in results):
             return "source_confirmed"
         return "source_absent"
@@ -488,7 +488,7 @@ class ClaimValidator:
             for match in _REF_MARKER_RE.finditer(content):
                 content_urls.add(normalize_url(match.group(1).strip()))
             for ci, claim in enumerate(sec.get("claims", [])):
-                for url in claim.get("source_urls", []):
+                for url in claim.get("sources", []):
                     norm = normalize_url(url)
                     if norm not in content_urls:
                         violations.append(f"sections.{sec_id}.claims[{ci}]: {norm}")
@@ -501,20 +501,20 @@ class ClaimValidator:
                 for match in _REF_MARKER_RE.finditer(content):
                     content_urls.add(normalize_url(match.group(1).strip()))
                 for ci, claim in enumerate(sec.get("claims", [])):
-                    for url in claim.get("source_urls", []):
+                    for url in claim.get("sources", []):
                         norm = normalize_url(url)
                         if norm not in content_urls:
-                            claim_texts.append(claim.get("text", "")[:40])
+                            claim_texts.append(claim.get("summary", "")[:40])
             return CheckResult("claim_source_ref_coverage", "BLOCKER", False,
-                                f"{len(violations)} claim source_urls not referenced in content: "
+                                f"{len(violations)} claim sources not referenced in content: "
                                 f"{violations[:3]}{'...' if len(violations) > 3 else ''}",
                                 repair_hints=[
-                                    f"The following claims have source_urls not appearing as {{ref:URL}} markers in their section's content: "
+                                    f"The following claims have sources not appearing as {{ref:URL}} markers in their section's content: "
                                     f"{', '.join(claim_texts[:5])}{'...' if len(claim_texts) > 5 else ''}. "
                                     f"Add {{ref:URL}} markers for these source URLs in the section content"
                                 ])
         return CheckResult("claim_source_ref_coverage", "BLOCKER", True,
-                           "All claim source_urls are referenced in section content")
+                           "All claim sources are referenced in section content")
 
 
 def apply_source_verification(workdir: Path) -> None:

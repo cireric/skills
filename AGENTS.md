@@ -17,6 +17,7 @@
 - 用 `tmp_path` fixture 做文件隔离，不污染工作目录
 - 用 `monkeypatch` 覆盖 `_SKILL_DIR`（集成测试）
 - CLI 测试直接构造 `Namespace` args，不启动子进程
+- ADR supersede 维护：新 ADR 必须列出所有被取代的旧 ADR 编号；旧 ADR 只改 Status 行为 `Superseded by ADR-NNNN`，不改正文；部分 supersede 也改 Status
 
 ## 任务规划
 

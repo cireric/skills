@@ -1,6 +1,6 @@
 # ADR 0010: depth 驱动 per-direction 最少来源数
 
-- **Status**: Accepted
+- **Status**: Superseded by ADR-0042
 - **Date**: 2026-06-13
 - **Context**: info-collector skill
 

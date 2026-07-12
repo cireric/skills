@@ -635,13 +635,13 @@ class TestCheckReportTableSuggestion:
 
     def test_section_with_3_claims_passes(self, tmp_path):
         from scripts.artifact_checks import check_table_suggestion
-        sections = [{"id": "s1", "title": "Overview", "claims": [{"text": f"c{i}"} for i in range(3)]}]
+        sections = [{"id": "s1", "title": "Overview", "claims": [{"summary": f"c{i}"} for i in range(3)]}]
         result = check_table_suggestion(self._setup(tmp_path, sections))
         assert result.passed
 
     def test_section_with_4_claims_warns(self, tmp_path):
         from scripts.artifact_checks import check_table_suggestion
-        sections = [{"id": "s1", "title": "Ecosystem", "claims": [{"text": f"c{i}"} for i in range(4)]}]
+        sections = [{"id": "s1", "title": "Ecosystem", "claims": [{"summary": f"c{i}"} for i in range(4)]}]
         result = check_table_suggestion(self._setup(tmp_path, sections))
         assert not result.passed
         assert result.level == "WARN"
@@ -651,8 +651,8 @@ class TestCheckReportTableSuggestion:
     def test_multiple_sections_above_threshold(self, tmp_path):
         from scripts.artifact_checks import check_table_suggestion
         sections = [
-            {"id": "s1", "title": "A", "claims": [{"text": f"c{i}"} for i in range(4)]},
-            {"id": "s2", "title": "B", "claims": [{"text": f"c{i}"} for i in range(5)]},
+            {"id": "s1", "title": "A", "claims": [{"summary": f"c{i}"} for i in range(4)]},
+            {"id": "s2", "title": "B", "claims": [{"summary": f"c{i}"} for i in range(5)]},
         ]
         result = check_table_suggestion(self._setup(tmp_path, sections))
         assert not result.passed
@@ -661,7 +661,7 @@ class TestCheckReportTableSuggestion:
 
     def test_repair_hints_present(self, tmp_path):
         from scripts.artifact_checks import check_table_suggestion
-        sections = [{"id": "s1", "title": "T", "claims": [{"text": f"c{i}"} for i in range(4)]}]
+        sections = [{"id": "s1", "title": "T", "claims": [{"summary": f"c{i}"} for i in range(4)]}]
         result = check_table_suggestion(self._setup(tmp_path, sections))
         assert not result.passed
         assert len(result.repair_hints) > 0

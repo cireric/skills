@@ -19,8 +19,8 @@ class TestCheckPrecisionInflation:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "X",
-                        "source_urls": ["https://a.com"],
+                        "summary": "X",
+                        "sources": ["https://a.com"],
                         "evidence_type": "third_party_estimate",
                         "precision": "exact",
                     }],
@@ -40,8 +40,8 @@ class TestCheckPrecisionInflation:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "Achieves 98% accuracy",
-                        "source_urls": ["https://a.com"],
+                        "summary": "Achieves 98% accuracy",
+                        "sources": ["https://a.com"],
                         "evidence_type": "third_party_estimate",
                         "precision": "range",
                     }],
@@ -65,14 +65,14 @@ class TestCheckPrecisionInflation:
                     "id": "s1",
                     "claims": [
                         {
-                            "text": "X",
-                            "source_urls": ["https://a.com"],
+                            "summary": "X",
+                            "sources": ["https://a.com"],
                             "evidence_type": "third_party_estimate",
                             "precision": "exact",
                         },
                         {
-                            "text": "Achieves 95%",
-                            "source_urls": ["https://b.com"],
+                            "summary": "Achieves 95%",
+                            "sources": ["https://b.com"],
                             "evidence_type": "third_party_estimate",
                             "precision": "range",
                         },
@@ -92,8 +92,8 @@ class TestCheckPrecisionInflation:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "Reliable data",
-                        "source_urls": ["https://a.com"],
+                        "summary": "Reliable data",
+                        "sources": ["https://a.com"],
                         "evidence_type": "official_data",
                         "precision": "exact",
                     }],
@@ -112,8 +112,8 @@ class TestCheckPrecisionInflation:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "X",
-                        "source_urls": ["https://a.com"],
+                        "summary": "X",
+                        "sources": ["https://a.com"],
                         "evidence_type": "expert_opinion",
                         "precision": "exact",
                     }],
@@ -133,15 +133,15 @@ class TestCheckPrecisionInflation:
                     "id": "s1",
                     "claims": [
                         {
-                            "text": "Achieves 54% accuracy",
-                            "source_urls": ["https://a.com"],
+                            "summary": "Achieves 54% accuracy",
+                            "sources": ["https://a.com"],
                             "evidence_type": "official_data",
                             "precision": "exact",
                             "metric_type": "swe_bench_verified",
                         },
                         {
-                            "text": "Also reported at 54%",
-                            "source_urls": ["https://b.com"],
+                            "summary": "Also reported at 54%",
+                            "sources": ["https://b.com"],
                             "evidence_type": "official_data",
                             "precision": "exact",
                             "metric_type": "swe_bench_verified",
@@ -162,15 +162,15 @@ class TestCheckPrecisionInflation:
                     "id": "s1",
                     "claims": [
                         {
-                            "text": "Achieves 54% accuracy",
-                            "source_urls": ["https://a.com"],
+                            "summary": "Achieves 54% accuracy",
+                            "sources": ["https://a.com"],
                             "evidence_type": "official_data",
                             "precision": "exact",
                             "metric_type": "swe_bench_verified",
                         },
                         {
-                            "text": "Achieves 75% accuracy",
-                            "source_urls": ["https://b.com"],
+                            "summary": "Achieves 75% accuracy",
+                            "sources": ["https://b.com"],
                             "evidence_type": "official_data",
                             "precision": "exact",
                             "metric_type": "swe_bench_verified",
@@ -194,15 +194,15 @@ class TestCheckPrecisionInflation:
                     "id": "s1",
                     "claims": [
                         {
-                            "text": "Between 54% and 75% accuracy",
-                            "source_urls": ["https://a.com"],
+                            "summary": "Between 54% and 75% accuracy",
+                            "sources": ["https://a.com"],
                             "evidence_type": "official_data",
                             "precision": "range",
                             "metric_type": "swe_bench_verified",
                         },
                         {
-                            "text": "Approximately 65% accuracy",
-                            "source_urls": ["https://b.com"],
+                            "summary": "Approximately 65% accuracy",
+                            "sources": ["https://b.com"],
                             "evidence_type": "official_data",
                             "precision": "range",
                             "metric_type": "swe_bench_verified",
@@ -222,8 +222,8 @@ class TestCheckPrecisionInflation:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "Market size is $128 billion",
-                        "source_urls": ["https://a.com"],
+                        "summary": "Market size is $128 billion",
+                        "sources": ["https://a.com"],
                         "evidence_type": "third_party_estimate",
                         "precision": "range",
                     }],
@@ -245,8 +245,8 @@ class TestCheckPrecisionInflation:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "Achieves 98% accuracy",
-                        "source_urls": ["https://a.com"],
+                        "summary": "Achieves 98% accuracy",
+                        "sources": ["https://a.com"],
                         "evidence_type": "third_party_estimate",
                         "precision": "range",
                     }],
@@ -270,8 +270,8 @@ class TestCheckPrecisionInflation:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "Achieves 98% accuracy",
-                        "source_urls": ["https://a.com"],
+                        "summary": "Achieves 98% accuracy",
+                        "sources": ["https://a.com"],
                         "evidence_type": "third_party_estimate",
                         "precision": "range",
                     }],
@@ -289,8 +289,8 @@ class TestCheckPrecisionInflation:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "Achieves 98% accuracy",
-                        "source_urls": ["https://a.com"],
+                        "summary": "Achieves 98% accuracy",
+                        "sources": ["https://a.com"],
                         "evidence_type": "third_party_estimate",
                         "precision": "range",
                     }],
@@ -314,8 +314,8 @@ class TestCheckPrecisionInflation:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "Achieves 98% accuracy",
-                        "source_urls": ["https://a.com"],
+                        "summary": "Achieves 98% accuracy",
+                        "sources": ["https://a.com"],
                         "evidence_type": "third_party_estimate",
                         "precision": "range",
                     }],
@@ -339,8 +339,8 @@ class TestCheckPrecisionInflation:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "Achieves 98% accuracy",
-                        "source_urls": ["https://a.com"],
+                        "summary": "Achieves 98% accuracy",
+                        "sources": ["https://a.com"],
                         "evidence_type": "third_party_estimate",
                         "precision": "range",
                     }],
@@ -363,9 +363,9 @@ class TestCheckClaimMetadata:
             {
                 "sections": [{
                     "claims": [
-                        {"text": "A", "source_urls": ["https://a.com"]},
-                        {"text": "B", "source_urls": ["https://b.com"]},
-                        {"text": "C", "source_urls": ["https://c.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact"},
+                        {"summary": "A", "sources": ["https://a.com"]},
+                        {"summary": "B", "sources": ["https://b.com"]},
+                        {"summary": "C", "sources": ["https://c.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact"},
                     ],
                 }],
             },
@@ -381,8 +381,8 @@ class TestCheckClaimMetadata:
             {
                 "sections": [{
                     "claims": [{
-                        "text": "A",
-                        "source_urls": ["https://a.com"],
+                        "summary": "A",
+                        "sources": ["https://a.com"],
                         "evidence_type": "official_data",
                         "confidence": "high",
                         "precision": "exact",
@@ -397,7 +397,7 @@ class TestCheckClaimMetadata:
     def test_non_quantitative_not_skipped(self, tmp_path):
         _write_json(
             tmp_path / "analysis.json",
-            {"sections": [{"claims": [{"text": "A", "source_urls": ["https://a.com"]}]}]},
+            {"sections": [{"claims": [{"summary": "A", "sources": ["https://a.com"]}]}]},
         )
         results = ClaimValidator(tmp_path, "exploratory").check()
         result = _get_result(results, "claim_metadata")
@@ -421,8 +421,8 @@ class TestCheckSourceMetadata:
                         "id": "comparison",
                         "claims": [
                             {
-                                "text": "Model X achieves 95% accuracy",
-                                "source_urls": ["https://example.com"],
+                                "summary": "Model X achieves 95% accuracy",
+                                "sources": ["https://example.com"],
                                 "evidence_type": "official_data",
                             },
                         ],
@@ -445,8 +445,8 @@ class TestCheckSourceMetadata:
                         "id": "comparison",
                         "claims": [
                             {
-                                "text": "Model Y scores 88% on benchmark",
-                                "source_urls": ["https://example.com"],
+                                "summary": "Model Y scores 88% on benchmark",
+                                "sources": ["https://example.com"],
                                 "evidence_type": "independent_benchmark",
                             },
                         ],
@@ -469,8 +469,8 @@ class TestCheckSourceMetadata:
                         "id": "comparison",
                         "claims": [
                             {
-                                "text": "Model X achieves 95% accuracy",
-                                "source_urls": ["https://example.com"],
+                                "summary": "Model X achieves 95% accuracy",
+                                "sources": ["https://example.com"],
                                 "evidence_type": "official_data",
                                 "source_metadata": {
                                     "test_date": "2026-Q1",
@@ -497,8 +497,8 @@ class TestCheckSourceMetadata:
                         "id": "comparison",
                         "claims": [
                             {
-                                "text": "Model X achieves 95% accuracy",
-                                "source_urls": ["https://example.com"],
+                                "summary": "Model X achieves 95% accuracy",
+                                "sources": ["https://example.com"],
                                 "evidence_type": "official_data",
                                 "source_metadata": {
                                     "test_conditions": "A100-80GB, CUDA 12.1",
@@ -524,8 +524,8 @@ class TestCheckSourceMetadata:
                         "id": "overview",
                         "claims": [
                             {
-                                "text": "Some estimate",
-                                "source_urls": ["https://example.com"],
+                                "summary": "Some estimate",
+                                "sources": ["https://example.com"],
                                 "evidence_type": "third_party_estimate",
                             },
                         ],
@@ -544,8 +544,8 @@ class TestCheckClaimDedup:
             tmp_path / "analysis.json",
             {
                 "sections": [
-                    {"id": "overview", "claims": [{"text": "Claim A", "source_urls": ["https://a.com"]}]},
-                    {"id": "details", "claims": [{"text": "Claim B", "source_urls": ["https://b.com"]}]},
+                    {"id": "overview", "claims": [{"summary": "Claim A", "sources": ["https://a.com"]}]},
+                    {"id": "details", "claims": [{"summary": "Claim B", "sources": ["https://b.com"]}]},
                 ],
             },
         )
@@ -558,8 +558,8 @@ class TestCheckClaimDedup:
             tmp_path / "analysis.json",
             {
                 "sections": [
-                    {"id": "overview", "claims": [{"text": "Same claim text", "source_urls": ["https://a.com"]}]},
-                    {"id": "details", "claims": [{"text": "Same claim text", "source_urls": ["https://b.com"]}]},
+                    {"id": "overview", "claims": [{"summary": "Same claim text", "sources": ["https://a.com"]}]},
+                    {"id": "details", "claims": [{"summary": "Same claim text", "sources": ["https://b.com"]}]},
                 ],
             },
         )
@@ -581,7 +581,7 @@ class TestCheckRefMarkerValidity:
                 "sections": [{
                     "id": "s1",
                     "content": "See {{ref:https://a.com}} for details.",
-                    "claims": [{"text": "C", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C", "sources": ["https://a.com"]}],
                 }],
             },
         )
@@ -646,7 +646,7 @@ class TestCheckClaimSourceRefCoverage:
                 "sections": [{
                     "id": "s1",
                     "content": "See {{ref:https://a.com}} for details.",
-                    "claims": [{"text": "C", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C", "sources": ["https://a.com"]}],
                 }],
             },
         )
@@ -666,7 +666,7 @@ class TestCheckClaimSourceRefCoverage:
                 "sections": [{
                     "id": "s1",
                     "content": "No ref marker for this claim's source.",
-                    "claims": [{"text": "C", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C", "sources": ["https://a.com"]}],
                 }],
             },
         )
@@ -690,8 +690,8 @@ class TestCheckClaimSourceRefCoverage:
                     "id": "s1",
                     "content": "See {{ref:https://a.com}} for details.",
                     "claims": [
-                        {"text": "C1", "source_urls": ["https://a.com"]},
-                        {"text": "C2", "source_urls": ["https://a.com"]},
+                        {"summary": "C1", "sources": ["https://a.com"]},
+                        {"summary": "C2", "sources": ["https://a.com"]},
                     ],
                 }],
             },
@@ -710,14 +710,14 @@ class TestCheckMetricTypeHomogeneity:
                     "id": "s1",
                     "claims": [
                         {
-                            "text": "A",
-                            "source_urls": ["https://a.com"],
+                            "summary": "A",
+                            "sources": ["https://a.com"],
                             "evidence_type": "official_data",
                             "metric_type": "swe_bench_verified",
                         },
                         {
-                            "text": "B",
-                            "source_urls": ["https://b.com"],
+                            "summary": "B",
+                            "sources": ["https://b.com"],
                             "evidence_type": "independent_benchmark",
                             "metric_type": "swe_bench_pro",
                         },
@@ -737,8 +737,8 @@ class TestCheckMetricTypeHomogeneity:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "A",
-                        "source_urls": ["https://a.com"],
+                        "summary": "A",
+                        "sources": ["https://a.com"],
                         "evidence_type": "official_data",
                         "metric_type": "swe_bench_verified",
                     }],
@@ -771,8 +771,8 @@ class TestSourceVerificationCheck:
     def test_confirmed_number_in_source(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [{
-                "text": "Achieves 98% accuracy",
-                "source_urls": ["https://a.com"],
+                "summary": "Achieves 98% accuracy",
+                "sources": ["https://a.com"],
                 "evidence_type": "official_data",
                 "confidence": "high",
                 "precision": "exact",
@@ -790,8 +790,8 @@ class TestSourceVerificationCheck:
     def test_absent_number_not_in_source(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [{
-                "text": "Achieves 72.2% accuracy",
-                "source_urls": ["https://a.com"],
+                "summary": "Achieves 72.2% accuracy",
+                "sources": ["https://a.com"],
                 "evidence_type": "official_data",
                 "confidence": "high",
                 "precision": "exact",
@@ -809,8 +809,8 @@ class TestSourceVerificationCheck:
     def test_indirect_tier3_third_party(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [{
-                "text": "Market grows 15%",
-                "source_urls": ["https://a.com"],
+                "summary": "Market grows 15%",
+                "sources": ["https://a.com"],
                 "evidence_type": "third_party_estimate",
                 "confidence": "medium",
                 "precision": "range",
@@ -827,8 +827,8 @@ class TestSourceVerificationCheck:
     def test_indirect_vendor_source_type(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [{
-                "text": "Scores 5000 req/s",
-                "source_urls": ["https://a.com"],
+                "summary": "Scores 5000 req/s",
+                "sources": ["https://a.com"],
                 "evidence_type": "official_data",
                 "confidence": "high",
                 "precision": "exact",
@@ -846,8 +846,8 @@ class TestSourceVerificationCheck:
     def test_qualitative_claim_defaults_confirmed(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [{
-                "text": "Framework is widely adopted",
-                "source_urls": ["https://a.com"],
+                "summary": "Framework is widely adopted",
+                "sources": ["https://a.com"],
                 "evidence_type": "qualitative_trend",
                 "confidence": "medium",
                 "precision": "qualitative",
@@ -865,15 +865,15 @@ class TestSourceVerificationCheck:
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [
                 {
-                    "text": "Scores 72.2%",
-                    "source_urls": ["https://a.com"],
+                    "summary": "Scores 72.2%",
+                    "sources": ["https://a.com"],
                     "evidence_type": "third_party_estimate",
                     "confidence": "medium",
                     "precision": "range",
                 },
                 {
-                    "text": "据Gartner报告显示增长",
-                    "source_urls": ["https://b.com"],
+                    "summary": "据Gartner报告显示增长",
+                    "sources": ["https://b.com"],
                     "evidence_type": "third_party_estimate",
                     "confidence": "medium",
                     "precision": "qualitative",
@@ -892,8 +892,8 @@ class TestSourceVerificationCheck:
     def test_indirect_rule3_host_match_not_indirect(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [{
-                "text": "据Gartner报告显示增长15%",
-                "source_urls": ["https://gartner.com/report"],
+                "summary": "据Gartner报告显示增长15%",
+                "sources": ["https://gartner.com/report"],
                 "evidence_type": "official_data",
                 "confidence": "high",
                 "precision": "exact",
@@ -910,8 +910,8 @@ class TestSourceVerificationCheck:
     def test_indirect_rule3_host_mismatch_is_indirect(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [{
-                "text": "据Gartner报告显示增长15%",
-                "source_urls": ["https://someblog.com/post"],
+                "summary": "据Gartner报告显示增长15%",
+                "sources": ["https://someblog.com/post"],
                 "evidence_type": "official_data",
                 "confidence": "high",
                 "precision": "exact",
@@ -928,8 +928,8 @@ class TestSourceVerificationCheck:
     def test_source_verification_does_not_write_to_disk(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [{
-                "text": "Achieves 98% accuracy",
-                "source_urls": ["https://a.com"],
+                "summary": "Achieves 98% accuracy",
+                "sources": ["https://a.com"],
                 "evidence_type": "official_data",
                 "confidence": "high",
                 "precision": "exact",
@@ -1023,8 +1023,8 @@ class TestVerificationWithSourceFile:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "Achieves 97.3% accuracy",
-                        "source_urls": ["https://a.com"],
+                        "summary": "Achieves 97.3% accuracy",
+                        "sources": ["https://a.com"],
                         "evidence_type": "independent_benchmark",
                         "confidence": "high",
                         "precision": "exact",
@@ -1049,8 +1049,8 @@ class TestVerificationWithSourceFile:
                 "sections": [{
                     "id": "s1",
                     "claims": [{
-                        "text": "Achieves 97.3% accuracy",
-                        "source_urls": ["https://a.com"],
+                        "summary": "Achieves 97.3% accuracy",
+                        "sources": ["https://a.com"],
                         "evidence_type": "official_data",
                         "confidence": "high",
                         "precision": "exact",
@@ -1090,22 +1090,22 @@ class TestRefMarkerSuggestion:
 
 class TestIndirectCitationChinese:
     def test_ju_baogao_pattern(self):
-        claim = {"text": "据Gartner报告显示，2026年AI市场将达$5000亿", "source_urls": ["https://reuters.com/article"]}
+        claim = {"summary": "据Gartner报告显示，2026年AI市场将达$5000亿", "sources": ["https://reuters.com/article"]}
         collected_by_url = {}
         assert _is_indirect_source(claim, collected_by_url) is True
 
     def test_genju_yanjiu_pattern(self):
-        claim = {"text": "根据McKinsey研究指出，75%企业已采用AI", "source_urls": ["https://mckinsey.com/report"]}
+        claim = {"summary": "根据McKinsey研究指出，75%企业已采用AI", "sources": ["https://mckinsey.com/report"]}
         collected_by_url = {}
         assert _is_indirect_source(claim, collected_by_url) is True
 
     def test_no_indirect_pattern(self):
-        claim = {"text": "PyTorch 2.0 achieved 97.3% accuracy", "source_urls": ["https://pytorch.org/blog"]}
+        claim = {"summary": "PyTorch 2.0 achieved 97.3% accuracy", "sources": ["https://pytorch.org/blog"]}
         collected_by_url = {}
         assert _is_indirect_source(claim, collected_by_url) is False
 
     def test_jucheng_pattern(self):
-        claim = {"text": "据称SWE-bench达到45%", "source_urls": ["https://example.com"]}
+        claim = {"summary": "据称SWE-bench达到45%", "sources": ["https://example.com"]}
         collected_by_url = {}
         result = _is_indirect_source(claim, collected_by_url)
         assert isinstance(result, bool)
@@ -1126,8 +1126,8 @@ class TestIndirectCitationChinese:
 
     def test_tier3_indirect_source(self):
         claim = {
-            "text": "AI市场将增长50%",
-            "source_urls": ["https://blog.example.com/post"],
+            "summary": "AI市场将增长50%",
+            "sources": ["https://blog.example.com/post"],
             "evidence_type": "official_data",
         }
         from scripts.lib.utils import normalize_url
@@ -1137,8 +1137,8 @@ class TestIndirectCitationChinese:
 
     def test_tier1_not_indirect_by_tier(self):
         claim = {
-            "text": "AI市场将增长50%",
-            "source_urls": ["https://arxiv.org/paper"],
+            "summary": "AI市场将增长50%",
+            "sources": ["https://arxiv.org/paper"],
             "evidence_type": "official_data",
         }
         collected_by_url = {"arxiv.org/paper": {"source_tier": 1}}
@@ -1146,8 +1146,8 @@ class TestIndirectCitationChinese:
 
     def test_vendor_source_with_exact_precision(self):
         claim = {
-            "text": "Our product achieves 99.9% uptime",
-            "source_urls": ["https://vendor.com/blog"],
+            "summary": "Our product achieves 99.9% uptime",
+            "sources": ["https://vendor.com/blog"],
             "precision": "exact",
             "source_metadata": {"source_type": "vendor_benchmark"},
         }
@@ -1159,8 +1159,8 @@ class TestEntityNumberConflict:
     def test_same_entity_same_number_pass(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [
-                {"text": "Python has 45% share", "source_urls": ["https://a.com"]},
-                {"text": "Python has 45% share again", "source_urls": ["https://b.com"]},
+                {"summary": "Python has 45% share", "sources": ["https://a.com"]},
+                {"summary": "Python has 45% share again", "sources": ["https://b.com"]},
             ]}],
         })
         results = ClaimValidator(tmp_path, "tech_selection").check()
@@ -1170,8 +1170,8 @@ class TestEntityNumberConflict:
     def test_same_entity_different_number_warn(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [
-                {"text": "Python has 45% share", "source_urls": ["https://a.com"]},
-                {"text": "Python has 52% share", "source_urls": ["https://b.com"]},
+                {"summary": "Python has 45% share", "sources": ["https://a.com"]},
+                {"summary": "Python has 52% share", "sources": ["https://b.com"]},
             ]}],
         })
         results = ClaimValidator(tmp_path, "tech_selection").check()
@@ -1182,8 +1182,8 @@ class TestEntityNumberConflict:
     def test_different_entities_pass(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [
-                {"text": "Python has 45% share", "source_urls": ["https://a.com"]},
-                {"text": "Java has 52% share", "source_urls": ["https://b.com"]},
+                {"summary": "Python has 45% share", "sources": ["https://a.com"]},
+                {"summary": "Java has 52% share", "sources": ["https://b.com"]},
             ]}],
         })
         results = ClaimValidator(tmp_path, "tech_selection").check()
@@ -1194,27 +1194,27 @@ class TestEntityNumberConflict:
 class TestIsIndirectSourceUnit:
     def test_tier3_third_party_indirect(self):
         from scripts.lib.utils import normalize_url
-        claim = {"text": "Market grows 15%", "source_urls": ["https://a.com"], "evidence_type": "third_party_estimate", "precision": "range"}
+        claim = {"summary": "Market grows 15%", "sources": ["https://a.com"], "evidence_type": "third_party_estimate", "precision": "range"}
         collected = {normalize_url("https://a.com"): {"source_tier": 3}}
         assert _is_indirect_source(claim, collected) is True
 
     def test_tier3_official_data_indirect(self):
         from scripts.lib.utils import normalize_url
-        claim = {"text": "$4.5B revenue", "source_urls": ["https://a.com"], "evidence_type": "official_data", "precision": "exact"}
+        claim = {"summary": "$4.5B revenue", "sources": ["https://a.com"], "evidence_type": "official_data", "precision": "exact"}
         collected = {normalize_url("https://a.com"): {"source_tier": 3}}
         assert _is_indirect_source(claim, collected) is True
 
     def test_tier2_not_indirect(self):
         from scripts.lib.utils import normalize_url
-        claim = {"text": "97.3% accuracy", "source_urls": ["https://a.com"], "evidence_type": "official_data", "precision": "exact"}
+        claim = {"summary": "97.3% accuracy", "sources": ["https://a.com"], "evidence_type": "official_data", "precision": "exact"}
         collected = {normalize_url("https://a.com"): {"source_tier": 2}}
         assert _is_indirect_source(claim, collected) is False
 
     def test_vendor_source_type_exact_indirect(self):
         from scripts.lib.utils import normalize_url
         claim = {
-            "text": "75% adoption",
-            "source_urls": ["https://a.com"],
+            "summary": "75% adoption",
+            "sources": ["https://a.com"],
             "evidence_type": "official_data",
             "precision": "exact",
             "source_metadata": {"source_type": "vendor_benchmark"},
@@ -1225,8 +1225,8 @@ class TestIsIndirectSourceUnit:
     def test_vendor_source_type_qualitative_not_indirect(self):
         from scripts.lib.utils import normalize_url
         claim = {
-            "text": "Widely adopted",
-            "source_urls": ["https://a.com"],
+            "summary": "Widely adopted",
+            "sources": ["https://a.com"],
             "evidence_type": "official_data",
             "precision": "qualitative",
             "source_metadata": {"source_type": "vendor_benchmark"},
@@ -1236,18 +1236,18 @@ class TestIsIndirectSourceUnit:
 
     def test_chinese_indirect_citation_host_mismatch(self):
         from scripts.lib.utils import normalize_url
-        claim = {"text": "据Gartner报告显示增长15%", "source_urls": ["https://someblog.com/post"], "evidence_type": "official_data", "precision": "exact"}
+        claim = {"summary": "据Gartner报告显示增长15%", "sources": ["https://someblog.com/post"], "evidence_type": "official_data", "precision": "exact"}
         collected = {normalize_url("https://someblog.com/post"): {"source_tier": 3}}
         assert _is_indirect_source(claim, collected) is True
 
     def test_english_indirect_citation(self):
         from scripts.lib.utils import normalize_url
-        claim = {"text": "According to Gartner, growth is 15%", "source_urls": ["https://someblog.com/post"], "evidence_type": "official_data", "precision": "exact"}
+        claim = {"summary": "According to Gartner, growth is 15%", "sources": ["https://someblog.com/post"], "evidence_type": "official_data", "precision": "exact"}
         collected = {normalize_url("https://someblog.com/post"): {"source_tier": 2}}
         assert _is_indirect_source(claim, collected) is True
 
     def test_indirect_citation_host_match_not_indirect(self):
         from scripts.lib.utils import normalize_url
-        claim = {"text": "据Gartner报告显示增长15%", "source_urls": ["https://gartner.com/report"], "evidence_type": "official_data", "precision": "exact"}
+        claim = {"summary": "据Gartner报告显示增长15%", "sources": ["https://gartner.com/report"], "evidence_type": "official_data", "precision": "exact"}
         collected = {normalize_url("https://gartner.com/report"): {"source_tier": 2}}
         assert _is_indirect_source(claim, collected) is False

@@ -149,8 +149,8 @@ class TestRenderTestConditions:
     def test_two_claims_with_metadata(self):
         claims = [
             {
-                "text": "Claim A",
-                "source_urls": ["https://a.com"],
+                "summary": "Claim A",
+                "sources": ["https://a.com"],
                 "source_metadata": {
                     "test_conditions": "A100-80GB, CUDA 12.1, Ubuntu 22.04",
                     "test_date": "2026-Q1",
@@ -158,8 +158,8 @@ class TestRenderTestConditions:
                 },
             },
             {
-                "text": "Claim B",
-                "source_urls": ["https://b.com"],
+                "summary": "Claim B",
+                "sources": ["https://b.com"],
                 "source_metadata": {
                     "test_conditions": "H100-80GB, CUDA 12.2",
                     "test_date": "2026-03",
@@ -179,8 +179,8 @@ class TestRenderTestConditions:
 
     def test_claims_without_metadata(self):
         claims = [
-            {"text": "Claim A", "source_urls": ["https://a.com"]},
-            {"text": "Claim B", "source_urls": ["https://b.com"]},
+            {"summary": "Claim A", "sources": ["https://a.com"]},
+            {"summary": "Claim B", "sources": ["https://b.com"]},
         ]
         md = _render_test_conditions(claims)
         assert md == ""
@@ -188,18 +188,18 @@ class TestRenderTestConditions:
     def test_mixed_claims(self):
         claims = [
             {
-                "text": "Claim A",
-                "source_urls": ["https://a.com"],
+                "summary": "Claim A",
+                "sources": ["https://a.com"],
                 "source_metadata": {
                     "test_conditions": "A100-80GB",
                     "test_date": "2026-Q1",
                     "source_type": "independent_test",
                 },
             },
-            {"text": "Claim B", "source_urls": ["https://b.com"]},
+            {"summary": "Claim B", "sources": ["https://b.com"]},
             {
-                "text": "Claim C",
-                "source_urls": ["https://c.com"],
+                "summary": "Claim C",
+                "sources": ["https://c.com"],
                 "source_metadata": {
                     "test_conditions": "H100-80GB",
                     "test_date": "2026-03",
@@ -216,8 +216,8 @@ class TestRenderTestConditions:
     def test_empty_test_conditions_field(self):
         claims = [
             {
-                "text": "Claim A",
-                "source_urls": ["https://a.com"],
+                "summary": "Claim A",
+                "sources": ["https://a.com"],
                 "source_metadata": {
                     "test_conditions": "",
                     "test_date": "2026-Q1",
@@ -232,8 +232,8 @@ class TestRenderTestConditions:
     def test_reference_map_provided(self):
         claims = [
             {
-                "text": "Claim A",
-                "source_urls": ["https://a.com"],
+                "summary": "Claim A",
+                "sources": ["https://a.com"],
                 "source_metadata": {
                     "test_conditions": "A100-80GB",
                     "test_date": "2026-Q1",
@@ -248,8 +248,8 @@ class TestRenderTestConditions:
     def test_all_empty_metadata_fields_no_row(self):
         claims = [
             {
-                "text": "Claim A",
-                "source_urls": ["https://a.com"],
+                "summary": "Claim A",
+                "sources": ["https://a.com"],
                 "source_metadata": {
                     "test_conditions": "",
                     "test_date": "",
@@ -263,8 +263,8 @@ class TestRenderTestConditions:
     def test_mixed_empty_and_populated_metadata(self):
         claims = [
             {
-                "text": "Claim A",
-                "source_urls": ["https://a.com"],
+                "summary": "Claim A",
+                "sources": ["https://a.com"],
                 "source_metadata": {
                     "test_conditions": "",
                     "test_date": "",
@@ -272,8 +272,8 @@ class TestRenderTestConditions:
                 },
             },
             {
-                "text": "Claim B",
-                "source_urls": ["https://b.com"],
+                "summary": "Claim B",
+                "sources": ["https://b.com"],
                 "source_metadata": {
                     "test_conditions": "H100-80GB",
                     "test_date": "2026-Q1",
@@ -291,8 +291,8 @@ class TestRenderTestConditions:
     def test_reference_map_with_non_normalized_url(self):
         claims = [
             {
-                "text": "Claim A",
-                "source_urls": ["https://WWW.Example.COM/Path/"],
+                "summary": "Claim A",
+                "sources": ["https://WWW.Example.COM/Path/"],
                 "source_metadata": {
                     "test_conditions": "A100-80GB",
                     "test_date": "2026-Q1",
@@ -315,8 +315,8 @@ class TestSectionsToMarkdownWithTestConditions:
                     "content": "Some content here {{ref:https://a.com}}.",
                     "claims": [
                         {
-                            "text": "Claim A",
-                            "source_urls": ["https://a.com"],
+                            "summary": "Claim A",
+                            "sources": ["https://a.com"],
                             "source_metadata": {
                                 "test_conditions": "A100-80GB",
                                 "test_date": "2026-Q1",
@@ -341,7 +341,7 @@ class TestSectionsToMarkdownWithTestConditions:
                     "title": "Intro",
                     "content": "Just intro {{ref:https://a.com}}.",
                     "claims": [
-                        {"text": "Claim A", "source_urls": ["https://a.com"]}
+                        {"summary": "Claim A", "sources": ["https://a.com"]}
                     ],
                 }
             ],
@@ -358,7 +358,7 @@ class TestSectionsToMarkdown:
                     "id": "overview",
                     "title": "Overview",
                     "content": "Some content here {{ref:https://example.com}}.",
-                    "claims": [{"text": "A claim.", "source_urls": ["https://example.com"]}],
+                    "claims": [{"summary": "A claim.", "sources": ["https://example.com"]}],
                 }
             ],
         }
@@ -446,7 +446,7 @@ class TestSectionsToMarkdown:
                     "id": "overview",
                     "title": "Overview",
                     "content": "Some content here {{ref:https://example.com}}.",
-                    "claims": [{"text": "A claim.", "source_urls": ["https://example.com"]}],
+                    "claims": [{"summary": "A claim.", "sources": ["https://example.com"]}],
                 }
             ],
         }
@@ -468,7 +468,7 @@ class TestSectionsToMarkdown:
                     "id": "overview",
                     "title": "Overview",
                     "content": "Some content here {{ref:https://example.com}}.",
-                    "claims": [{"text": "A claim.", "source_urls": ["https://example.com"]}],
+                    "claims": [{"summary": "A claim.", "sources": ["https://example.com"]}],
                 }
             ],
         }
@@ -500,7 +500,7 @@ class TestSectionsToMarkdownRefMarkers:
                     "id": "s1",
                     "title": "Section 1",
                     "content": "Some content {{ref:https://a.com}} here.",
-                    "claims": [{"text": "Claim A", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "Claim A", "sources": ["https://a.com"]}],
                 }
             ],
         }
@@ -515,13 +515,13 @@ class TestSectionsToMarkdownRefMarkers:
                     "id": "s1",
                     "title": "Section 1",
                     "content": "First {{ref:https://a.com}} and {{ref:https://b.com}}.",
-                    "claims": [{"text": "Claim A", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "Claim A", "sources": ["https://a.com"]}],
                 },
                 {
                     "id": "s2",
                     "title": "Section 2",
                     "content": "Second {{ref:https://a.com}} again.",
-                    "claims": [{"text": "Claim B", "source_urls": ["https://a.com", "https://b.com"]}],
+                    "claims": [{"summary": "Claim B", "sources": ["https://a.com", "https://b.com"]}],
                 },
             ],
         }
@@ -544,7 +544,7 @@ class TestGenerateReport:
                         "title": "Comparison",
                         "content": "PyTorch vs TensorFlow {{ref:https://example.com}}.",
                         "claims": [
-                            {"text": "PyTorch is popular.", "source_urls": ["https://example.com"]}
+                            {"summary": "PyTorch is popular.", "sources": ["https://example.com"]}
                         ],
                     }
                 ],
@@ -629,8 +629,8 @@ class TestI18nLabels:
                 "content": "Content. {{ref:https://a.com}}",
                 "claims": [
                     {
-                        "text": "Claim A",
-                        "source_urls": ["https://a.com"],
+                        "summary": "Claim A",
+                        "sources": ["https://a.com"],
                         "source_metadata": {
                             "test_conditions": "GPU A100",
                             "test_date": "2026",
@@ -740,8 +740,8 @@ class TestBuildSvMap:
         analysis = {
             "sections": [{
                 "claims": [
-                    {"source_urls": ["https://a.com"], "source_verification": "source_confirmed"},
-                    {"source_urls": ["https://a.com"], "source_verification": "source_absent"},
+                    {"sources": ["https://a.com"], "source_verification": "source_confirmed"},
+                    {"sources": ["https://a.com"], "source_verification": "source_absent"},
                 ]
             }]
         }
@@ -762,14 +762,14 @@ class TestFrontMatterRepositioning:
 
 class TestVerificationSummary:
     def test_summary_includes_disclaimer(self):
-        analysis = {"sections": [{"claims": [{"source_verification": "source_confirmed", "source_urls": []}]}]}
+        analysis = {"sections": [{"claims": [{"source_verification": "source_confirmed", "sources": []}]}]}
         result = _render_verification_summary(analysis)
         assert "research starting point" in result
         assert "†" in result
         assert "‡" in result
 
     def test_no_summary_when_no_verification(self):
-        analysis = {"sections": [{"claims": [{"source_urls": []}]}]}
+        analysis = {"sections": [{"claims": [{"sources": []}]}]}
         result = _render_verification_summary(analysis)
         assert result == ""
 

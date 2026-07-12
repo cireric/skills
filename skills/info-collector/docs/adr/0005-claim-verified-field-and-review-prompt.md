@@ -1,6 +1,6 @@
 # ADR 0005: claim 增加 verified 字段 + 加强审查 prompt
 
-- **Status**: Accepted
+- **Status**: Superseded by ADR-0028
 - **Date**: 2026-06-13
 - **Context**: info-collector skill, ISS-002 from independent review
 

@@ -40,7 +40,7 @@ def _build_sv_map(analysis: dict) -> dict[str, str]:
     for section in analysis.get("sections", []):
         for claim in section.get("claims", []):
             sv = claim.get("source_verification", "source_confirmed")
-            for url in claim.get("source_urls", []):
+            for url in claim.get("sources", []):
                 norm = normalize_url(url)
                 current = url_worst.get(norm, "source_confirmed")
                 if _SV_ORDER.get(sv, 0) > _SV_ORDER.get(current, 0):
@@ -191,7 +191,7 @@ def _render_test_conditions(claims: list[dict], reference_map: dict[str, int] | 
 
 
 def _build_claim_ref(claim: dict, reference_map: dict[str, int]) -> str:
-    urls = claim.get("source_urls", [])
+    urls = claim.get("sources", [])
     if not urls:
         return ""
     first_url = urls[0]
@@ -230,9 +230,9 @@ def sections_to_markdown(analysis: dict, collected: list[dict] | None = None, la
             parts.append(f"\n**Key Insights:**\n")
             for insight in key_insights:
                 if isinstance(insight, dict):
-                    text = insight.get("text", "")
+                    text = insight.get("summary", "")
                     insight_nums = []
-                    for url in insight.get("source_urls", []):
+                    for url in insight.get("sources", []):
                         norm = normalize_url(url)
                         num = ref_map.get(norm)
                         if num is not None:
@@ -243,7 +243,7 @@ def sections_to_markdown(analysis: dict, collected: list[dict] | None = None, la
             parts.append(f"\n**Tensions:**\n")
             for tension in tensions:
                 if isinstance(tension, dict):
-                    desc = tension.get("description", "")
+                    desc = tension.get("summary", "")
                     tension_nums = []
                     for url in tension.get("sources", []):
                         norm = normalize_url(url)
@@ -257,13 +257,13 @@ def sections_to_markdown(analysis: dict, collected: list[dict] | None = None, la
                 parts.append(f"\n**{_label('sources', lang)}:**\n")
                 for claim in claims:
                     nums = []
-                    for url in claim.get("source_urls", []):
+                    for url in claim.get("sources", []):
                         norm = normalize_url(url)
                         num = ref_map.get(norm)
                         if num is not None:
                             nums.append(f"[{num}]")
                     nums_str = "".join(nums)
-                    parts.append(f"- {claim.get('text', '')} {nums_str}")
+                    parts.append(f"- {claim.get('summary', '')} {nums_str}")
                 test_conditions = _render_test_conditions(claims, ref_map if ref_map else None, lang=lang)
                 if test_conditions:
                     parts.append(test_conditions)

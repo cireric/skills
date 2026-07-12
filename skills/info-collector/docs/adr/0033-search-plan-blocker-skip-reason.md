@@ -2,4 +2,4 @@
 
 Production run marked all 25 search plan tasks as "completed" with collected_count=1, but actually collected only 11 sources — several directions (Tier 1 Chinese academic sources) had zero real results. The `search_plan_compliance` check is WARN-level and only checks task status strings, not actual collection counts, so agents can mark impossible tasks as completed and pass the gate. Upgrade to BLOCKER at the direction level: every search_direction must have at least one task with genuine collected results (verified by gate reverse-computation from collected.json, not agent self-reported counts). To prevent deadlock when a direction genuinely has no available sources, agents may mark tasks as "skipped" with a mandatory `skip_reason` field (e.g., "cnki.net requires institutional login"). Tasks skipped without a skip_reason are treated as pending and block the gate. Tier-level coverage remains WARN.
 
-Status: accepted
+Status: superseded by ADR-0042

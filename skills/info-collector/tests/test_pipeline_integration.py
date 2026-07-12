@@ -99,7 +99,7 @@ class TestTechSelectionHappyPath:
                     "title": "Overview",
                     "content": f"Rust provides memory safety without GC. Go offers simplicity and fast compilation. {ref_markers}",
                     "claims": [
-                        {"text": "Rust achieves 0 memory safety bugs in production", "source_urls": all_urls[:2],
+                        {"summary": "Rust achieves 0 memory safety bugs in production", "sources": all_urls[:2],
                          "evidence_type": "independent_benchmark", "confidence": "high", "precision": "exact",
                          "source_metadata": {"test_conditions": "AWS c5.xlarge, Ubuntu 22.04", "test_date": "2025-Q4", "source_type": "independent_test"}},
                     ],
@@ -109,7 +109,7 @@ class TestTechSelectionHappyPath:
                     "title": "Comparison",
                     "content": f"Rust shows 30% lower latency than Go in web services. {ref_markers}",
                     "claims": [
-                        {"text": "Rust 30% lower latency", "source_urls": all_urls[2:4],
+                        {"summary": "Rust 30% lower latency", "sources": all_urls[2:4],
                          "evidence_type": "third_party_estimate", "confidence": "medium", "precision": "range"},
                     ],
                 },
@@ -118,7 +118,7 @@ class TestTechSelectionHappyPath:
                     "title": "Recommendation",
                     "content": f"We recommend Rust for latency-critical services. Go is not recommended for sub-millisecond requirements. {ref_markers}",
                     "claims": [
-                        {"text": "Rust recommended for latency-critical", "source_urls": all_urls[:2],
+                        {"summary": "Rust recommended for latency-critical", "sources": all_urls[:2],
                          "evidence_type": "expert_opinion", "confidence": "medium", "precision": "qualitative"},
                     ],
                 },
@@ -226,7 +226,7 @@ class TestAcademicResearchChinese:
                     "title": "Abstract",
                     "content": f"This paper surveys LLM applications in code generation. {abstract_refs}",
                     "claims": [
-                        {"text": "LLMs achieve 60% pass@1 on HumanEval", "source_urls": all_urls[:2],
+                        {"summary": "LLMs achieve 60% pass@1 on HumanEval", "sources": all_urls[:2],
                          "evidence_type": "independent_benchmark", "confidence": "high", "precision": "exact",
                          "source_metadata": {"test_conditions": "HumanEval benchmark, greedy decoding", "test_date": "2024-Q1", "source_type": "independent_test"}},
                     ],
@@ -236,7 +236,7 @@ class TestAcademicResearchChinese:
                     "title": "Findings",
                     "content": f"Key findings on code generation quality and capability. {findings_refs}",
                     "claims": [
-                        {"text": "Code generation quality improves with model scale", "source_urls": all_urls[2:4],
+                        {"summary": "Code generation quality improves with model scale", "sources": all_urls[2:4],
                          "evidence_type": "qualitative_trend", "confidence": "medium", "precision": "qualitative"},
                     ],
                 },
@@ -335,7 +335,7 @@ class TestMarketAnalysisDegraded:
                     "title": "Overview",
                     "content": f"AI agent frameworks are rapidly evolving. {ref_markers}",
                     "claims": [
-                        {"text": "AI agent market reached $2B in 2025", "source_urls": all_urls[:2],
+                        {"summary": "AI agent market reached $2B in 2025", "sources": all_urls[:2],
                          "evidence_type": "third_party_estimate", "confidence": "medium", "precision": "range"},
                     ],
                 },
@@ -344,7 +344,7 @@ class TestMarketAnalysisDegraded:
                     "title": "Data",
                     "content": f"Market data and growth indicators. {ref_markers}",
                     "claims": [
-                        {"text": "120% year-over-year growth", "source_urls": all_urls[2:4],
+                        {"summary": "120% year-over-year growth", "sources": all_urls[2:4],
                          "evidence_type": "third_party_estimate", "confidence": "low", "precision": "range"},
                     ],
                 },
@@ -444,7 +444,7 @@ class TestFactCheckMinimal:
                     "title": "Claims",
                     "content": f"Rust provides memory safety without garbage collection through ownership {{{{ref:{url1}}}}}.",
                     "claims": [
-                        {"text": "Rust is memory-safe without GC", "source_urls": [url1],
+                        {"summary": "Rust is memory-safe without GC", "sources": [url1],
                          "evidence_type": "official_data", "confidence": "high", "precision": "qualitative",
                          "source_metadata": {"test_conditions": "Compiler verification", "test_date": "2024", "source_type": "independent_test"}},
                     ],
@@ -454,7 +454,7 @@ class TestFactCheckMinimal:
                     "title": "Evidence",
                     "content": f"The ownership model enforces safety at compile time {{{{ref:{url1}}}}}.",
                     "claims": [
-                        {"text": "Ownership model enforces compile-time safety", "source_urls": [url1],
+                        {"summary": "Ownership model enforces compile-time safety", "sources": [url1],
                          "evidence_type": "official_data", "confidence": "high", "precision": "qualitative"},
                     ],
                 },
@@ -463,7 +463,7 @@ class TestFactCheckMinimal:
                     "title": "Conclusion",
                     "content": f"Rust achieves memory safety without GC via its ownership system {{{{ref:{url1}}}}}.",
                     "claims": [
-                        {"text": "Rust achieves memory safety without GC", "source_urls": [url1],
+                        {"summary": "Rust achieves memory safety without GC", "sources": [url1],
                          "evidence_type": "official_data", "confidence": "high", "precision": "qualitative"},
                     ],
                 },
@@ -562,10 +562,10 @@ class TestExploratoryDeepDive:
                     "content": f"Agentic coding represents a shift from autocomplete to autonomous agents. {overview_refs}",
                     "depth_strategy": "overview",
                     "key_insights": [
-                        {"text": "Agentic coding shifts from autocomplete to autonomous workflows",
-                         "source_urls": all_urls[:2]},
-                        {"text": "Community adoption is growing rapidly across platforms",
-                         "source_urls": all_urls[1:3]},
+                        {"summary": "Agentic coding shifts from autocomplete to autonomous workflows",
+                         "sources": all_urls[:2]},
+                        {"summary": "Community adoption is growing rapidly across platforms",
+                         "sources": all_urls[1:3]},
                     ],
                     "tensions": [],
                     "claims": [],
@@ -576,10 +576,10 @@ class TestExploratoryDeepDive:
                     "content": f"AI coding assistants are evolving toward autonomous agents. {trends_refs}",
                     "depth_strategy": "deep_dive",
                     "key_insights": [
-                        {"text": "Multi-step agent workflows are replacing single-turn completions",
-                         "source_urls": all_urls[2:4]},
-                        {"text": "Open-source agents are catching up to commercial offerings",
-                         "source_urls": all_urls[:2]},
+                        {"summary": "Multi-step agent workflows are replacing single-turn completions",
+                         "sources": all_urls[2:4]},
+                        {"summary": "Open-source agents are catching up to commercial offerings",
+                         "sources": all_urls[:2]},
                     ],
                     "tensions": [],
                     "claims": [],
@@ -721,7 +721,7 @@ class TestPipelineStateConsistency:
 
         analysis = {"topic": "t", "goal_type": "exploratory", "sections": [
             {"id": "overview", "title": "Overview", "content": "test overview", "claims": [],
-             "key_insights": [{"text": "insight 1", "source_urls": [collected[0]["url"]]}, {"text": "insight 2", "source_urls": [collected[1]["url"]]}]},
+             "key_insights": [{"summary": "insight 1", "sources": [collected[0]["url"]]}, {"summary": "insight 2", "sources": [collected[1]["url"]]}]},
             {"id": "findings", "title": "Findings", "content": "test findings", "claims": []},
         ]}
         _write_json(workdir / "analysis.json", analysis)

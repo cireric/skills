@@ -21,12 +21,24 @@ Report reader type (CTO, engineer, researcher, general). A hint field — record
 _Avoid_: reader, target reader
 
 **hint field**:
-A scope.json field that informs AI behavior without driving deterministic code logic. Currently: audience only. Contrast with goal_type (drives 5+ code-level behavior differences) and depth (drives per-direction source counts).
+A scope.json field that informs AI behavior without driving deterministic code logic. Currently: audience, decision_questions. Contrast with goal_type (drives 5+ code-level behavior differences) and depth (drives per-direction source counts).
 _Avoid_: advisory field
 
 **depth**:
 Search depth (quick, standard, deep). A behavior-driving field — drives per-direction minimum source count in search gate (quick=1, standard=3, deep=5) and search plan generation.
 _Avoid_: research level, thoroughness
+
+**summary**:
+The text content field in analysis.json sub-structures (key_insights, tensions, claims). Replaces the heterogeneous `text`/`description` fields with a single unified name. A summary is a concise statement — of an insight, a tension, or a claim.
+_Avoid_: text, description, content (for sub-structure fields)
+
+**sources**:
+The source reference list field in analysis.json sub-structures (key_insights, tensions, claims). Replaces the heterogeneous `source_urls`/`sources` naming with a single unified name. Each entry is a URL string matching a collected.json entry.
+_Avoid_: source_urls, source_refs, references (for sub-structure field name)
+
+**decision_questions**:
+Optional hint field in scope.json: list of 2-3 questions the research should help answer (e.g., "Should we adopt domestic RISC-V for MCU scenarios?"). Helps Phase 1 focus research intent. Does not drive deterministic code logic.
+_Avoid_: research questions, key questions
 
 **depth strategy**:
 Per-section content depth strategy, derived implicitly from goal_type × section id (Phase 1), or declared explicitly via `depth_strategy` field (Phase 2). Four strategies: overview (breadth-first summary), deep_dive (key findings argued with 3+ sources), comparison (multi-dimensional comparison table), methodology (detailed methods and limitations). Different sections in the same report may use different depth strategies.
@@ -65,7 +77,7 @@ Using analytical language to wrap listed content and create an illusion of depth
 _Avoid_: shallow analysis, fake analysis
 
 **Claim**:
-A statement in analysis.json with structured metadata: text, source_urls, evidence_type, confidence, precision, metric_type, source_verification, verified, source_metadata.
+A statement in analysis.json with structured metadata: summary, sources, evidence_type, confidence, precision, metric_type, source_verification, verified, source_metadata.
 _Avoid_: finding, assertion
 
 **evidence_type**:
@@ -137,7 +149,7 @@ The deep module that validates whether the search phase produced sufficient mate
 _Avoid_: search validator, search quality checker, search gate checks
 
 **section plan**:
-Phase 3a Step 1 output: `{id, title, depth_strategy, deep_dive_topics: [{topic}]}`. Serves as a reference template — agent may add, remove, merge, or split sections. deep_dive_topics suggest anchors worth arguing with 3+ sources (advisory, not enforced). source_hints removed (ADR 0043) — subagent prompt injects all collected.json sources with title + source_file + snippet, letting subagent self-select relevant sources. depth_strategy determines per-section content organization rules (overview, deep_dive, comparison, methodology).
+Phase 3a Step 1 output: `{id, title, depth_strategy, deep_dive_topics: [{topic}]}`. Serves as a reference template — agent may add, remove, merge, or split sections. deep_dive_topics suggest anchors worth arguing with 3+ sources (advisory, not enforced). source_hints removed (ADR 0043) — subagent prompt injects all collected.json sources with title + source_file + snippet, letting subagent self-select relevant sources. depth_strategy determines per-section content organization rules (overview, deep_dive, comparison, methodology). Sub-structures (key_insights, tensions, claims) use unified `{summary, sources}` base pattern (ADR 0045).
 _Avoid_: section outline, section schema
 
 **ClaimValidator**:
@@ -201,7 +213,7 @@ The directory containing `.git/`. Used as the base for resolving all relative pa
 _Avoid_: repo root, workspace root
 
 **Artifacts**:
-- **scope.json** — Phase 1 output: topic, goal_type, depth, audience, report_language, scope_description, search_directions, english_title?
+- **scope.json** — Phase 1 output: topic, goal_type, depth, audience, report_language, scope_description, search_directions (fallback reference, ADR 0046), decision_questions? (hint field), english_title?
 - **collected.json** — Phase 2 output: array of {url, title, snippet, source_tier, fetched_content, covered_directions?, vendor_affiliation?}
 - **analysis.json** — Phase 3a output: topic, goal_type, sections (each with id, title, content, depth_strategy, key_insights, tensions, claims)
 - **review_report.md** — Phase 3b output: subagent review findings
@@ -210,15 +222,16 @@ _Avoid_: repo root, workspace root
 ## Relationships
 
 - A **goal_type** determines required **source tiers** route, required sections in **analysis.json**, and **depth strategy** for each section via implicit mapping (goal_type × section id → strategy)
-- A **Claim** belongs to a section in **analysis.json** and references URLs from **collected.json**
+- A **Claim** belongs to a section in **analysis.json** and references URLs from **collected.json** via its **sources** field
 - **depth** drives minimum source count per search_direction; **depth strategy** drives per-section content organization; these are independent concerns
-- **audience** does not drive deterministic logic
+- **audience** does not drive deterministic logic; **decision_questions** does not drive deterministic logic — both are hint fields
+- **summary** and **sources** are the unified field names across key_insights, tensions, and claims sub-structures (ADR 0045)
 - **covered_directions** overrides **topic_coverage** token matching when present — removed (ADR 0042), both concepts no longer exist
 - **precision: exact** requires **evidence_type: official_data** or **independent_benchmark**
 - A **gate phase responsibility** determines which checks run at each pipeline transition; BLOCKERs caught at earliest stage
 - **BLOCKER report checks** block final→cleanup; the 7 WARN report checks are advisory
 - **review_report_exists** blocks review→final; review is mandatory (ADR 0028)
-- **Reference numbering** uses `{{ref:URL}}` markers in analysis.json; claim.source_urls must be a subset of content `{{ref:URL}}` markers in the same section
+- **Reference numbering** uses `{{ref:URL}}` markers in analysis.json; claim.sources must be a subset of content `{{ref:URL}}` markers in the same section
 - **ref_marker_validity** and **claim_source_ref_coverage** are analysis-phase BLOCKERs ensuring URL consistency between analysis.json content and collected.json
 - Source **language** field in config.json is used by **search gate repair routing** to suggest language-appropriate sources when a direction has zero coverage
 - **search gate repair routing** uses config.json as a post-search repair toolbook: when a BLOCKER fires (topic_coverage, tier_coverage, min_sources), gate queries the relevant tier's source list and emits concrete site_query suggestions

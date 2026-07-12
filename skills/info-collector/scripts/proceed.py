@@ -28,7 +28,7 @@ from .lib.constants import (
 
 _SECTION_KEYS = frozenset({"id", "title", "content", "claims", "depth_strategy", "key_insights", "tensions"})
 _CLAIM_KEYS = frozenset({
-    "text", "source_urls", "evidence_type", "confidence",
+    "summary", "sources", "evidence_type", "confidence",
     "precision", "metric_type", "source_metadata", "verified",
     "source_verification",
 })
@@ -129,8 +129,10 @@ def _sanitize_sections(analysis: dict, collected_urls: set[str] | None = None) -
                     cleaned_claims.append(claim)
                     continue
                 cl = dict(claim)
-                if "sources" in cl and "source_urls" not in cl:
-                    cl["source_urls"] = cl.pop("sources")
+                if "text" in cl and "summary" not in cl:
+                    cl["summary"] = cl.pop("text")
+                if "source_urls" in cl and "sources" not in cl:
+                    cl["sources"] = cl.pop("source_urls")
                 # Auto-fix invalid evidence_type: downgrade to closest valid value
                 if "evidence_type" in cl and cl["evidence_type"] not in _VALID_EVIDENCE_TYPES:
                     cl["evidence_type"] = "qualitative_trend"
@@ -147,11 +149,11 @@ def _sanitize_sections(analysis: dict, collected_urls: set[str] | None = None) -
                     and cl.get("evidence_type") in _NON_EXACT_EVIDENCE_TYPES
                 ):
                     cl["precision"] = "range"
-                # Auto-fix URL traceability: remove source_urls not in collected.json
-                if collected_urls is not None and "source_urls" in cl:
-                    valid = [u for u in cl["source_urls"] if u in collected_urls]
+                # Auto-fix URL traceability: remove sources not in collected.json
+                if collected_urls is not None and "sources" in cl:
+                    valid = [u for u in cl["sources"] if u in collected_urls]
                     if valid:
-                        cl["source_urls"] = valid
+                        cl["sources"] = valid
                 cleaned_claims.append({k: v for k, v in cl.items() if k in _CLAIM_KEYS})
             sec["claims"] = cleaned_claims
         cleaned_sections.append({k: v for k, v in sec.items() if k in _SECTION_KEYS})

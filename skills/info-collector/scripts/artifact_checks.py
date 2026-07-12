@@ -89,7 +89,7 @@ def check_url_traceability(workdir: Path) -> CheckResult:
     for section in analysis.get("sections", []):
         sec_id = section.get("id", "?")
         for ci, claim in enumerate(section.get("claims", [])):
-            for url in claim.get("source_urls", []):
+            for url in claim.get("sources", []):
                 norm = normalize_url(url)
                 if norm not in collected_urls:
                     detail = f"sections.{sec_id}.claims[{ci}]: {url}"
@@ -106,7 +106,7 @@ def check_url_traceability(workdir: Path) -> CheckResult:
         invalid_urls = [u.split(": ", 1)[-1].split(" (did you mean")[0] for u in untraceable]
         return CheckResult(
             "url_traceability", "BLOCKER", False, detail,
-            repair_hints=[f"The following claim source_urls are not in collected.json: {', '.join(invalid_urls)}. Add these URLs to collected.json or update the claims to reference existing URLs"],
+            repair_hints=[f"The following claim sources are not in collected.json: {', '.join(invalid_urls)}. Add these URLs to collected.json or update the claims to reference existing URLs"],
         )
     return CheckResult("url_traceability", "BLOCKER", True)
 
@@ -160,7 +160,7 @@ def check_analysis_schema(workdir: Path) -> CheckResult:
         detail = "; ".join(f"{e.field}: {e.message}" for e in schema_errors)
         return CheckResult(
             "analysis_schema", "BLOCKER", False, detail,
-            repair_hints=["analysis.json schema validation failed. Check that sections have id, title, content fields and claims have text, source_urls, evidence_type, confidence, precision"],
+            repair_hints=["analysis.json schema validation failed. Check that sections have id, title, content fields and claims have summary, sources, evidence_type, confidence, precision"],
         )
     for section in analysis.get("sections", []):
         content = section.get("content", "")
@@ -181,7 +181,7 @@ def check_quality_heuristics(workdir: Path) -> CheckResult:
     for section in analysis.get("sections", []):
         for claim in section.get("claims", []):
             total_claims += 1
-            if len(claim.get("source_urls", [])) < _MIN_SOURCES:
+            if len(claim.get("sources", [])) < _MIN_SOURCES:
                 single_source_claims += 1
     issues = []
     if total_claims > 0 and single_source_claims / total_claims > _SINGLE_SOURCE_RATIO:
@@ -351,7 +351,7 @@ def check_source_tier_balance(workdir: Path, goal_type: str) -> CheckResult:
     referenced_urls = set()
     for section in analysis.get("sections", []):
         for claim in section.get("claims", []):
-            for url in claim.get("source_urls", []):
+            for url in claim.get("sources", []):
                 referenced_urls.add(normalize_url(url))
     if not referenced_urls:
         return CheckResult("source_tier_balance", "WARN", True, "Skipped (no referenced URLs)")
@@ -397,10 +397,18 @@ def check_key_insights_coverage(workdir: Path, goal_type: str) -> CheckResult:
         elif isinstance(insights, list):
             for j, insight in enumerate(insights):
                 if isinstance(insight, dict):
-                    urls = insight.get("source_urls")
+                    urls = insight.get("sources")
                     if not isinstance(urls, list) or len(urls) < _MIN_SOURCES:
                         count = len(urls) if isinstance(urls, list) else 0
-                        issues.append(f"Section '{sec_id}' key_insights[{j}]: {count} source_urls (min {_MIN_SOURCES})")
+                        issues.append(f"Section '{sec_id}' key_insights[{j}]: {count} sources (min {_MIN_SOURCES})")
+        tensions = section.get("tensions")
+        if isinstance(tensions, list):
+            for j, tension in enumerate(tensions):
+                if isinstance(tension, dict):
+                    urls = tension.get("sources")
+                    if not isinstance(urls, list) or len(urls) < _MIN_SOURCES:
+                        count = len(urls) if isinstance(urls, list) else 0
+                        issues.append(f"Section '{sec_id}' tensions[{j}]: {count} sources (min {_MIN_SOURCES})")
     if issues:
         return CheckResult("key_insights_coverage", "WARN", False, "; ".join(issues))
     return CheckResult("key_insights_coverage", "WARN", True)
@@ -515,6 +523,45 @@ def check_table_suggestion(workdir: Path) -> CheckResult:
     return CheckResult("table_suggestion", "WARN", True)
 
 
+def check_direction_coverage(workdir: Path) -> CheckResult:
+    """WARN if scope.json search_directions are not covered by analysis.json sections.
+
+    search_directions serve as fallback reference (ADR 0046), not gate-enforced.
+    This check warns when a direction has no corresponding section, suggesting
+    the agent may have missed a research dimension.
+    """
+    scope, err = _read_artifact(workdir / ARTIFACT_SCOPE, "direction_coverage", "WARN")
+    if err:
+        return err
+    directions = scope.get("search_directions")
+    if not directions or not isinstance(directions, list):
+        return CheckResult("direction_coverage", "WARN", True, "No search_directions in scope, check skipped")
+    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "direction_coverage", "WARN")
+    if err:
+        return err
+    section_texts = []
+    for section in analysis.get("sections", []):
+        sec_id = section.get("id", "").lower()
+        title = section.get("title", "").lower()
+        section_texts.append(f"{sec_id} {title}")
+    combined = " ".join(section_texts)
+    uncovered = []
+    for direction in directions:
+        if not isinstance(direction, str):
+            continue
+        tokens = tokenize_cjk_aware(direction.lower())
+        if any(token in combined for token in tokens if len(token) > 1):
+            continue
+        uncovered.append(direction)
+    if uncovered:
+        return CheckResult(
+            "direction_coverage", "WARN", False,
+            f"search_directions not covered by any section: {', '.join(uncovered)}",
+            repair_hints=[f"Consider adding sections for uncovered directions: {', '.join(uncovered)}. search_directions are fallback reference (ADR 0046)."],
+        )
+    return CheckResult("direction_coverage", "WARN", True)
+
+
 def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
     from .claim_validator import ClaimValidator
     claim_results = ClaimValidator(workdir, goal_type).check()
@@ -532,4 +579,5 @@ def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
         check_subagent_delegation(workdir),
         check_section_deviation(workdir),
         check_table_suggestion(workdir),
+        check_direction_coverage(workdir),
     ] + claim_results

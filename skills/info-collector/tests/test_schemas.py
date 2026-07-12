@@ -184,8 +184,8 @@ def _analysis(**overrides) -> dict:
                 "content": "Some content",
                 "claims": [
                     {
-                        "text": "AI is big",
-                        "source_urls": ["https://a.com"],
+                        "summary": "AI is big",
+                        "sources": ["https://a.com"],
                     }
                 ],
             }
@@ -261,23 +261,23 @@ class TestValidateAnalysisSectionsErrors:
 
 
 class TestValidateAnalysisClaimErrors:
-    def test_claim_missing_text(self):
-        sec = {"id": "ov", "title": "T", "content": "C", "claims": [{"source_urls": ["https://a.com"]}]}
+    def test_claim_missing_summary(self):
+        sec = {"id": "ov", "title": "T", "content": "C", "claims": [{"sources": ["https://a.com"]}]}
         errors = validate_analysis(_analysis(sections=[sec]))
-        assert any("text" in e.field and "missing" in e.message for e in errors)
+        assert any("summary" in e.field and "missing" in e.message for e in errors)
 
-    def test_claim_missing_source_urls(self):
-        sec = {"id": "ov", "title": "T", "content": "C", "claims": [{"text": "claim"}]}
+    def test_claim_missing_sources(self):
+        sec = {"id": "ov", "title": "T", "content": "C", "claims": [{"summary": "claim"}]}
         errors = validate_analysis(_analysis(sections=[sec]))
-        assert any("source_urls" in e.field for e in errors)
+        assert any("sources" in e.field for e in errors)
 
-    def test_claim_empty_source_urls(self):
-        sec = {"id": "ov", "title": "T", "content": "C", "claims": [{"text": "claim", "source_urls": []}]}
+    def test_claim_empty_sources(self):
+        sec = {"id": "ov", "title": "T", "content": "C", "claims": [{"summary": "claim", "sources": []}]}
         errors = validate_analysis(_analysis(sections=[sec]))
-        assert any("source_urls" in e.field and "empty" in e.message for e in errors)
+        assert any("sources" in e.field and "empty" in e.message for e in errors)
 
     def test_claim_invalid_metric_type(self):
-        sec = {"id": "ov", "title": "T", "content": "C", "claims": [{"text": "c", "source_urls": ["https://a.com"], "metric_type": "invalid"}]}
+        sec = {"id": "ov", "title": "T", "content": "C", "claims": [{"summary": "c", "sources": ["https://a.com"], "metric_type": "invalid"}]}
         errors = validate_analysis(_analysis(sections=[sec]))
         assert any("metric_type" in e.field and "invalid" in e.message for e in errors)
 
@@ -341,17 +341,17 @@ class TestValidateCollectedErrors:
 
 class TestClaimSourceVerification:
     def test_source_verification_valid_value(self):
-        claim = {"text": "T", "source_urls": ["https://a.com"], "source_verification": "source_confirmed"}
+        claim = {"summary": "T", "sources": ["https://a.com"], "source_verification": "source_confirmed"}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [{"id": "s1", "title": "S", "content": "C", "claims": [claim]}]})
         assert not any("source_verification" in e.field for e in errors)
 
     def test_source_verification_invalid_value(self):
-        claim = {"text": "T", "source_urls": ["https://a.com"], "source_verification": "invalid_value"}
+        claim = {"summary": "T", "sources": ["https://a.com"], "source_verification": "invalid_value"}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [{"id": "s1", "title": "S", "content": "C", "claims": [claim]}]})
         assert any("source_verification" in e.field for e in errors)
 
     def test_source_verification_optional(self):
-        claim = {"text": "T", "source_urls": ["https://a.com"]}
+        claim = {"summary": "T", "sources": ["https://a.com"]}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [{"id": "s1", "title": "S", "content": "C", "claims": [claim]}]})
         assert not any("source_verification" in e.field for e in errors)
 
@@ -384,8 +384,8 @@ class TestValidateAnalysisKeyInsights:
         sec = {
             "id": "s1", "title": "S", "content": "C",
             "key_insights": [
-                {"text": "Finding A", "source_urls": ["https://a.com"]},
-                {"text": "Finding B"},
+                {"summary": "Finding A", "sources": ["https://a.com"]},
+                {"summary": "Finding B"},
             ],
         }
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
@@ -401,25 +401,25 @@ class TestValidateAnalysisKeyInsights:
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
         assert any("key_insights[0]" in e.field and "expected dict" in e.message for e in errors)
 
-    def test_key_insight_missing_text(self):
-        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": [{"source_urls": ["https://a.com"]}]}
+    def test_key_insight_missing_summary(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": [{"sources": ["https://a.com"]}]}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
-        assert any("key_insights[0].text" in e.field and "missing" in e.message for e in errors)
+        assert any("key_insights[0].summary" in e.field and "missing" in e.message for e in errors)
 
-    def test_key_insight_text_not_str(self):
-        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": [{"text": 42}]}
+    def test_key_insight_summary_not_str(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": [{"summary": 42}]}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
-        assert any("key_insights[0].text" in e.field and "expected str" in e.message for e in errors)
+        assert any("key_insights[0].summary" in e.field and "expected str" in e.message for e in errors)
 
-    def test_key_insight_source_urls_not_list(self):
-        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": [{"text": "T", "source_urls": "bad"}]}
+    def test_key_insight_sources_not_list(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": [{"summary": "T", "sources": "bad"}]}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
-        assert any("key_insights[0].source_urls" in e.field and "expected list" in e.message for e in errors)
+        assert any("key_insights[0].sources" in e.field and "expected list" in e.message for e in errors)
 
-    def test_key_insight_source_urls_non_str(self):
-        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": [{"text": "T", "source_urls": [42]}]}
+    def test_key_insight_sources_non_str(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "key_insights": [{"summary": "T", "sources": [42]}]}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
-        assert any("key_insights[0].source_urls" in e.field and "only strings" in e.message for e in errors)
+        assert any("key_insights[0].sources" in e.field and "only strings" in e.message for e in errors)
 
     def test_key_insights_optional(self):
         sec = {"id": "s1", "title": "S", "content": "C"}
@@ -432,7 +432,7 @@ class TestValidateAnalysisTensions:
         sec = {
             "id": "s1", "title": "S", "content": "C",
             "tensions": [
-                {"description": "Source A says X, Source B says Y", "sources": ["https://a.com", "https://b.com"]},
+                {"summary": "Source A says X, Source B says Y", "sources": ["https://a.com", "https://b.com"]},
             ],
         }
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
@@ -448,23 +448,23 @@ class TestValidateAnalysisTensions:
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
         assert any("tensions[0]" in e.field and "expected dict" in e.message for e in errors)
 
-    def test_tension_missing_description(self):
+    def test_tension_missing_summary(self):
         sec = {"id": "s1", "title": "S", "content": "C", "tensions": [{"sources": ["https://a.com"]}]}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
-        assert any("tensions[0].description" in e.field and "missing" in e.message for e in errors)
+        assert any("tensions[0].summary" in e.field and "missing" in e.message for e in errors)
 
-    def test_tension_description_not_str(self):
-        sec = {"id": "s1", "title": "S", "content": "C", "tensions": [{"description": 42}]}
+    def test_tension_summary_not_str(self):
+        sec = {"id": "s1", "title": "S", "content": "C", "tensions": [{"summary": 42}]}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
-        assert any("tensions[0].description" in e.field and "expected str" in e.message for e in errors)
+        assert any("tensions[0].summary" in e.field and "expected str" in e.message for e in errors)
 
     def test_tension_sources_not_list(self):
-        sec = {"id": "s1", "title": "S", "content": "C", "tensions": [{"description": "T", "sources": "bad"}]}
+        sec = {"id": "s1", "title": "S", "content": "C", "tensions": [{"summary": "T", "sources": "bad"}]}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
         assert any("tensions[0].sources" in e.field and "expected list" in e.message for e in errors)
 
     def test_tension_sources_non_str(self):
-        sec = {"id": "s1", "title": "S", "content": "C", "tensions": [{"description": "T", "sources": [42]}]}
+        sec = {"id": "s1", "title": "S", "content": "C", "tensions": [{"summary": "T", "sources": [42]}]}
         errors = validate_analysis({"topic": "T", "goal_type": "other", "sections": [sec]})
         assert any("tensions[0].sources" in e.field and "only strings" in e.message for e in errors)
 

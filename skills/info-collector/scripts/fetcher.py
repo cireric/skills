@@ -44,7 +44,10 @@ def _try_playwright(url: str, timeout: int = _FETCH_PLAYWRIGHT_TIMEOUT,
             with sync_playwright() as p:
                 browser = p.chromium.launch(channel=ch, headless=True)
                 page = browser.new_page()
-                page.goto(url, wait_until="networkidle", timeout=timeout)
+                try:
+                    page.goto(url, wait_until="networkidle", timeout=timeout)
+                except Exception:
+                    page.goto(url, wait_until="domcontentloaded", timeout=timeout)
                 html = page.content()
                 browser.close()
                 return md(html)

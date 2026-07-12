@@ -140,19 +140,19 @@ class TestProceeds:
                     "id": "overview",
                     "title": "O",
                     "content": "Kubernetes 1.28 handles 5000 nodes efficiently {{ref:https://a.com}}.",
-                    "claims": [{"text": "C1", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C1", "sources": ["https://a.com"]}],
                 },
                 {
                     "id": "comparison",
                     "title": "Cmp",
                     "content": "Docker runs 10000 containers per host with Kubernetes orchestration {{ref:https://a.com}}.",
-                    "claims": [{"text": "C2", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C2", "sources": ["https://a.com"]}],
                 },
                 {
                     "id": "recommendation",
                     "title": "Rec",
                     "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility {{ref:https://a.com}}.",
-                    "claims": [{"text": "C3", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C3", "sources": ["https://a.com"]}],
                 },
                 {
                     "id": "methodology",
@@ -179,19 +179,19 @@ class TestProceeds:
                     "id": "overview",
                     "title": "O",
                     "content": "Kubernetes 1.28 handles 5000 nodes efficiently {{ref:https://a.com}}.",
-                    "claims": [{"text": "C1", "source_urls": ["https://fabricated.com"]}],
+                    "claims": [{"summary": "C1", "sources": ["https://fabricated.com"]}],
                 },
                 {
                     "id": "comparison",
                     "title": "Cmp",
                     "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
-                    "claims": [{"text": "C2", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C2", "sources": ["https://a.com"]}],
                 },
                 {
                     "id": "recommendation",
                     "title": "Rec",
                     "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
-                    "claims": [{"text": "C3", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C3", "sources": ["https://a.com"]}],
                 },
                 {
                     "id": "methodology",
@@ -235,19 +235,19 @@ class TestProceeds:
                     "id": "overview",
                     "title": "O",
                     "content": "Kubernetes 1.28 handles 5000 nodes efficiently {{ref:https://a.com}}.",
-                    "claims": [{"text": "C1", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C1", "sources": ["https://a.com"]}],
                 },
                 {
                     "id": "comparison",
                     "title": "Cmp",
                     "content": "Docker runs 10000 containers per host with Kubernetes orchestration {{ref:https://a.com}}.",
-                    "claims": [{"text": "C2", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C2", "sources": ["https://a.com"]}],
                 },
                 {
                     "id": "recommendation",
                     "title": "Rec",
                     "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility {{ref:https://a.com}}.",
-                    "claims": [{"text": "C3", "source_urls": ["https://a.com"], "verified": True}],
+                    "claims": [{"summary": "C3", "sources": ["https://a.com"], "verified": True}],
                 },
                 {
                     "id": "methodology",
@@ -322,19 +322,19 @@ class TestGetGatewayResults:
                         "id": "overview",
                         "title": "O",
                         "content": "C",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"]}],
                     },
                     {
                         "id": "comparison",
                         "title": "Cmp",
                         "content": "C",
-                        "claims": [{"text": "C2", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C2", "sources": ["https://example.com"]}],
                     },
                     {
                         "id": "recommendation",
                         "title": "Rec",
                         "content": "C",
-                        "claims": [{"text": "C3", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C3", "sources": ["https://example.com"]}],
                     },
                     {
                         "id": "methodology",
@@ -365,13 +365,13 @@ class TestGetGatewayResults:
                         "id": "overview",
                         "title": "O",
                         "content": "C",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"]}],
                     },
                     {
                         "id": "details",
                         "title": "Details",
                         "content": "D",
-                        "claims": [{"text": "C2", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C2", "sources": ["https://example.com"]}],
                     },
                 ],
             },
@@ -391,15 +391,15 @@ class TestSanitizeSections:
         assert "section_id" not in result["sections"][0]
         assert result["sections"][0]["id"] == "s1"
 
-    def test_sources_mapped_to_source_urls_in_claims(self):
+    def test_source_urls_mapped_to_sources_in_claims(self):
         raw = {
             "topic": "T", "goal_type": "exploratory",
-            "sections": [{"id": "s1", "title": "S1", "content": "C", "claims": [{"text": "claim1", "sources": ["https://a.com"]}]}],
+            "sections": [{"id": "s1", "title": "S1", "content": "C", "claims": [{"summary": "claim1", "source_urls": ["https://a.com"]}]}],
         }
         result = _sanitize_sections(raw)
         claim = result["sections"][0]["claims"][0]
-        assert "sources" not in claim
-        assert claim["source_urls"] == ["https://a.com"]
+        assert "source_urls" not in claim
+        assert claim["sources"] == ["https://a.com"]
 
     def test_non_schema_fields_removed_from_section(self):
         raw = {
@@ -413,7 +413,7 @@ class TestSanitizeSections:
     def test_non_schema_fields_removed_from_claim(self):
         raw = {
             "topic": "T", "goal_type": "exploratory",
-            "sections": [{"id": "s1", "title": "S1", "content": "C", "claims": [{"text": "c1", "source_urls": ["https://a.com"], "relevance_score": 0.9}]}],
+            "sections": [{"id": "s1", "title": "S1", "content": "C", "claims": [{"summary": "c1", "sources": ["https://a.com"], "relevance_score": 0.9}]}],
         }
         result = _sanitize_sections(raw)
         assert "relevance_score" not in result["sections"][0]["claims"][0]
@@ -432,7 +432,7 @@ class TestSanitizeSections:
             "sections": [
                 {
                     "id": "s1", "title": "S1", "content": "C",
-                    "claims": [{"text": "c1", "source_urls": ["https://a.com"], "verified": True}],
+                    "claims": [{"summary": "c1", "sources": ["https://a.com"], "verified": True}],
                 },
             ],
         }
@@ -574,19 +574,19 @@ class TestReviewSelfLoop:
                         "id": "overview",
                         "title": "O",
                         "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"], "verified": True}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"], "verified": True}],
                     },
                     {
                         "id": "comparison",
                         "title": "Cmp",
                         "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
-                        "claims": [{"text": "C2", "source_urls": ["https://example.com"], "verified": True}],
+                        "claims": [{"summary": "C2", "sources": ["https://example.com"], "verified": True}],
                     },
                     {
                         "id": "recommendation",
                         "title": "Rec",
                         "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
-                        "claims": [{"text": "C3", "source_urls": ["https://example.com"], "verified": True}],
+                        "claims": [{"summary": "C3", "sources": ["https://example.com"], "verified": True}],
                     },
                     {
                         "id": "methodology",
@@ -614,19 +614,19 @@ class TestReviewSelfLoop:
                         "id": "overview",
                         "title": "O",
                         "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"], "verified": False}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"], "verified": False}],
                     },
                     {
                         "id": "comparison",
                         "title": "Cmp",
                         "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
-                        "claims": [{"text": "C2", "source_urls": ["https://example.com"], "verified": False}],
+                        "claims": [{"summary": "C2", "sources": ["https://example.com"], "verified": False}],
                     },
                     {
                         "id": "recommendation",
                         "title": "Rec",
                         "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
-                        "claims": [{"text": "C3", "source_urls": ["https://example.com"], "verified": False}],
+                        "claims": [{"summary": "C3", "sources": ["https://example.com"], "verified": False}],
                     },
                     {
                         "id": "methodology",
@@ -747,19 +747,19 @@ class TestGateAnalysisChecksAllBlockers:
                     "id": "overview",
                     "title": "O",
                     "content": "Kubernetes 1.28 handles 5000 nodes efficiently.",
-                    "claims": [{"text": "C1", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C1", "sources": ["https://a.com"]}],
                 },
                 {
                     "id": "comparison",
                     "title": "Cmp",
                     "content": "Docker runs 10000 containers per host with Kubernetes orchestration.",
-                    "claims": [{"text": "C2", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C2", "sources": ["https://a.com"]}],
                 },
                 {
                     "id": "recommendation",
                     "title": "Rec",
                     "content": "We recommend Kubernetes for its 5000 node scalability and Docker compatibility.",
-                    "claims": [{"text": "C3", "source_urls": ["https://a.com"]}],
+                    "claims": [{"summary": "C3", "sources": ["https://a.com"]}],
                 },
                 {
                     "id": "methodology",
@@ -789,7 +789,7 @@ class TestGateAnalysisChecksAllBlockers:
         for sec in analysis["sections"]:
             if sec.get("claims"):
                 sec["content"] = "Some vague text without numbers or names. {{ref:https://a.com}}"
-                sec["claims"] = [{"text": "vague claim", "source_urls": ["https://a.com"]}]
+                sec["claims"] = [{"summary": "vague claim", "sources": ["https://a.com"]}]
         _write_json(tmp_path / "analysis.json", analysis)
         ok, errors = proceeds(tmp_path, "analysis", "review")
         assert ok, "content_concreteness WARN should not block"
@@ -811,7 +811,7 @@ class TestGateReviewOnlyChecksReviewItems:
                         "id": "overview",
                         "title": "O",
                         "content": "Kubernetes 1.28 handles 5000 nodes.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"], "verified": True}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"], "verified": True}],
                     },
                 ],
             },
@@ -834,7 +834,7 @@ class TestGateReviewOnlyChecksReviewItems:
                         "id": "overview",
                         "title": "O",
                         "content": "Kubernetes 1.28 handles 5000 nodes.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"], "verified": False}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"], "verified": False}],
                     },
                 ],
             },
@@ -858,7 +858,7 @@ class TestGateReviewNoLongerBlocks:
                         "id": "overview",
                         "title": "O",
                         "content": "Kubernetes 1.28 handles 5000 nodes.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"], "verified": False}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"], "verified": False}],
                     },
                 ],
             },
@@ -880,7 +880,7 @@ class TestGateReviewNoLongerBlocks:
                         "id": "overview",
                         "title": "O",
                         "content": "Content.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"]}],
                     },
                 ],
             },
@@ -903,7 +903,7 @@ class TestGateReviewNoLongerBlocks:
                         "id": "overview",
                         "title": "O",
                         "content": "Content.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"]}],
                     },
                 ],
             },
@@ -925,7 +925,7 @@ class TestGateReviewNoLongerBlocks:
                         "id": "overview",
                         "title": "O",
                         "content": "Content.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"]}],
                     },
                 ],
             },
@@ -950,7 +950,7 @@ class TestSourceVerificationWriteBack:
                     "id": "overview",
                     "title": "O",
                     "content": "Achieves 98% {{ref:https://a.com}}.",
-                    "claims": [{"text": "98% accuracy", "source_urls": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact", "source_metadata": {"test_conditions": "Lab environment", "source_type": "independent_test"}}],
+                    "claims": [{"summary": "98% accuracy", "sources": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact", "source_metadata": {"test_conditions": "Lab environment", "source_type": "independent_test"}}],
                 },
                 {
                     "id": "comparison",
@@ -1034,7 +1034,7 @@ class TestReviewReportExistsCheck:
                         "id": "overview",
                         "title": "O",
                         "content": "Content.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"]}],
                     },
                 ],
             },
@@ -1056,7 +1056,7 @@ class TestReviewReportExistsCheck:
                         "id": "overview",
                         "title": "O",
                         "content": "Content.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"]}],
                     },
                 ],
             },
@@ -1078,7 +1078,7 @@ class TestReviewReportExistsCheck:
                         "id": "overview",
                         "title": "O",
                         "content": "Content.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"]}],
                     },
                 ],
             },
@@ -1124,7 +1124,7 @@ class TestEmptyArtifactHandling:
                         "id": "overview",
                         "title": "O",
                         "content": "Content.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"]}],
                     },
                 ],
             },
@@ -1201,7 +1201,7 @@ class TestInvalidPhaseTransitions:
                         "id": "overview",
                         "title": "O",
                         "content": "Content.",
-                        "claims": [{"text": "C1", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"]}],
                     },
                 ],
             },
@@ -1261,7 +1261,7 @@ class TestRepairHintsInOutput:
         _write_json(tmp_path / "analysis.json", {"topic": "T", "goal_type": "tech_selection", "sections": []})
 
         fake_results = [
-            CheckResult("url_traceability", "BLOCKER", False, "bad urls", repair_hints=["check source_urls", "add missing URLs"]),
+            CheckResult("url_traceability", "BLOCKER", False, "bad urls", repair_hints=["check sources", "add missing URLs"]),
             CheckResult("section_coverage", "BLOCKER", True, "ok"),
         ]
         monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: fake_results)
@@ -1270,7 +1270,7 @@ class TestRepairHintsInOutput:
 
         errors = _gate_analysis(tmp_path)
         error_text = "\n".join(errors)
-        assert "→ check source_urls" in error_text
+        assert "→ check sources" in error_text
         assert "→ add missing URLs" in error_text
 
     def test_gate_analysis_no_hints_when_empty(self, tmp_path, monkeypatch):

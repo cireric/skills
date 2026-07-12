@@ -21,6 +21,10 @@ description: >
 
 门不通过时，你会收到具体修复指令（repair_hints）。执行修复 → 重新检查 → 循环，直到通过或达到重试上限。
 
+## 约定
+
+- **`.workdir/` 位于项目根目录**（即 `.git/` 所在目录）。所有 CLI 命令和路径解析均以此为基准。运行 CLI 时必须 `workdir=项目根目录`。
+
 ## 架构约束
 
 1. **source file 由 fetch 工具写入，agent 不碰。** 你可以决定抓哪些 URL、用什么搜索策略，但 source file 的内容只能来自 fetch 工具的原始输出。
@@ -49,13 +53,20 @@ description: >
 面试用户确定研究范围。写入 `scope.json`。
 
 必填：topic, goal_type, scope_description。CJK topic 还需 english_title。
-可选：depth, audience, report_language, search_directions (optional, used only as conversation context)。
+可选：depth, audience, report_language, search_directions (fallback reference, ADR 0046), decision_questions (hint field, 2-3 questions the research should help answer)。
 
 完成后跑门：`python -m scripts.cli proceed --from scope --to search`
 
 ### Phase 2: Search-Collect-Filter
 
 自由搜索、发现、抓取原文。无需遵守 search_plan。搜索策略由你决定。source file 必须通过 fetch 工具写入。
+
+搜索策略建议：
+- **语言匹配**：对中文源（CNKI、Zhihu 等）用中文关键词搜索，对英文源用英文关键词。当 topic 包含中文实体名（如"玄铁"、"芯来"），中文搜索可能获得更精确的结果。
+- **实体发现驱动**：搜索过程中发现新实体时，主动追加搜索（而非只在 gate repair 时被动补充）。
+- **广度优先**：搜索阶段优先覆盖广度，先快速确认源的存在性和相关性（snippet 足够判断），再批量 fetch。
+- **兜底参考**：自由搜索无结果时，参考 scope.json 的 search_directions + config.json 的 source 列表作为兜底搜索方向。
+- **Exa fallback**：当 fetch 返回 content_insufficient 或 fetch_failed 时，用 exa 重新抓取后 pipe 给 CLI（`python -m scripts.cli fetch <url> --from-stdin`）。
 
 完成后跑门：`python -m scripts.cli proceed --from search --to analysis`
 

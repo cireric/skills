@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from scripts.search_gate import SearchGate
-from scripts.artifact_checks import CheckResult, check_subagent_delegation
+from scripts.artifact_checks import CheckResult, check_subagent_delegation, check_direction_coverage, check_key_insights_coverage
 from scripts.lib.utils import compute_url_hash
 
 
@@ -142,3 +142,86 @@ class TestSubagentDelegation:
     def test_no_analysis_file_skipped(self, tmp_path):
         result = check_subagent_delegation(tmp_path)
         assert result.passed
+
+
+class TestDirectionCoverage:
+    def test_no_search_directions_skipped(self, tmp_path):
+        _write_json(tmp_path / "scope.json", {"topic": "T", "goal_type": "panoramic_understanding", "depth": "standard", "audience": "engineer", "scope_description": "Test"})
+        analysis = {"topic": "T", "goal_type": "panoramic_understanding", "sections": [
+            {"id": "overview", "title": "Overview", "content": "text", "depth_strategy": "overview", "key_insights": [], "tensions": [], "claims": []},
+        ]}
+        _write_json(tmp_path / "analysis.json", analysis)
+        result = check_direction_coverage(tmp_path)
+        assert result.passed
+        assert "no search_directions" in result.message.lower()
+
+    def test_all_directions_covered_pass(self, tmp_path):
+        _make_scope(tmp_path, search_directions=["AI safety", "ML benchmarks"])
+        analysis = {"topic": "T", "goal_type": "panoramic_understanding", "sections": [
+            {"id": "ai_safety", "title": "AI Safety Overview", "content": "text", "depth_strategy": "overview", "key_insights": [], "tensions": [], "claims": []},
+            {"id": "ml_benchmarks", "title": "ML Benchmarks", "content": "text", "depth_strategy": "deep_dive", "key_insights": [], "tensions": [], "claims": []},
+        ]}
+        _write_json(tmp_path / "analysis.json", analysis)
+        result = check_direction_coverage(tmp_path)
+        assert result.passed
+
+    def test_some_directions_uncovered_warn(self, tmp_path):
+        _make_scope(tmp_path, search_directions=["AI safety", "ML benchmarks", "edge computing"])
+        analysis = {"topic": "T", "goal_type": "panoramic_understanding", "sections": [
+            {"id": "ai_safety", "title": "AI Safety", "content": "text", "depth_strategy": "overview", "key_insights": [], "tensions": [], "claims": []},
+        ]}
+        _write_json(tmp_path / "analysis.json", analysis)
+        result = check_direction_coverage(tmp_path)
+        assert not result.passed
+        assert result.level == "WARN"
+        assert "ML benchmarks" in result.message or "edge computing" in result.message
+
+    def test_empty_search_directions_list_skipped(self, tmp_path):
+        _write_json(tmp_path / "scope.json", {"topic": "T", "goal_type": "panoramic_understanding", "depth": "standard", "audience": "engineer", "scope_description": "Test", "search_directions": []})
+        analysis = {"topic": "T", "goal_type": "panoramic_understanding", "sections": [
+            {"id": "overview", "title": "Overview", "content": "text", "depth_strategy": "overview", "key_insights": [], "tensions": [], "claims": []},
+        ]}
+        _write_json(tmp_path / "analysis.json", analysis)
+        result = check_direction_coverage(tmp_path)
+        assert result.passed
+
+
+class TestKeyInsightsCoverageTensions:
+    def test_tensions_empty_sources_warn(self, tmp_path):
+        _make_scope(tmp_path, goal_type="panoramic_understanding")
+        analysis = {"topic": "T", "goal_type": "panoramic_understanding", "sections": [
+            {"id": "overview", "title": "Overview", "content": "text", "depth_strategy": "overview",
+             "key_insights": [{"summary": "insight", "sources": ["https://a.com", "https://b.com"]}],
+             "tensions": [{"summary": "tension", "sources": []}],
+             "claims": []},
+        ]}
+        _write_json(tmp_path / "analysis.json", analysis)
+        result = check_key_insights_coverage(tmp_path, "panoramic_understanding")
+        assert not result.passed
+        assert "tensions[0]" in result.message
+
+    def test_tensions_sufficient_sources_pass(self, tmp_path):
+        _make_scope(tmp_path, goal_type="panoramic_understanding")
+        analysis = {"topic": "T", "goal_type": "panoramic_understanding", "sections": [
+            {"id": "overview", "title": "Overview", "content": "text", "depth_strategy": "overview",
+             "key_insights": [{"summary": "insight1", "sources": ["https://a.com", "https://b.com"]}, {"summary": "insight2", "sources": ["https://c.com", "https://d.com"]}],
+             "tensions": [{"summary": "tension", "sources": ["https://a.com", "https://b.com"]}],
+             "claims": []},
+        ]}
+        _write_json(tmp_path / "analysis.json", analysis)
+        result = check_key_insights_coverage(tmp_path, "panoramic_understanding")
+        assert result.passed
+
+    def test_mixed_key_insights_and_tensions_empty_sources_warn(self, tmp_path):
+        _make_scope(tmp_path, goal_type="panoramic_understanding")
+        analysis = {"topic": "T", "goal_type": "panoramic_understanding", "sections": [
+            {"id": "overview", "title": "Overview", "content": "text", "depth_strategy": "overview",
+             "key_insights": [{"summary": "insight1", "sources": ["https://a.com", "https://b.com"]}, {"summary": "insight2", "sources": []}],
+             "tensions": [{"summary": "tension1", "sources": []}],
+             "claims": []},
+        ]}
+        _write_json(tmp_path / "analysis.json", analysis)
+        result = check_key_insights_coverage(tmp_path, "panoramic_understanding")
+        assert not result.passed
+        assert "key_insights[1]" in result.message
+        assert "tensions[0]" in result.message

@@ -14,20 +14,20 @@ Each subagent must output a JSON object with these EXACT fields (no others):
   "depth_strategy": "<overview|deep_dive|comparison|methodology>",
   "key_insights": [
     {
-      "text": "<insight statement with causal direction or key finding>",
-      "source_urls": ["<url from allowed list>"]
+      "summary": "<insight statement with causal direction or key finding>",
+      "sources": ["<url from allowed list>"]
     }
   ],
   "tensions": [
     {
-      "description": "<description of disagreement or conflict between sources>",
+      "summary": "<description of disagreement or conflict between sources>",
       "sources": ["<url from allowed list>"]
     }
   ],
   "claims": [
     {
-      "text": "<claim statement>",
-      "source_urls": ["<url from allowed list>"],
+      "summary": "<claim statement>",
+      "sources": ["<url from allowed list>"],
       "evidence_type": "official_data|independent_benchmark|third_party_estimate|qualitative_trend|expert_opinion",
       "confidence": "high|medium|low",
       "precision": "exact|range|qualitative",
@@ -38,12 +38,23 @@ Each subagent must output a JSON object with these EXACT fields (no others):
 ```
 
 - Use "id" NOT "section_id"
-- Use "source_urls" NOT "sources"
+- All sub-structures share the base pattern `{summary, sources}` — claims extend it with evidence_type, confidence, etc.
 - "claims" is REQUIRED, use [] if no claims
 - "key_insights" is REQUIRED for panoramic/exploratory sections (min 2), optional otherwise
 - "tensions" is optional — include only when sources genuinely disagree
 - "depth_strategy" is REQUIRED — must be one of: overview, deep_dive, comparison, methodology
-- Do NOT add fields like "word_count", "language", etc.
+- Do NOT add fields like "word_count", "language", "text", "description", "source_urls", etc.
+
+## Common Mistakes (DO NOT DO THESE)
+
+❌ "key_insights": ["text as string"]  — WRONG, must be list of objects with summary + sources
+✅ "key_insights": [{"summary": "...", "sources": [...]}]
+
+❌ "tensions": [{"title": "...", "description": "..."}]  — WRONG, no "title" field, use "summary" not "description"
+✅ "tensions": [{"summary": "...", "sources": [...]}]
+
+❌ "claims": [{"text": "...", "source_urls": [...]}]  — WRONG, use "summary" not "text", "sources" not "source_urls"
+✅ "claims": [{"summary": "...", "sources": [...], "evidence_type": "...", ...}]
 
 ## Source Content Injection
 
@@ -91,20 +102,20 @@ Merge all sections into a single analysis.json. **This step is JSON merge only �
 			"depth_strategy": "comparison",
 			"key_insights": [
 				{
-					"text": "Key finding with causal direction",
-					"source_urls": ["https://..."]
+					"summary": "Key finding with causal direction",
+					"sources": ["https://..."]
 				}
 			],
 			"tensions": [
 				{
-					"description": "Source A claims X while Source B claims Y",
+					"summary": "Source A claims X while Source B claims Y",
 					"sources": ["https://...", "https://..."]
 				}
 			],
 			"claims": [
 				{
-					"text": "Claim statement",
-					"source_urls": ["https://..."],
+					"summary": "Claim statement",
+					"sources": ["https://..."],
 					"evidence_type": "official_data | independent_benchmark | third_party_estimate | qualitative_trend | expert_opinion",
 					"confidence": "high | medium | low",
 					"precision": "exact | range | qualitative",
@@ -120,7 +131,7 @@ Merge all sections into a single analysis.json. **This step is JSON merge only �
 }
 ```
 
-Every claim MUST have at least one source_url linking to a URL in collected.json.
+Every claim MUST have at least one source URL in its `sources` field, linking to a URL in collected.json. Every key_insight and tension MUST also have at least one source URL in its `sources` field — empty sources will trigger a WARN.
 
 ## Numeric Claim Source Rule
 
@@ -150,5 +161,5 @@ matches an entry in collected.json. Example: `domain knowledge can be classified
 **DO NOT** use hardcoded reference numbers like `[8]` or `[&#91;8&#93;](#refs)`.
 The reporter assigns reference numbers automatically based on first-appearance order.
 
-Every URL in a claim's `source_urls` MUST also appear as `{{ref:URL}}` in the same
+Every URL in a claim's `sources` MUST also appear as `{{ref:URL}}` in the same
 section's content. The gate will block if any claim source URL is not referenced in content.

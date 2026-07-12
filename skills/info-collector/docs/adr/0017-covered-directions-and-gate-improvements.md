@@ -1,6 +1,6 @@
 # ADR 0017: covered_directions 字段与五项 gate 改进
 
-- **Status**: Accepted
+- **Status**: Superseded by ADR-0042
 - **Date**: 2026-06-18
 - **Context**: info-collector skill
 

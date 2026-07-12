@@ -39,7 +39,7 @@ class TestVaguePhraseDetection:
                         "id": "overview",
                         "title": "Overview",
                         "content": "Kubernetes handles 5000 nodes. Docker is widely used.",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -58,7 +58,7 @@ class TestVaguePhraseDetection:
                         "id": "overview",
                         "title": "Overview",
                         "content": "性能良好。值得关注。较为突出。比较突出。相对较好。较为成熟。相当不错。比较强大。较为完善。比较稳定。比较丰富。100 nodes.",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -79,7 +79,7 @@ class TestVaguePhraseDetection:
                         "id": "overview",
                         "title": "Overview",
                         "content": "Kubernetes handles 5000 nodes and Docker is fairly well supported in production environments with extensive monitoring and strong ecosystem.",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -100,7 +100,7 @@ class TestNumberAbsence:
                         "id": "overview",
                         "title": "Overview",
                         "content": "Kubernetes is a container orchestration platform with strong ecosystem support.",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -121,7 +121,7 @@ class TestNumberAbsence:
                         "id": "overview",
                         "title": "Overview",
                         "content": "Kubernetes handles 5000 nodes per cluster. Docker is widely used.",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -159,7 +159,7 @@ class TestNumberAbsence:
                         "id": "overview",
                         "title": "Overview",
                         "content": "Released in 2024.",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -180,7 +180,7 @@ class TestNumberAbsence:
                         "id": "overview",
                         "title": "Overview",
                         "content": "Version v2.0 released.",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -203,7 +203,7 @@ class TestNameAbsence:
                         "id": "overview",
                         "title": "Overview",
                         "content": "性能良好。值得关注。较为突出。5000 nodes. 性能良好。值得关注。较为突出。",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -224,7 +224,7 @@ class TestNameAbsence:
                         "id": "overview",
                         "title": "Overview",
                         "content": "性能良好。值得关注。较为突出。5000 nodes. 性能良好。值得关注。较为突出。性能良好。值得关注。较为突出。",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -245,7 +245,7 @@ class TestNameAbsence:
                         "id": "overview",
                         "title": "Overview",
                         "content": "Kubernetes handles 5000 nodes. Docker is quite capable and very well supported in production environments with extensive monitoring and strong ecosystem.",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -264,7 +264,7 @@ class TestNameAbsence:
                         "id": "overview",
                         "title": "Overview",
                         "content": "`my_service` handles 5000 nodes.",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -283,7 +283,7 @@ class TestNameAbsence:
                         "id": "overview",
                         "title": "Overview",
                         "content": "微服务架构 handles 5000 nodes.",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     }
                 ],
             },
@@ -304,13 +304,13 @@ class TestMultipleIssues:
                         "id": "overview",
                         "title": "Overview",
                         "content": "性能良好。值得关注。较为突出。",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     },
                     {
                         "id": "comparison",
                         "title": "Comparison",
                         "content": "Kubernetes handles 5000 nodes.",
-                        "claims": [{"text": "Claim", "source_urls": ["https://example.com"]}],
+                        "claims": [{"summary": "Claim", "sources": ["https://example.com"]}],
                     },
                 ],
             },
