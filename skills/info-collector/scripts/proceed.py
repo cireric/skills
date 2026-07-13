@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from .lib.utils import config_path, find_project_root, ensure_dir, read_json, write_json, build_collected_url_set
+from .lib.utils import config_path, ensure_dir, read_json, write_json, build_collected_url_set
 from .artifact_checks import CheckResult, run_all as run_gateway
 from .report_checks import run_report_checks
 from .search_gate import SearchGate
@@ -239,7 +239,7 @@ def _get_goal_type(workdir: Path) -> str:
 
 def _find_report_path(workdir: Path) -> Path | None:
     """Find the latest .md report file in the configured output directory."""
-    project_root = find_project_root()
+    project_root = workdir.parent
     cfg_path = config_path()
     output_dir = project_root / "./reports/"
     if cfg_path.exists():

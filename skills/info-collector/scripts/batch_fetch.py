@@ -19,7 +19,7 @@ from .lib.utils import compute_url_hash
 
 def cmd_batch_fetch(args: "argparse.Namespace") -> None:  # noqa: F821
     """Entry point for `cli batch-fetch` subcommand."""
-    workdir = Path(args.workdir) if args.workdir else _default_workdir()
+    workdir = getattr(args, "_workdir", None) or _default_workdir()
     config = _load_config(workdir)
 
     collected_path = workdir / ARTIFACT_COLLECTED

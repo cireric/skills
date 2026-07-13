@@ -13,8 +13,16 @@ from .lib.constants import ARTIFACT_ANALYSIS, ARTIFACT_COLLECTED, ARTIFACT_PIPEL
 from .lib.exceptions import InfoCollectorError
 from .lib.utils import config_path, find_project_root
 
-WORKDIR = find_project_root() / ".workdir"
 _CONFIG_PATH = config_path()
+
+
+def _resolve_workdir(workdir_arg: str | None = None) -> Path:
+    if workdir_arg:
+        p = Path(workdir_arg)
+        if p.is_absolute():
+            return p / ".workdir"
+        return find_project_root() / workdir_arg / ".workdir"
+    return find_project_root() / ".workdir"
 
 
 def _load_config() -> dict | None:
@@ -28,8 +36,9 @@ def _load_config() -> dict | None:
 def cmd_proceed(args: argparse.Namespace) -> None:
     from .proceed import proceeds
 
+    workdir = getattr(args, "_workdir", None) or _resolve_workdir()
     config = _load_config()
-    ok, errors = proceeds(WORKDIR, args.from_phase, args.to_phase, config)
+    ok, errors = proceeds(workdir, args.from_phase, args.to_phase, config)
     for err in errors:
         print(f"  {err}", file=sys.stderr)
     if ok:
@@ -43,7 +52,8 @@ def cmd_proceed(args: argparse.Namespace) -> None:
 def cmd_gateway(args: argparse.Namespace) -> None:
     from .proceed import get_gateway_results
 
-    results = get_gateway_results(WORKDIR)
+    workdir = getattr(args, "_workdir", None) or _resolve_workdir()
+    results = get_gateway_results(workdir)
     for r in results:
         status = "PASS" if r.passed else "FAIL"
         print(f"  [{r.level:7s}] {r.name}: {status}  {r.message}")
@@ -57,10 +67,11 @@ def cmd_gateway(args: argparse.Namespace) -> None:
 def cmd_report(args: argparse.Namespace) -> None:
     from .reporter import generate_report
 
+    workdir = getattr(args, "_workdir", None) or _resolve_workdir()
     config = _load_config()
 
-    analysis_path = WORKDIR / ARTIFACT_ANALYSIS
-    scope_path = WORKDIR / ARTIFACT_SCOPE
+    analysis_path = workdir / ARTIFACT_ANALYSIS
+    scope_path = workdir / ARTIFACT_SCOPE
     if not analysis_path.exists():
         print("analysis.json not found", file=sys.stderr)
         sys.exit(1)
@@ -71,7 +82,7 @@ def cmd_report(args: argparse.Namespace) -> None:
     from .lib.utils import read_json
     from .lib.exceptions import ArtifactError
 
-    review_status = args.review_status or _detect_review_status()
+    review_status = args.review_status or _detect_review_status(workdir)
     try:
         scope_data = read_json(scope_path)
     except ArtifactError as e:
@@ -85,11 +96,12 @@ def cmd_report(args: argparse.Namespace) -> None:
         scope_path,
         review_status=review_status,
         search_rounds=args.search_rounds or 1,
-        source_count=args.source_count or _count_sources(),
+        source_count=args.source_count or _count_sources(workdir),
         report_language=report_language,
     )
     default_output = (config or {}).get("output_dir", "./reports/")
-    output_path = Path(args.output) if args.output else find_project_root() / default_output
+    project_root = workdir.parent
+    output_path = Path(args.output) if args.output else project_root / default_output
     output_path.mkdir(parents=True, exist_ok=True)
     filename = _build_report_filename(scope_data, output_path)
     filename.write_text(report, encoding="utf-8")
@@ -107,40 +119,42 @@ def cmd_source(args: argparse.Namespace) -> None:
 def cmd_clean(args: argparse.Namespace) -> None:
     import shutil
 
-    if WORKDIR.exists():
-        shutil.rmtree(WORKDIR)
-        print(f"Removed {WORKDIR}")
+    workdir = getattr(args, "_workdir", None) or _resolve_workdir()
+    if workdir.exists():
+        shutil.rmtree(workdir)
+        print(f"Removed {workdir}")
     else:
-        print(f"{WORKDIR} does not exist")
+        print(f"{workdir} does not exist")
 
 
 def cmd_reset(args: argparse.Namespace) -> None:
+    workdir = getattr(args, "_workdir", None) or _resolve_workdir()
     phase = args.phase
     if phase not in _PHASE_ARTIFACTS:
         print(f"Invalid phase: {phase}. Must be one of: {', '.join(_PHASE_ARTIFACTS)}", file=sys.stderr)
         sys.exit(1)
     removed = []
     for name in _PHASE_ARTIFACTS[phase]:
-        path = WORKDIR / name
+        path = workdir / name
         if path.exists():
             path.unlink()
             removed.append(name)
     from .proceed import detect_current_phase, write_phase_state
-    actual_phase = detect_current_phase(WORKDIR)
-    state_path = WORKDIR / ARTIFACT_PIPELINE_STATE
+    actual_phase = detect_current_phase(workdir)
+    state_path = workdir / ARTIFACT_PIPELINE_STATE
     if state_path.exists():
         state_path.unlink()
         removed.append(ARTIFACT_PIPELINE_STATE)
     if actual_phase != "pre_scope":
-        write_phase_state(WORKDIR, actual_phase)
+        write_phase_state(workdir, actual_phase)
     if removed:
         print(f"Reset from phase '{phase}': removed {', '.join(removed)}")
     else:
         print(f"Reset from phase '{phase}': nothing to remove")
 
 
-def _detect_review_status() -> str:
-    review_path = WORKDIR / ARTIFACT_REVIEW_REPORT
+def _detect_review_status(workdir: Path) -> str:
+    review_path = workdir / ARTIFACT_REVIEW_REPORT
     if not review_path.exists():
         return "degraded"
     try:
@@ -173,12 +187,12 @@ def _detect_review_status() -> str:
     return "degraded"  # unreachable but safe
 
 
-def _count_sources() -> int:
+def _count_sources(workdir: Path) -> int:
     try:
         from .lib.utils import read_json
         from .lib.exceptions import ArtifactError
 
-        collected = read_json(WORKDIR / ARTIFACT_COLLECTED)
+        collected = read_json(workdir / ARTIFACT_COLLECTED)
         return len(collected) if collected else 0
     except (ArtifactError, OSError):
         return 0
@@ -208,7 +222,8 @@ def cmd_fetch(args: argparse.Namespace) -> None:
     from dataclasses import asdict
     from .fetcher import Fetcher
 
-    fetcher = Fetcher(WORKDIR, _load_config())
+    workdir = getattr(args, "_workdir", None) or _resolve_workdir()
+    fetcher = Fetcher(workdir, _load_config())
 
     if args.from_stdin:
         raw = sys.stdin.read()
@@ -230,6 +245,7 @@ def cmd_batch_fetch(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Info-Collector Skill CLI")
+    parser.add_argument("--workdir", default=None, help="项目根目录路径（缺省时自动检测 .git/ 所在目录）")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_proceed = sub.add_parser("proceed", help="Run phase transition gate")
@@ -268,10 +284,10 @@ def main() -> None:
     p_batch = sub.add_parser("batch-fetch", help="Batch-fetch: save multiple URLs from stdin, update collected.json")
     p_batch.add_argument("--from-stdin", action="store_true", help="Read batch JSON from stdin")
     p_batch.add_argument("--pending", action="store_true", help="List URLs that still need fetching")
-    p_batch.add_argument("--workdir", default=None, help="Path to .workdir (default: auto-detect)")
     p_batch.set_defaults(func=cmd_batch_fetch)
 
     args = parser.parse_args()
+    args._workdir = _resolve_workdir(args.workdir)
     try:
         args.func(args)
     except InfoCollectorError as e:

@@ -1273,10 +1273,9 @@ class TestRepairHintsInOutput:
         ]
         monkeypatch.setattr("scripts.proceed.get_gateway_results", lambda w: fake_results)
         import scripts.cli as cli_mod
-        monkeypatch.setattr(cli_mod, "WORKDIR", tmp_path)
 
         import argparse
-        args = argparse.Namespace()
+        args = argparse.Namespace(_workdir=tmp_path)
         with pytest.raises(SystemExit):
             cli_mod.cmd_gateway(args)
         captured = capsys.readouterr()
@@ -1292,10 +1291,9 @@ class TestRepairHintsInOutput:
         ]
         monkeypatch.setattr("scripts.proceed.get_gateway_results", lambda w: fake_results)
         import scripts.cli as cli_mod
-        monkeypatch.setattr(cli_mod, "WORKDIR", tmp_path)
 
         import argparse
-        args = argparse.Namespace()
+        args = argparse.Namespace(_workdir=tmp_path)
         with pytest.raises(SystemExit):
             cli_mod.cmd_gateway(args)
         captured = capsys.readouterr()

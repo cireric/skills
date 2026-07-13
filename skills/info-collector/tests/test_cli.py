@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts.cli import _detect_review_status, _build_report_filename, cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_reset, cmd_source, cmd_fetch, main, WORKDIR
+from scripts.cli import _detect_review_status, _build_report_filename, cmd_clean, cmd_gateway, cmd_proceed, cmd_report, cmd_reset, cmd_source, cmd_fetch, main, _resolve_workdir
 from scripts.fetcher import FetchResult
 from scripts.lib.exceptions import InfoCollectorError
 from scripts.lib.utils import compute_url_hash
@@ -26,8 +26,7 @@ class TestDetectReviewStatus:
         (workdir / "review_report.md").write_text(
             "## Overall Verdict\n**pass**\n", encoding="utf-8"
         )
-        with patch("scripts.cli.WORKDIR", workdir):
-            assert _detect_review_status() == "passed"
+        assert _detect_review_status(workdir) == "passed"
 
     def test_verdict_pass_with_issues(self, tmp_path):
         workdir = tmp_path / ".workdir"
@@ -35,8 +34,7 @@ class TestDetectReviewStatus:
         (workdir / "review_report.md").write_text(
             "## Overall Verdict\n**pass_with_issues**\n", encoding="utf-8"
         )
-        with patch("scripts.cli.WORKDIR", workdir):
-            assert _detect_review_status() == "degraded"
+        assert _detect_review_status(workdir) == "degraded"
 
     def test_verdict_fail_exits(self, tmp_path):
         workdir = tmp_path / ".workdir"
@@ -44,8 +42,8 @@ class TestDetectReviewStatus:
         (workdir / "review_report.md").write_text(
             "## Overall Verdict\n**fail**\n", encoding="utf-8"
         )
-        with patch("scripts.cli.WORKDIR", workdir), pytest.raises(SystemExit) as exc:
-            _detect_review_status()
+        with pytest.raises(SystemExit) as exc:
+            _detect_review_status(workdir)
         assert exc.value.code == 1
 
     def test_verdict_unparseable_fallback(self, tmp_path):
@@ -54,14 +52,12 @@ class TestDetectReviewStatus:
         (workdir / "review_report.md").write_text(
             "## Overall Verdict\n**unknown_verdict**\n", encoding="utf-8"
         )
-        with patch("scripts.cli.WORKDIR", workdir):
-            assert _detect_review_status() == "degraded"
+        assert _detect_review_status(workdir) == "degraded"
 
     def test_no_review_report(self, tmp_path):
         workdir = tmp_path / ".workdir"
         workdir.mkdir()
-        with patch("scripts.cli.WORKDIR", workdir):
-            assert _detect_review_status() == "degraded"
+        assert _detect_review_status(workdir) == "degraded"
 
 
 class TestCmdProceed:
@@ -79,16 +75,16 @@ class TestCmdProceed:
                 "search_directions": ["AI"],
             },
         )
-        with patch("scripts.cli.WORKDIR", workdir), patch("sys.exit") as mock_exit:
-            cmd_proceed(_make_namespace(from_phase="scope", to_phase="search"))
+        with patch("sys.exit") as mock_exit:
+            cmd_proceed(_make_namespace(from_phase="scope", to_phase="search", _workdir=workdir))
             mock_exit.assert_called_with(0)
 
     def test_scope_gate_fail(self, tmp_path):
         workdir = tmp_path / ".workdir"
         workdir.mkdir()
         _write_json(workdir / "scope.json", {"topic": "T"})
-        with patch("scripts.cli.WORKDIR", workdir), patch("sys.exit") as mock_exit:
-            cmd_proceed(_make_namespace(from_phase="scope", to_phase="search"))
+        with patch("sys.exit") as mock_exit:
+            cmd_proceed(_make_namespace(from_phase="scope", to_phase="search", _workdir=workdir))
             mock_exit.assert_called_with(1)
 
 
@@ -151,8 +147,8 @@ class TestCmdGateway:
         )
         for sec_id in ["overview", "comparison", "recommendation", "methodology"]:
             _write_json(workdir / f"analysis_section_{sec_id}.json", {"id": sec_id})
-        with patch("scripts.cli.WORKDIR", workdir), patch("sys.exit") as mock_exit:
-            cmd_gateway(_make_namespace(command="gateway"))
+        with patch("sys.exit") as mock_exit:
+            cmd_gateway(_make_namespace(command="gateway", _workdir=workdir))
             mock_exit.assert_not_called()
 
 
@@ -209,13 +205,14 @@ class TestCmdReport:
             },
         )
         output_dir = tmp_path / "reports"
-        with patch("scripts.cli.WORKDIR", workdir), patch("sys.exit"):
+        with patch("sys.exit"):
             cmd_report(
                 _make_namespace(
                     review_status="passed",
                     search_rounds=1,
                     source_count=1,
                     output=str(output_dir),
+                    _workdir=workdir,
                 )
             )
         report_files = list(output_dir.glob("*.md"))
@@ -238,7 +235,7 @@ class TestCmdReport:
                 "search_directions": ["AI"],
             },
         )
-        with patch("scripts.cli.WORKDIR", workdir), patch("scripts.cli.sys.exit") as mock_exit:
+        with patch("scripts.cli.sys.exit") as mock_exit:
             with patch("scripts.reporter.generate_report", return_value=""):
                 cmd_report(
                     _make_namespace(
@@ -246,6 +243,7 @@ class TestCmdReport:
                         search_rounds=1,
                         source_count=1,
                         output=None,
+                        _workdir=workdir,
                     )
                 )
                 mock_exit.assert_called_with(1)
@@ -303,13 +301,14 @@ class TestCmdReport:
             },
         )
         output_dir = tmp_path / "reports"
-        with patch("scripts.cli.WORKDIR", workdir), patch("sys.exit"):
+        with patch("sys.exit"):
             cmd_report(
                 _make_namespace(
                     review_status="passed",
                     search_rounds=1,
                     source_count=1,
                     output=str(output_dir),
+                    _workdir=workdir,
                 )
             )
         report_files = list(output_dir.glob("*.md"))
@@ -332,27 +331,25 @@ class TestCmdClean:
         workdir = tmp_path / ".workdir"
         workdir.mkdir()
         (workdir / "dummy.txt").write_text("data")
-        with patch("scripts.cli.WORKDIR", workdir):
-            cmd_clean(_make_namespace())
+        cmd_clean(_make_namespace(_workdir=workdir))
         assert not workdir.exists()
 
     def test_clean_nonexistent_workdir(self, tmp_path):
         workdir = tmp_path / ".workdir"
-        with patch("scripts.cli.WORKDIR", workdir):
-            cmd_clean(_make_namespace())
+        cmd_clean(_make_namespace(_workdir=workdir))
         assert not workdir.exists()
 
 
 class TestProjectRootDetection:
     def test_find_project_root_finds_git(self, tmp_path):
-        from scripts.cli import find_project_root
+        from scripts.lib.utils import find_project_root
 
         (tmp_path / ".git").mkdir()
         with patch("pathlib.Path.cwd", return_value=tmp_path):
             assert find_project_root() == tmp_path
 
     def test_find_project_root_walks_up(self, tmp_path):
-        from scripts.cli import find_project_root
+        from scripts.lib.utils import find_project_root
 
         (tmp_path / ".git").mkdir()
         subdir = tmp_path / "skills" / "info-collector"
@@ -361,7 +358,7 @@ class TestProjectRootDetection:
             assert find_project_root() == tmp_path
 
     def test_find_project_root_fallback_to_cwd(self, tmp_path):
-        from scripts.cli import find_project_root
+        from scripts.lib.utils import find_project_root
 
         with patch("pathlib.Path.cwd", return_value=tmp_path):
             assert find_project_root() == tmp_path
@@ -375,8 +372,7 @@ class TestCmdReset:
         _write_json(workdir / "collected.json", [{"url": "https://a.com"}])
         _write_json(workdir / "analysis.json", {"topic": "test", "sections": []})
         (workdir / "review_report.md").write_text("review")
-        monkeypatch.setattr("scripts.cli.WORKDIR", workdir)
-        cmd_reset(_make_namespace(phase="scope"))
+        cmd_reset(_make_namespace(phase="scope", _workdir=workdir))
         assert not (workdir / "scope.json").exists()
         assert not (workdir / "collected.json").exists()
         assert not (workdir / "analysis.json").exists()
@@ -388,8 +384,7 @@ class TestCmdReset:
         _write_json(workdir / "scope.json", {"topic": "test"})
         _write_json(workdir / "collected.json", [{"url": "https://a.com"}])
         _write_json(workdir / "analysis.json", {"topic": "test", "sections": []})
-        monkeypatch.setattr("scripts.cli.WORKDIR", workdir)
-        cmd_reset(_make_namespace(phase="analysis"))
+        cmd_reset(_make_namespace(phase="analysis", _workdir=workdir))
         assert (workdir / "scope.json").exists()
         assert (workdir / "collected.json").exists()
         assert not (workdir / "analysis.json").exists()
@@ -397,9 +392,8 @@ class TestCmdReset:
     def test_reset_invalid_phase_exits(self, tmp_path, monkeypatch):
         workdir = tmp_path / ".workdir"
         workdir.mkdir()
-        monkeypatch.setattr("scripts.cli.WORKDIR", workdir)
         with pytest.raises(SystemExit) as exc_info:
-            cmd_reset(_make_namespace(phase="invalid"))
+            cmd_reset(_make_namespace(phase="invalid", _workdir=workdir))
         assert exc_info.value.code == 1
 
     def test_main_parses_reset(self, monkeypatch):
@@ -497,10 +491,9 @@ class TestCmdFetch:
             fetch_failed=False, tool_used="webfetch",
             content_insufficient=False, source_tier=None,
         )
-        with patch("scripts.cli.WORKDIR", workdir), \
-             patch("scripts.fetcher.Fetcher") as MockFetcher:
+        with patch("scripts.fetcher.Fetcher") as MockFetcher:
             MockFetcher.return_value.fetch.return_value = mock_result
-            args = _make_namespace(url="https://example.com/paper", tier=None, no_playwright=False, from_stdin=False)
+            args = _make_namespace(url="https://example.com/paper", tier=None, no_playwright=False, from_stdin=False, _workdir=workdir)
             cmd_fetch(args)
         output = json.loads(capsys.readouterr().out)
         assert output["fetch_failed"] is False
@@ -516,10 +509,9 @@ class TestCmdFetch:
             fetch_failed=True, tool_used="",
             content_insufficient=True, source_tier=None,
         )
-        with patch("scripts.cli.WORKDIR", workdir), \
-             patch("scripts.fetcher.Fetcher") as MockFetcher:
+        with patch("scripts.fetcher.Fetcher") as MockFetcher:
             MockFetcher.return_value.fetch.return_value = mock_result
-            args = _make_namespace(url="https://example.com/404", tier=None, no_playwright=False, from_stdin=False)
+            args = _make_namespace(url="https://example.com/404", tier=None, no_playwright=False, from_stdin=False, _workdir=workdir)
             with pytest.raises(SystemExit) as exc:
                 cmd_fetch(args)
             assert exc.value.code == 1
@@ -535,11 +527,10 @@ class TestCmdFetch:
             content_insufficient=False, source_tier=1,
         )
         stdin_content = '{"content": "# Paper\\n\\ncontent", "tool_used": "exa_web_fetch_exa"}'
-        with patch("scripts.cli.WORKDIR", workdir), \
-             patch("scripts.fetcher.Fetcher") as MockFetcher, \
+        with patch("scripts.fetcher.Fetcher") as MockFetcher, \
              patch("sys.stdin.read", return_value=stdin_content):
             MockFetcher.return_value.save_piped.return_value = mock_result
-            args = _make_namespace(url="https://example.com/paper", tier=1, no_playwright=False, from_stdin=True)
+            args = _make_namespace(url="https://example.com/paper", tier=1, no_playwright=False, from_stdin=True, _workdir=workdir)
             cmd_fetch(args)
         call_args = MockFetcher.return_value.save_piped.call_args
         assert call_args[0][1] == stdin_content
@@ -554,11 +545,10 @@ class TestCmdFetch:
             fetch_failed=False, tool_used="webfetch",
             content_insufficient=False, source_tier=1,
         )
-        with patch("scripts.cli.WORKDIR", workdir), \
-             patch("scripts.fetcher.Fetcher") as MockFetcher:
+        with patch("scripts.fetcher.Fetcher") as MockFetcher:
             MockFetcher.return_value.infer_tier.return_value = 1
             MockFetcher.return_value.fetch.return_value = mock_result
-            args = _make_namespace(url="https://arxiv.org/abs/2503.15223", tier=None, no_playwright=False, from_stdin=False)
+            args = _make_namespace(url="https://arxiv.org/abs/2503.15223", tier=None, no_playwright=False, from_stdin=False, _workdir=workdir)
             cmd_fetch(args)
         MockFetcher.return_value.fetch.assert_called_once()
         assert MockFetcher.return_value.fetch.call_args[1]["tier"] == 1
