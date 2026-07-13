@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .lib.constants import (
     ARTIFACT_ANALYSIS,
@@ -17,12 +18,12 @@ from .lib.constants import (
     _MIN_SOURCES,
     _QUANTITATIVE_GOAL_TYPES,
     _REQUIRED_SECTION_IDS,
-    _SINGLE_SOURCE_RATIO,
     _SUBAGENT_DELEGATION_MIN_SECTIONS,
     _TIER_BALANCE_THRESHOLD,
     _VAGUE_DENSITY_THRESHOLD,
     _VAGUE_PHRASES_EN,
     _VAGUE_PHRASES_ZH,
+    single_source_ratio_threshold,
 )
 from .lib.exceptions import ArtifactError
 from .lib.utils import build_collected_by_url, build_collected_url_set, normalize_url, read_json, tokenize_cjk_aware
@@ -47,6 +48,16 @@ class CheckResult:
     passed: bool
     message: str = ""
     repair_hints: list[str] = field(default_factory=list)
+
+def _read_depth(workdir: Path) -> str:
+    """Read the search depth from scope.json, defaulting to 'standard'."""
+    try:
+        scope = read_json(workdir / ARTIFACT_SCOPE)
+    except ArtifactError:
+        return "standard"
+    depth = scope.get("depth")
+    return depth if isinstance(depth, str) else "standard"
+
 
 def _read_artifact(path: Path, check_name: str, read_error_level: str = "BLOCKER") -> tuple[dict | None, CheckResult | None]:
     """Read a JSON artifact, returning (data, None) on success or (None, CheckResult) on failure.
@@ -184,8 +195,16 @@ def check_quality_heuristics(workdir: Path) -> CheckResult:
             if len(claim.get("sources", [])) < _MIN_SOURCES:
                 single_source_claims += 1
     issues = []
-    if total_claims > 0 and single_source_claims / total_claims > _SINGLE_SOURCE_RATIO:
-        issues.append(f"{single_source_claims}/{total_claims} claims have single source")
+    threshold = single_source_ratio_threshold(_read_depth(workdir))
+    if (
+        threshold is not None
+        and total_claims > 0
+        and single_source_claims / total_claims > threshold
+    ):
+        issues.append(
+            f"{single_source_claims}/{total_claims} claims have single source "
+            f"(WARN above {threshold:.0%} for depth={_read_depth(workdir)})"
+        )
     if issues:
         return CheckResult("quality_heuristics", "WARN", False, "; ".join(issues))
     return CheckResult("quality_heuristics", "WARN", True)
@@ -524,42 +543,151 @@ def check_table_suggestion(workdir: Path) -> CheckResult:
 
 
 def check_direction_coverage(workdir: Path) -> CheckResult:
-    """WARN if scope.json search_directions are not covered by analysis.json sections.
-
-    search_directions serve as fallback reference (ADR 0046), not gate-enforced.
-    This check warns when a direction has no corresponding section, suggesting
-    the agent may have missed a research dimension.
+    """WARN claim-anchor (ADR 0052): for each declared direction that has
+    collected sources tagged to it, at least one claim should reference a
+    source serving that direction. This is the soft anti-gaming backstop;
+    the hard coverage floor lives in SearchGate.direction_coverage (BLOCKER).
     """
     scope, err = _read_artifact(workdir / ARTIFACT_SCOPE, "direction_coverage", "WARN")
     if err:
         return err
     directions = scope.get("search_directions")
-    if not directions or not isinstance(directions, list):
+    norm_dirs = [str(d).strip().lower() for d in directions if isinstance(d, str) and d.strip()] if isinstance(directions, list) else []
+    if not norm_dirs:
         return CheckResult("direction_coverage", "WARN", True, "No search_directions in scope, check skipped")
+    try:
+        collected = read_json(workdir / ARTIFACT_COLLECTED)
+    except ArtifactError:
+        collected = None
+    if not isinstance(collected, list):
+        return CheckResult("direction_coverage", "WARN", True, "No collected.json, check skipped")
+    dir_urls: dict[str, set[str]] = {}
+    for entry in collected:
+        if not isinstance(entry, dict):
+            continue
+        d = entry.get("direction")
+        if not isinstance(d, str) or not d.strip():
+            continue
+        d = d.strip().lower()
+        url = entry.get("url")
+        if url:
+            dir_urls.setdefault(d, set()).add(normalize_url(url))
+    declared_with_sources = [d for d in norm_dirs if d in dir_urls]
+    if not declared_with_sources:
+        return CheckResult("direction_coverage", "WARN", True, "No collected sources tagged to declared directions, check skipped")
     analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "direction_coverage", "WARN")
     if err:
         return err
-    section_texts = []
+    covered: set[str] = set()
     for section in analysis.get("sections", []):
-        sec_id = section.get("id", "").lower()
-        title = section.get("title", "").lower()
-        section_texts.append(f"{sec_id} {title}")
-    combined = " ".join(section_texts)
-    uncovered = []
-    for direction in directions:
-        if not isinstance(direction, str):
-            continue
-        tokens = tokenize_cjk_aware(direction.lower())
-        if any(token in combined for token in tokens if len(token) > 1):
-            continue
-        uncovered.append(direction)
+        for claim in section.get("claims", []):
+            for u in claim.get("sources", []):
+                nu = normalize_url(u)
+                for d in declared_with_sources:
+                    if nu in dir_urls[d]:
+                        covered.add(d)
+    uncovered = [d for d in declared_with_sources if d not in covered]
     if uncovered:
         return CheckResult(
             "direction_coverage", "WARN", False,
-            f"search_directions not covered by any section: {', '.join(uncovered)}",
-            repair_hints=[f"Consider adding sections for uncovered directions: {', '.join(uncovered)}. search_directions are fallback reference (ADR 0046)."],
+            f"declared directions have sources but no claim references them: {', '.join(uncovered)}",
+            repair_hints=[f"Add claims referencing the collected sources for these directions: {', '.join(uncovered)}"],
         )
     return CheckResult("direction_coverage", "WARN", True)
+
+
+_FACET_GOAL_TYPE_SETS: dict[str, list[str]] = {
+    "panoramic_understanding": [
+        "technical_architecture", "model_product_family", "cost_economics",
+        "market_industry_impact", "community_ecosystem", "reported_limitations",
+    ],
+    "exploratory": [
+        "technical_architecture", "model_product_family", "cost_economics",
+        "market_industry_impact", "community_ecosystem", "reported_limitations",
+    ],
+}
+_FACET_DEFAULT_SET = [
+    "technical_architecture", "market_industry_impact",
+    "community_ecosystem", "reported_limitations",
+]
+_LIMITATION_KEYWORDS = (
+    "limit", "limitation", "shortcom", "drawback", "weakness",
+    "局限", "不足", "缺陷", "短板", "缺点", "限制", "can only", "cannot", "fails to",
+)
+
+
+def _facet_set_for(goal_type: str) -> list[str]:
+    return _FACET_GOAL_TYPE_SETS.get(goal_type, _FACET_DEFAULT_SET)
+
+
+def check_facet_coverage(workdir: Path) -> CheckResult:
+    """WARN safety net (ADR 0050): goal_type-aware facet coverage derived from
+    source tiers + claim content. Does not block (it is the system safety net,
+    orthogonal to the user-declared direction contract in ADR 0052)."""
+    scope, err = _read_artifact(workdir / ARTIFACT_SCOPE, "facet_coverage", "WARN")
+    if err:
+        return err
+    goal_type = scope.get("goal_type", "other")
+    facets = _facet_set_for(goal_type)
+    try:
+        collected = read_json(workdir / ARTIFACT_COLLECTED)
+    except ArtifactError:
+        collected = None
+    if not isinstance(collected, list):
+        return CheckResult("facet_coverage", "WARN", True, "No collected.json, check skipped")
+    tier_entries: dict[int, list[dict]] = {}
+    community_hosts: set[str] = set()
+    for entry in collected:
+        if not isinstance(entry, dict):
+            continue
+        t = entry.get("source_tier")
+        if isinstance(t, int):
+            tier_entries.setdefault(t, []).append(entry)
+        if t == 4:
+            url = entry.get("url", "")
+            host = urlparse(url).hostname
+            if host:
+                community_hosts.add(host)
+    has_t12 = bool(tier_entries.get(1) or tier_entries.get(2))
+    has_t3 = bool(tier_entries.get(3))
+    has_t4 = bool(tier_entries.get(4))
+    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "facet_coverage", "WARN")
+    if err:
+        return err
+    limitation_claims = 0
+    for section in analysis.get("sections", []):
+        for claim in section.get("claims", []):
+            summary = (claim.get("summary") or "").lower()
+            if any(k in summary for k in _LIMITATION_KEYWORDS):
+                limitation_claims += 1
+    missing: list[str] = []
+    repair: list[str] = []
+    if not has_t12:
+        missing.append("technical_architecture/model_product_family/cost_economics")
+        repair.append("Collect Tier 1/2 sources (papers, official docs, repos) for technical/cost facets")
+    if not has_t3:
+        missing.append("market_industry_impact")
+        repair.append("Collect Tier 3 industry/news sources for market/industry impact")
+    if not has_t4:
+        missing.append("community_ecosystem")
+        repair.append("Collect Tier 4 community/UGC sources (Reddit, HN, Zhihu, Weibo) — see config.json sources toolbook for site_query hints")
+    elif len(community_hosts) < 2:
+        missing.append("community_ecosystem (single platform)")
+        repair.append(
+            "Community signal is single-platform. Broaden to >=2 distinct platforms "
+            "(e.g., HuggingFace + Reddit/HN, or Reddit + Zhihu/Weibo) using config.json sources "
+            "toolbook for the missing platform's site_query."
+        )
+    if limitation_claims == 0:
+        missing.append("reported_limitations")
+        repair.append("Add a limitations section / claims noting the subject's self-reported shortcomings (Tier 1/2 preferred)")
+    if missing:
+        return CheckResult(
+            "facet_coverage", "WARN", False,
+            f"facet coverage gaps (safety net, non-blocking): {', '.join(missing)}",
+            repair_hints=repair,
+        )
+    return CheckResult("facet_coverage", "WARN", True)
 
 
 def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
@@ -580,4 +708,5 @@ def run_all(workdir: Path, goal_type: str) -> list[CheckResult]:
         check_section_deviation(workdir),
         check_table_suggestion(workdir),
         check_direction_coverage(workdir),
+        check_facet_coverage(workdir),
     ] + claim_results

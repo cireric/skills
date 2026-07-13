@@ -413,7 +413,7 @@ class TestCheckQualityHeuristics:
                         "claims": [
                             {"sources": ["https://a.com"]},
                             {"sources": ["https://b.com"]},
-                            {"sources": ["https://c.com", "https://d.com"]},
+                            {"sources": ["https://c.com"]},
                         ]
                     }
                 ],
@@ -422,6 +422,30 @@ class TestCheckQualityHeuristics:
         result = check_quality_heuristics(tmp_path)
         assert not result.passed
         assert result.level == "WARN"
+
+    def test_single_source_threshold_depth_dynamic(self, tmp_path):
+        # 2/3 single-source ratio = 0.667
+        analysis = {
+            "sections": [
+                {
+                    "claims": [
+                        {"sources": ["https://a.com"]},
+                        {"sources": ["https://b.com"]},
+                        {"sources": ["https://c.com", "https://d.com"]},
+                    ]
+                }
+            ]
+        }
+        # standard threshold is 70%: 0.667 does NOT warn
+        _write_json(tmp_path / "analysis.json", analysis)
+        _write_json(tmp_path / "scope.json", {"depth": "standard"})
+        assert check_quality_heuristics(tmp_path).passed
+        # deep threshold is 50%: 0.667 DOES warn
+        _write_json(tmp_path / "scope.json", {"depth": "deep"})
+        assert not check_quality_heuristics(tmp_path).passed
+        # quick is not checked at all
+        _write_json(tmp_path / "scope.json", {"depth": "quick"})
+        assert check_quality_heuristics(tmp_path).passed
 
 
 class TestCheckMethodologyDepth:

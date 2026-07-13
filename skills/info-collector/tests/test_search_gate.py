@@ -55,7 +55,7 @@ class TestSearchGateCheck:
             h = compute_url_hash(url)
             fname = f"sources/{h}.md"
             (sources_dir / f"{h}.md").write_text("x" * 2100, encoding="utf-8")
-            entries.append({"url": url, "title": f"Source {i}", "snippet": f"About topic {i}", "fetched_content": "x" * 2100, "source_file": fname, "source_tier": tier})
+            entries.append({"url": url, "title": f"Source {i}", "snippet": f"About topic {i}", "fetched_content": "x" * 2100, "source_file": fname, "source_tier": tier, "direction": ["ai", "ml"][i % 2]})
         _write_json(tmp_path / "collected.json", entries)
         results = SearchGate(tmp_path, config).check()
         blockers = [r for r in results if r.level == "BLOCKER" and not r.passed]
@@ -112,16 +112,15 @@ class TestTierCoverage:
                 "4": {"sources": [{"name": "Reddit", "domain": "reddit.com"}]},
             },
             "routes": {
-                "panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]},
+                "academic_research": {"entry_tier": 1, "path": [1], "optional_tiers": [2]},
             },
         }
-        _make_scope(tmp_path, goal_type="panoramic_understanding", search_directions=["AI", "ML"])
+        _make_scope(tmp_path, goal_type="academic_research", search_directions=[])
         _write_json(
             tmp_path / "collected.json",
             [
-                {"url": "https://a.com", "title": "AI ML", "snippet": "About AI and ML", "source_tier": 4, "fetched_content": "x" * 500},
-                {"url": "https://b.com", "title": "More AI", "snippet": "About ML too", "source_tier": 3, "fetched_content": "x" * 700},
-                {"url": "https://c.com", "title": "Deep AI", "snippet": "About AI research", "source_tier": 1, "fetched_content": "x" * 1100},
+                {"url": "https://a.com", "title": "Paper 1", "snippet": "About topic", "source_tier": 1, "fetched_content": "x" * 500},
+                {"url": "https://b.com", "title": "Paper 2", "snippet": "About topic", "source_tier": 1, "fetched_content": "x" * 700},
             ],
         )
         results = SearchGate(tmp_path, config).check()
@@ -436,6 +435,72 @@ class TestRepairHints:
         assert r is not None
         assert r.passed
         assert r.repair_hints == []
+
+
+class TestDirectionTaggingAndCoverage:
+    def _valid_entries(self, tmp_path, directions):
+        # 5 entries covering tiers 3,2,1,4,3 with source files so the other
+        # search-gate checks pass; only `direction` varies per entry.
+        tiers = [3, 2, 1, 4, 3]
+        entries = []
+        for i, d in enumerate(directions):
+            url = f"https://src{i}.example.com"
+            sf = _create_source_file(tmp_path, url, "x" * 2100)
+            entries.append({
+                "url": url, "title": f"Source {i}", "snippet": f"About topic {i}",
+                "source_tier": tiers[i], "source_file": sf, "fetched_content": "x" * 2100,
+                "direction": d,
+            })
+        return entries
+
+    def test_tagging_blocks_when_direction_missing(self, tmp_path):
+        _make_scope(tmp_path, goal_type="other", search_directions=["AI", "ML"])
+        entries = self._valid_entries(tmp_path, ["AI", "ML", "AI", "ML", "other"])
+        del entries[0]["direction"]
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        r = _find_result(results, "direction_tagging")
+        assert r is not None
+        assert not r.passed
+        assert r.level == "BLOCKER"
+
+    def test_tagging_passes_when_all_tagged(self, tmp_path):
+        _make_scope(tmp_path, goal_type="other", search_directions=["AI", "ML"])
+        entries = self._valid_entries(tmp_path, ["AI", "ML", "AI", "ML", "other"])
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        r = _find_result(results, "direction_tagging")
+        assert r is not None
+        assert r.passed
+
+    def test_tagging_skipped_without_search_directions(self, tmp_path):
+        _write_json(tmp_path / "scope.json", {"topic": "T", "goal_type": "other", "depth": "standard", "audience": "engineer", "scope_description": "Test", "search_directions": []})
+        entries = self._valid_entries(tmp_path, ["AI", "ML", "AI", "ML", "other"])
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        r = _find_result(results, "direction_tagging")
+        assert r is not None
+        assert r.passed
+        assert "no search_directions" in r.message.lower()
+
+    def test_coverage_blocks_when_declared_direction_untagged(self, tmp_path):
+        _make_scope(tmp_path, goal_type="other", search_directions=["AI", "ML"])
+        entries = self._valid_entries(tmp_path, ["AI", "AI", "AI", "AI", "AI"])
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        r = _find_result(results, "direction_coverage")
+        assert r is not None
+        assert not r.passed
+        assert r.level == "BLOCKER"
+
+    def test_coverage_passes_when_all_declared_directions_tagged(self, tmp_path):
+        _make_scope(tmp_path, goal_type="other", search_directions=["AI", "ML"])
+        entries = self._valid_entries(tmp_path, ["AI", "ML", "AI", "ML", "other"])
+        _write_json(tmp_path / "collected.json", entries)
+        results = SearchGate(tmp_path).check()
+        r = _find_result(results, "direction_coverage")
+        assert r is not None
+        assert r.passed
 
 
 class TestMinSourcesBlocker:

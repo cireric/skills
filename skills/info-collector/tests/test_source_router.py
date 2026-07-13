@@ -91,9 +91,9 @@ class TestOptionalTiers:
     def test_optional_tiers_returned(self):
         cfg = {
             "sources": {"1": {"sources": []}, "2": {"sources": []}, "3": {"sources": []}, "4": {"sources": []}},
-            "routes": {"panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]}},
+            "routes": {"academic_research": {"entry_tier": 1, "path": [1], "optional_tiers": [2]}},
         }
-        route = get_route("panoramic_understanding", cfg)
+        route = get_route("academic_research", cfg)
         assert route["optional_tiers"] == [2]
 
     def test_optional_tiers_missing_is_empty(self):
@@ -112,9 +112,9 @@ class TestOptionalTiers:
                 "3": {"sources": [{"name": "Medium", "domain": "medium.com"}]},
                 "4": {"sources": [{"name": "Reddit", "domain": "reddit.com"}]},
             },
-            "routes": {"panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]}},
+            "routes": {"academic_research": {"entry_tier": 1, "path": [1], "optional_tiers": [2]}},
         }
-        result = recommend_sources("panoramic_understanding", cfg)
+        result = recommend_sources("academic_research", cfg)
         assert 2 in result["recommended_sources"]
         assert any(s["name"] == "GitHub" for s in result["recommended_sources"][2])
 
@@ -126,9 +126,9 @@ class TestOptionalTiers:
                 "3": {"sources": []},
                 "4": {"sources": []},
             },
-            "routes": {"panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]}},
+            "routes": {"academic_research": {"entry_tier": 1, "path": [1], "optional_tiers": [2]}},
         }
-        result = recommend_sources("panoramic_understanding", cfg)
+        result = recommend_sources("academic_research", cfg)
         assert "optional_tiers" in result
         assert result["optional_tiers"] == [2]
 
@@ -345,7 +345,7 @@ def _real_config():
 
 EXPECTED_ROUTES = {
     "exploratory": {"entry_tier": 4, "path": [4, 3, 2]},
-    "panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]},
+    "panoramic_understanding": {"entry_tier": 2, "path": [2, 1, 3, 4]},
     "tech_selection": {"entry_tier": 2, "path": [2, 3, 4, 1]},
     "feasibility_assessment": {"entry_tier": 2, "path": [2, 1, 3]},
     "competitive_comparison": {"entry_tier": 2, "path": [2, 1, 3, 4]},
@@ -420,13 +420,12 @@ class TestConfigStructuralValidation:
 
     def test_optional_tiers_present_where_expected(self, _real_config):
         routes = _real_config["routes"]
-        assert "optional_tiers" in routes["panoramic_understanding"]
-        assert routes["panoramic_understanding"]["optional_tiers"] == [2]
         assert "optional_tiers" in routes["academic_research"]
         assert routes["academic_research"]["optional_tiers"] == [2]
+        assert "optional_tiers" not in routes["panoramic_understanding"]
         no_optional = {"exploratory", "tech_selection", "feasibility_assessment",
                        "competitive_comparison", "fact_check", "background_check",
-                       "market_analysis", "other"}
+                       "market_analysis", "other", "panoramic_understanding"}
         for gt in no_optional:
             assert routes[gt].get("optional_tiers", []) == [], f"{gt} should have no optional_tiers"
 
@@ -497,9 +496,9 @@ class TestChineseSourceCountInTier1:
         assert zh_names == {"CNKI", "Wanfang", "CQVIP", "CBOA"}
         assert len(zh_sources) == 4
 
-    def test_tier4_has_exactly_1_chinese_source(self, _real_config):
+    def test_tier4_has_exactly_2_chinese_sources(self, _real_config):
         tier4 = _real_config["sources"]["4"]["sources"]
         zh_sources = [s for s in tier4 if s.get("language") == "zh"]
         zh_names = {s["name"] for s in zh_sources}
-        assert zh_names == {"Zhihu"}
-        assert len(zh_sources) == 1
+        assert zh_names == {"Zhihu", "Weibo"}
+        assert len(zh_sources) == 2

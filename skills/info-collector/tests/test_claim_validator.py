@@ -825,6 +825,7 @@ class TestSourceVerificationCheck:
         assert "source_indirect" in result.message
 
     def test_indirect_vendor_source_type(self, tmp_path):
+        # Non-authoritative venue (tier 3) tagged vendor_benchmark still flips to indirect.
         _write_json(tmp_path / "analysis.json", {
             "sections": [{"id": "s1", "claims": [{
                 "summary": "Scores 5000 req/s",
@@ -836,12 +837,34 @@ class TestSourceVerificationCheck:
             }]}],
         })
         _write_json(tmp_path / "collected.json", [
-            {"url": "https://a.com", "snippet": "", "fetched_content": "5000 req/s measured", "source_tier": 2}
+            {"url": "https://a.com", "snippet": "", "fetched_content": "5000 req/s measured", "source_tier": 3}
         ])
         results = ClaimValidator(tmp_path, "tech_selection").check()
         result = _get_result(results, "source_verification_check")
         assert result is not None
         assert "source_indirect" in result.message
+
+    def test_vendor_source_type_on_authoritative_venue_not_indirect(self, tmp_path):
+        # An academic paper (tier 1) mislabeled as vendor_benchmark must NOT flip
+        # to indirect — authority is anchored on the venue tier, not the label.
+        _write_json(tmp_path / "analysis.json", {
+            "sections": [{"id": "s1", "claims": [{
+                "summary": "V3 achieves 5000 req/s",
+                "sources": ["https://ar5iv.labs.arxiv.org/html/2501.00001"],
+                "evidence_type": "official_data",
+                "confidence": "high",
+                "precision": "exact",
+                "source_metadata": {"test_conditions": "H100", "test_date": "2026", "source_type": "vendor_benchmark"},
+            }]}],
+        })
+        _write_json(tmp_path / "collected.json", [
+            {"url": "https://ar5iv.labs.arxiv.org/html/2501.00001", "snippet": "",
+             "fetched_content": "V3 achieves 5000 req/s", "source_tier": 1}
+        ])
+        results = ClaimValidator(tmp_path, "tech_selection").check()
+        result = _get_result(results, "source_verification_check")
+        assert result is not None
+        assert "source_indirect" not in result.message
 
     def test_qualitative_claim_defaults_confirmed(self, tmp_path):
         _write_json(tmp_path / "analysis.json", {
@@ -1211,6 +1234,21 @@ class TestIsIndirectSourceUnit:
         assert _is_indirect_source(claim, collected) is False
 
     def test_vendor_source_type_exact_indirect(self):
+        # Non-authoritative venue (tier 3) tagged vendor_benchmark still flips.
+        from scripts.lib.utils import normalize_url
+        claim = {
+            "summary": "75% adoption",
+            "sources": ["https://a.com"],
+            "evidence_type": "official_data",
+            "precision": "exact",
+            "source_metadata": {"source_type": "vendor_benchmark"},
+        }
+        collected = {normalize_url("https://a.com"): {"source_tier": 3}}
+        assert _is_indirect_source(claim, collected) is True
+
+    def test_vendor_source_type_on_authoritative_venue_not_indirect(self):
+        # An authoritative venue (tier 2) mislabeled vendor_benchmark must NOT
+        # flip — authority is anchored on venue tier, not the agent label.
         from scripts.lib.utils import normalize_url
         claim = {
             "summary": "75% adoption",
@@ -1220,7 +1258,7 @@ class TestIsIndirectSourceUnit:
             "source_metadata": {"source_type": "vendor_benchmark"},
         }
         collected = {normalize_url("https://a.com"): {"source_tier": 2}}
-        assert _is_indirect_source(claim, collected) is True
+        assert _is_indirect_source(claim, collected) is False
 
     def test_vendor_source_type_qualitative_not_indirect(self):
         from scripts.lib.utils import normalize_url
@@ -1251,3 +1289,61 @@ class TestIsIndirectSourceUnit:
         claim = {"summary": "据Gartner报告显示增长15%", "sources": ["https://gartner.com/report"], "evidence_type": "official_data", "precision": "exact"}
         collected = {normalize_url("https://gartner.com/report"): {"source_tier": 2}}
         assert _is_indirect_source(claim, collected) is False
+
+
+class TestPrimarySourceRatio:
+    def _setup(self, tmp_path, depth, collected, claims):
+        _make_scope(tmp_path, goal_type="tech_selection", depth=depth, search_directions=[])
+        _write_json(tmp_path / "collected.json", collected)
+        _write_json(tmp_path / "analysis.json", {"sections": [{"id": "s1", "claims": claims}]})
+
+    def test_passes_when_well_diversified(self, tmp_path):
+        collected = [
+            {"url": "https://arxiv.org/abs/1", "snippet": "", "source_tier": 1},
+            {"url": "https://github.com/x", "snippet": "", "source_tier": 2},
+            {"url": "https://medium.com/p", "snippet": "", "source_tier": 3},
+        ]
+        claims = [
+            {"summary": "A", "sources": ["https://arxiv.org/abs/1"]},
+            {"summary": "B", "sources": ["https://github.com/x"]},
+        ]
+        self._setup(tmp_path, "standard", collected, claims)
+        r = _get_result(ClaimValidator(tmp_path, "tech_selection").check(), "primary_source_ratio")
+        assert r.passed
+
+    def test_warns_low_primary_ratio(self, tmp_path):
+        collected = [
+            {"url": "https://reddit.com/r1", "snippet": "", "source_tier": 4},
+            {"url": "https://reddit.com/r2", "snippet": "", "source_tier": 4},
+        ]
+        claims = [
+            {"summary": "A", "sources": ["https://reddit.com/r1"]},
+            {"summary": "B", "sources": ["https://reddit.com/r2"]},
+        ]
+        self._setup(tmp_path, "standard", collected, claims)
+        r = _get_result(ClaimValidator(tmp_path, "tech_selection").check(), "primary_source_ratio")
+        assert not r.passed
+        assert "Tier 1/2" in r.message
+
+    def test_warns_single_platform_dominant(self, tmp_path):
+        # All claims cite the same single platform (HF-only) -> single-community bias.
+        collected = [
+            {"url": "https://huggingface.co/m1", "snippet": "", "source_tier": 1},
+            {"url": "https://huggingface.co/m2", "snippet": "", "source_tier": 2},
+        ]
+        claims = [
+            {"summary": "A", "sources": ["https://huggingface.co/m1"]},
+            {"summary": "B", "sources": ["https://huggingface.co/m2"]},
+        ]
+        self._setup(tmp_path, "standard", collected, claims)
+        r = _get_result(ClaimValidator(tmp_path, "tech_selection").check(), "primary_source_ratio")
+        assert not r.passed
+        assert "single platform" in r.message.lower()
+
+    def test_skipped_for_quick_depth(self, tmp_path):
+        collected = [{"url": "https://reddit.com/r1", "snippet": "", "source_tier": 4}]
+        claims = [{"summary": "A", "sources": ["https://reddit.com/r1"]}]
+        self._setup(tmp_path, "quick", collected, claims)
+        r = _get_result(ClaimValidator(tmp_path, "tech_selection").check(), "primary_source_ratio")
+        assert r.passed
+        assert "quick" in r.message.lower()

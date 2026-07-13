@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from scripts.search_gate import SearchGate
-from scripts.artifact_checks import CheckResult, check_subagent_delegation, check_direction_coverage, check_key_insights_coverage
+from scripts.artifact_checks import CheckResult, check_subagent_delegation, check_direction_coverage, check_facet_coverage, check_key_insights_coverage
 from scripts.lib.utils import compute_url_hash
 
 
@@ -167,14 +167,20 @@ class TestDirectionCoverage:
 
     def test_some_directions_uncovered_warn(self, tmp_path):
         _make_scope(tmp_path, search_directions=["AI safety", "ML benchmarks", "edge computing"])
+        collected = [
+            {"url": "https://a.com/safety", "title": "S", "snippet": "x", "source_tier": 1, "fetched_content": "x", "source_file": "sources/a.md", "direction": "AI safety"},
+            {"url": "https://b.com/bench", "title": "B", "snippet": "x", "source_tier": 1, "fetched_content": "x", "source_file": "sources/b.md", "direction": "ML benchmarks"},
+        ]
+        _write_json(tmp_path / "collected.json", collected)
         analysis = {"topic": "T", "goal_type": "panoramic_understanding", "sections": [
-            {"id": "ai_safety", "title": "AI Safety", "content": "text", "depth_strategy": "overview", "key_insights": [], "tensions": [], "claims": []},
+            {"id": "ai_safety", "title": "AI Safety", "content": "text", "depth_strategy": "overview",
+             "key_insights": [], "tensions": [], "claims": [{"summary": "c", "sources": ["https://other.com/x"]}]},
         ]}
         _write_json(tmp_path / "analysis.json", analysis)
         result = check_direction_coverage(tmp_path)
         assert not result.passed
         assert result.level == "WARN"
-        assert "ML benchmarks" in result.message or "edge computing" in result.message
+        assert "ai safety" in result.message or "ml benchmarks" in result.message
 
     def test_empty_search_directions_list_skipped(self, tmp_path):
         _write_json(tmp_path / "scope.json", {"topic": "T", "goal_type": "panoramic_understanding", "depth": "standard", "audience": "engineer", "scope_description": "Test", "search_directions": []})
@@ -184,6 +190,54 @@ class TestDirectionCoverage:
         _write_json(tmp_path / "analysis.json", analysis)
         result = check_direction_coverage(tmp_path)
         assert result.passed
+
+
+class TestFacetCoverage:
+    def _collected(self, tmp_path, tier_entries, community_hosts):
+        entries = []
+        i = 0
+        for tier in tier_entries:
+            entries.append({"url": f"https://t{tier}s{i}.example.com", "title": f"T{i}",
+                            "snippet": "s", "source_tier": tier, "fetched_content": "x"})
+            i += 1
+        for host in community_hosts:
+            entries.append({"url": f"https://{host}/p", "title": "C", "snippet": "s",
+                            "source_tier": 4, "fetched_content": "x"})
+            i += 1
+        return entries
+
+    def _analysis_with_limitation(self, url):
+        return {"sections": [{"id": "s1", "claims": [
+            {"summary": "The model has a known limitation in long-context reasoning",
+             "sources": [url]},
+        ]}]}
+
+    def test_passes_when_all_facets_covered(self, tmp_path):
+        _make_scope(tmp_path, goal_type="panoramic_understanding", search_directions=[])
+        entries = self._collected(tmp_path, [1, 2, 3, 4], ["huggingface.co", "reddit.com"])
+        _write_json(tmp_path / "collected.json", entries)
+        _write_json(tmp_path / "analysis.json", self._analysis_with_limitation("https://t1s0.example.com"))
+        result = check_facet_coverage(tmp_path)
+        assert result.passed
+        assert result.level == "WARN"
+
+    def test_warns_when_tier12_missing(self, tmp_path):
+        _make_scope(tmp_path, goal_type="panoramic_understanding", search_directions=[])
+        entries = self._collected(tmp_path, [3, 4], ["huggingface.co", "reddit.com"])
+        _write_json(tmp_path / "collected.json", entries)
+        _write_json(tmp_path / "analysis.json", self._analysis_with_limitation("https://t3s0.example.com"))
+        result = check_facet_coverage(tmp_path)
+        assert not result.passed
+        assert "technical_architecture" in result.message
+
+    def test_warns_single_platform_community(self, tmp_path):
+        _make_scope(tmp_path, goal_type="panoramic_understanding", search_directions=[])
+        entries = self._collected(tmp_path, [1, 2, 3], ["huggingface.co"])
+        _write_json(tmp_path / "collected.json", entries)
+        _write_json(tmp_path / "analysis.json", self._analysis_with_limitation("https://t1s0.example.com"))
+        result = check_facet_coverage(tmp_path)
+        assert not result.passed
+        assert "community_ecosystem" in result.message or "single platform" in result.message.lower()
 
 
 class TestKeyInsightsCoverageTensions:

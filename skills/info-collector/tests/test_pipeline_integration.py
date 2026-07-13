@@ -30,13 +30,15 @@ def _write_analysis_section_files(workdir, analysis):
 
 def _make_collected_entry(url, title, snippet, source_tier,
                            fetch_failed=False,
-                           source_file=None):
+                           source_file=None,
+                           direction="other"):
     entry = {
         "url": url,
         "title": title,
         "snippet": snippet,
         "source_tier": source_tier,
         "fetched_content": snippet[:200],
+        "direction": direction,
     }
     if fetch_failed:
         entry["fetch_failed"] = True
@@ -83,6 +85,8 @@ class TestTechSelectionHappyPath:
                     source_tier=tier,
                     source_file=sf,
                 ))
+        for _di, _e in enumerate(collected):
+            _e["direction"] = directions[_di % len(directions)]
         _write_json(workdir / "collected.json", collected)
 
         ok, errors = proceeds(workdir, "search", "analysis")
@@ -209,6 +213,8 @@ class TestAcademicResearchChinese:
                 source_tier=1,
                 source_file=sf,
             ))
+        for _di, _e in enumerate(collected):
+            _e["direction"] = directions[_di % len(directions)]
         _write_json(workdir / "collected.json", collected)
 
         ok, errors = proceeds(workdir, "search", "analysis")
@@ -319,6 +325,8 @@ class TestMarketAnalysisDegraded:
                 source_tier=tier,
                 source_file=sf,
             ))
+        for _di, _e in enumerate(collected):
+            _e["direction"] = directions[_di % len(directions)]
         _write_json(workdir / "collected.json", collected)
 
         ok, errors = proceeds(workdir, "search", "analysis")
@@ -426,6 +434,8 @@ class TestFactCheckMinimal:
                 url=url3, title="Reddit Rust Memory Safety", snippet="Rust memory safety discussion",
                 source_tier=4, source_file=sf3),
         ]
+        for _di, _e in enumerate(collected):
+            _e["direction"] = directions[_di % len(directions)]
         _write_json(workdir / "collected.json", collected)
 
         sg = SearchGate(workdir)
@@ -544,6 +554,8 @@ class TestExploratoryDeepDive:
                 source_tier=tier,
                 source_file=sf,
             ))
+        for _di, _e in enumerate(collected):
+            _e["direction"] = directions[_di % len(directions)]
         _write_json(workdir / "collected.json", collected)
 
         ok, errors = proceeds(workdir, "search", "analysis")
@@ -714,6 +726,8 @@ class TestPipelineStateConsistency:
             sf = _make_source_file(workdir, url)
             collected.append(_make_collected_entry(url=url, title=f"t1 info {i}", snippet="t1",
                                                   source_tier=tier, source_file=sf))
+        for _e in collected:
+            _e["direction"] = "t1"
         _write_json(workdir / "collected.json", collected)
 
         proceeds(workdir, "search", "analysis")

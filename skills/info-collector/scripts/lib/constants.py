@@ -53,6 +53,17 @@ _VALID_EVIDENCE_TYPES = frozenset({
     "qualitative_trend", "expert_opinion",
 })
 
+# Safe alias map for common LLM-isms in `evidence_type`. Only maps to values that
+# never unlock `exact` precision (third-party / opinion), so a wrong guess cannot
+# escalate a claim's authority. Never maps to official_data / independent_benchmark.
+_EVIDENCE_TYPE_ALIASES = {
+    "blog": "third_party_estimate",
+    "post": "third_party_estimate",
+    "article": "third_party_estimate",
+    "opinion": "expert_opinion",
+    "commentary": "expert_opinion",
+}
+
 _VALID_CONFIDENCE = frozenset({"high", "medium", "low"})
 _VALID_PRECISION = frozenset({"exact", "range", "qualitative"})
 
@@ -112,6 +123,24 @@ _FETCHED_CONTENT_INDEX_LENGTH = 200
 _DEPTH_MIN_SOURCES = {"quick": 3, "standard": 5, "deep": 8}
 _OVERLONG_LINE_THRESHOLD = 500
 _SINGLE_SOURCE_RATIO = 0.5
+# Axis-B multi-source corroboration: depth-dynamic WARN threshold for the ratio of
+# single-source claims. quick is not checked (single source is expected); standard
+# warns above 70%; deep warns above 50%.
+_SINGLE_SOURCE_RATIO_QUICK = None
+_SINGLE_SOURCE_RATIO_STANDARD = 0.70
+_SINGLE_SOURCE_RATIO_DEEP = 0.50
+
+
+def single_source_ratio_threshold(depth: str) -> float | None:
+    """Return the single-source-ratio WARN threshold for a given search depth.
+
+    Returns None when the depth should not be checked (quick).
+    """
+    return {
+        "quick": _SINGLE_SOURCE_RATIO_QUICK,
+        "standard": _SINGLE_SOURCE_RATIO_STANDARD,
+        "deep": _SINGLE_SOURCE_RATIO_DEEP,
+    }.get(depth, _SINGLE_SOURCE_RATIO)
 
 
 

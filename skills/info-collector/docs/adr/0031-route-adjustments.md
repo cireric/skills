@@ -35,4 +35,4 @@ Unchanged routes: panoramic_understanding [4,3,1] optional_tiers=[2], fact_check
 - Test assertions for route paths updated to match new config
 - CONTEXT.md updated with Route Decisions section referencing this ADR
 
-## Status: accepted
+## Status: Superseded by ADR 0049 (partial: panoramic_understanding route row — panoramic now `[2,1,3,4]`, see ADR 0049)

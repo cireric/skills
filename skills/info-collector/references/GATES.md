@@ -12,11 +12,15 @@
 
 ## Gate 2: `proceed --from search --to analysis`
 
-- Validates collected.json exists with >= 1 source
-- **topic_coverage (BLOCKER)**: search_directions in scope.json must be covered by collected entries. Downgraded to WARN when directions contain CJK characters (tokenization limitations).
-- **min_sources (WARN)**: >= 2 unique sources (configurable per goal_type)
-- **tier_coverage (WARN)**: route tiers should have at least one source each
-- **per_direction_min_sources (WARN)**: each direction should have >= depth-based minimum sources
+- **collected_exists (BLOCKER)**: collected.json must exist with >= 1 entry
+- **collected_schema (BLOCKER)**: each entry needs url/title/snippet; `direction` if present must be a non-empty string (ADR 0052)
+- **min_sources (BLOCKER)**: depth-based minimum collected entries (quick=3, standard=5, deep=8)
+- **tier_coverage (BLOCKER for required tiers, INFO for optional tiers)**: route tiers must each have >= 1 source (ADR 0042; panoramic Tier 2 now required per ADR 0049)
+- **source_fidelity (BLOCKER)**: source files present with sufficient depth (full content, not just snippets)
+- **direction_tagging (BLOCKER, only when scope.search_directions is non-empty)**: every collected entry must carry a `direction` field (ADR 0052)
+- **direction_coverage (BLOCKER, only when scope.search_directions is non-empty)**: every declared direction must have >= 1 collected entry tagged to it (ADR 0052)
+
+> Note: `topic_coverage` was removed (ADR 0042); breadth is enforced via `direction_*` checks (user-declared contract) + `facet_coverage` (WARN safety net at analysis, ADR 0050), not a preset topic list.
 
 ## Gate 3: `proceed --from analysis --to review`
 
@@ -33,14 +37,11 @@ is now WARN level and `claim_source_relevance` has been replaced by `source_veri
 in the analysis phase. The `verified` field is set deterministically by
 `source_verification_check()` code, not by the review subagent.
 
-## Gate 5: `proceed --from final --to cleanup`
+## Gate 5: pipeline termination (no `final→cleanup` transition)
 
-- Runs `run_report_checks()` (10 report checks)
-- Only BLOCKER-level failures block the transition; WARN-level are advisory
-- 3 BLOCKER checks: dangling refs (F1), orphaned defs (F2), front matter (9) — upgraded per ADR 0026
-- 7 WARN checks: refs_visibility, table_delimiters, heading_levels, duplicate_headings, unclosed_code_blocks, empty_sections, overlong_lines
-- **Note**: This gate skips phase detection — it passes regardless of the current detected phase. This allows cleanup to run at any point, but also means accidental invocation won't produce a phase-mismatch error.
-- Transitions to cleanup phase
+The pipeline terminates at `post_final`. There is **no `final→cleanup` transition** — `_VALID_TRANSITIONS_SET` does not contain `("final", "cleanup")` (ADR 0029 removed the cleanup phase). `proceed --from final --to cleanup` returns `Invalid transition`. Report checks (`run_report_checks`, 3 BLOCKER + 7 WARN per ADR 0026) run at the `final` gate (`proceed --from review --to final`).
+
+To remove the intermediate `.workdir/` directory, use the standalone command `python -m scripts.cli clean` — this is a manual utility, not a pipeline phase.
 
 ## Review Status Determination
 

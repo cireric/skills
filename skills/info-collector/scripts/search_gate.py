@@ -62,7 +62,67 @@ class SearchGate:
             self._check_min_sources(),
             self._check_tier_coverage(),
             self._check_source_fidelity(),
+            self._check_direction_tagging(),
+            self._check_direction_coverage(),
         ]
+
+    @staticmethod
+    def _normalized_directions(scope: dict | None) -> list[str]:
+        if not scope:
+            return []
+        sds = scope.get("search_directions")
+        if not isinstance(sds, list):
+            return []
+        return [str(d).strip().lower() for d in sds if isinstance(d, str) and d.strip()]
+
+    def _check_direction_tagging(self) -> CheckResult:
+        """ADR 0052: every collected entry must declare a `direction` when the
+        scope declares search_directions. BLOCKER — enforces the user's breadth
+        contract at the search→analysis gate."""
+        directions = self._normalized_directions(self._scope)
+        if not directions:
+            return CheckResult("direction_tagging", "BLOCKER", True, "Skipped (no search_directions in scope)")
+        if self._collected is None:
+            return CheckResult("direction_tagging", "BLOCKER", True, "Skipped (no collected.json)")
+        untagged = [
+            entry.get("url", f"entry[{i}]")
+            for i, entry in enumerate(self._collected)
+            if not isinstance(entry, dict) or not isinstance(entry.get("direction"), str) or not entry["direction"].strip()
+        ]
+        if untagged:
+            return CheckResult(
+                "direction_tagging", "BLOCKER", False,
+                f"direction_tagging BLOCKER: {len(untagged)} collected entries lack a `direction` field "
+                f"(scope declares search_directions). Tag each source with the search_direction it serves, or 'other'.",
+                repair_hints=[
+                    f"Add a `direction` field to each collected entry: the matching scope.search_directions value, or 'other' for discoveries outside declared directions."
+                ],
+            )
+        return CheckResult("direction_tagging", "BLOCKER", True)
+
+    def _check_direction_coverage(self) -> CheckResult:
+        """ADR 0052: every declared search_direction must have >=1 collected entry
+        tagged with it. BLOCKER — the user's declared directions are the breadth floor."""
+        directions = self._normalized_directions(self._scope)
+        if not directions:
+            return CheckResult("direction_coverage", "BLOCKER", True, "Skipped (no search_directions in scope)")
+        if self._collected is None:
+            return CheckResult("direction_coverage", "BLOCKER", True, "Skipped (no collected.json)")
+        tagged = {
+            str(entry.get("direction", "")).strip().lower()
+            for entry in self._collected
+            if isinstance(entry, dict) and isinstance(entry.get("direction"), str) and entry["direction"].strip()
+        }
+        missing = [d for d in directions if d not in tagged]
+        if missing:
+            return CheckResult(
+                "direction_coverage", "BLOCKER", False,
+                f"direction_coverage BLOCKER: declared directions with no matching collected source: {', '.join(missing)}",
+                repair_hints=[
+                    f"Search for and collect sources serving these directions, tagging them with `direction`: {', '.join(missing)}"
+                ],
+            )
+        return CheckResult("direction_coverage", "BLOCKER", True)
 
     @property
     def _goal_type(self) -> str:

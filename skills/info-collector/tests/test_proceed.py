@@ -116,7 +116,7 @@ class TestProceeds:
         for i, tier in enumerate([4, 3, 2]):
             url = f"https://s{i}.example.com"
             h = compute_url_hash(url)
-            entry = {"url": url, "title": f"Source {i}", "snippet": f"About topic {i}", "fetched_content": "x" * 300, "source_tier": tier, "source_file": f"sources/{h}.md"}
+            entry = {"url": url, "title": f"Source {i}", "snippet": f"About topic {i}", "fetched_content": "x" * 300, "source_tier": tier, "source_file": f"sources/{h}.md", "direction": ["ai", "ml"][i % 2]}
             (sources_dir / f"{h}.md").write_text("x" * 2100, encoding="utf-8")
             entries.append(entry)
         _write_json(tmp_path / "collected.json", entries)
@@ -455,6 +455,54 @@ class TestSanitizeSections:
         assert result["goal_type"] == "exploratory"
         assert result["custom_key"] == "keep"
 
+    def test_evidence_type_safe_alias_mapped(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [
+                {"id": "s1", "title": "S1", "content": "C",
+                 "claims": [
+                     {"summary": "c1", "sources": ["https://a.com"], "evidence_type": "blog"},
+                     {"summary": "c2", "sources": ["https://b.com"], "evidence_type": "opinion"},
+                 ]},
+            ],
+        }
+        result = _sanitize_sections(raw)
+        claims = result["sections"][0]["claims"]
+        assert claims[0]["evidence_type"] == "third_party_estimate"
+        assert claims[1]["evidence_type"] == "expert_opinion"
+
+    def test_invalid_evidence_type_downgraded_to_qualitative_trend(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [
+                {"id": "s1", "title": "S1", "content": "C",
+                 "claims": [{"summary": "c1", "sources": ["https://a.com"], "evidence_type": "mystery"}]},
+            ],
+        }
+        result = _sanitize_sections(raw)
+        assert result["sections"][0]["claims"][0]["evidence_type"] == "qualitative_trend"
+
+    def test_key_insights_string_array_raises(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [{"id": "s1", "title": "S1", "content": "C",
+                          "key_insights": ["just a string"]}],
+        }
+        with pytest.raises(ValueError) as exc:
+            _sanitize_sections(raw)
+        assert "key_insights[0]" in str(exc.value)
+        assert "summary" in str(exc.value)
+
+    def test_tensions_string_array_raises(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [{"id": "s1", "title": "S1", "content": "C",
+                          "tensions": ["disagreement as string"]}],
+        }
+        with pytest.raises(ValueError) as exc:
+            _sanitize_sections(raw)
+        assert "tensions[0]" in str(exc.value)
+
 
 class TestRepairJsonText:
     """_repair_json_text escapes unescaped quotes inside JSON string values."""
@@ -697,7 +745,7 @@ class TestIntegrationMediumComplexity:
             sources_dir = workdir / "sources"
             sources_dir.mkdir(parents=True, exist_ok=True)
             (sources_dir / f"{h}.md").write_text("x" * 2100, encoding="utf-8")
-            collected.append({"url": url, "title": f"d1 info {i}", "snippet": "d1", "source_tier": tier, "fetched_content": "x" * 500, "source_file": f"sources/{h}.md"})
+            collected.append({"url": url, "title": f"d1 info {i}", "snippet": "d1", "source_tier": tier, "fetched_content": "x" * 500, "source_file": f"sources/{h}.md", "direction": "d1"})
         _write_json(workdir / "collected.json", collected)
 
         proceeds(workdir, "search", "analysis")

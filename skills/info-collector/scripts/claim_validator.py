@@ -14,6 +14,7 @@ from .artifact_checks import CheckResult, _read_artifact
 from .lib.constants import (
     ARTIFACT_ANALYSIS,
     ARTIFACT_COLLECTED,
+    ARTIFACT_SCOPE,
     _ENGLISH_STOP_WORDS,
     _INDIRECT_CITATION_PATTERNS,
     _QUANTITATIVE_GOAL_TYPES,
@@ -93,7 +94,12 @@ def _is_indirect_source(claim: dict, collected_by_url: dict[str, dict]) -> bool:
     source_type = meta.get("source_type", "") if isinstance(meta, dict) else ""
     if source_type in _VENDOR_SOURCE_TYPES:
         if claim.get("precision") in ("exact", "range"):
-            return True
+            # A vendor label only implies indirectness when the source venue is
+            # itself non-authoritative. Authoritative venues (tier <= 2, e.g. an
+            # arXiv paper mislabeled as vendor_benchmark) must not be flipped to
+            # indirect on the strength of a possibly-wrong agent-supplied label.
+            if not _source_venue_authoritative(claim, collected_by_url):
+                return True
 
     text = claim.get("summary", "")
     source_urls = claim.get("sources", [])
@@ -110,6 +116,17 @@ def _is_indirect_source(claim: dict, collected_by_url: dict[str, dict]) -> bool:
             if entity and not _entity_matches_host(entity, source_hosts):
                 return True
 
+    return False
+
+
+def _source_venue_authoritative(claim: dict, collected_by_url: dict[str, dict]) -> bool:
+    """True if any of the claim's sources is an authoritative venue (tier <= 2)."""
+    for url in claim.get("sources", []):
+        item = collected_by_url.get(normalize_url(url))
+        if item:
+            tier = item.get("source_tier", 0)
+            if isinstance(tier, int) and tier <= 2:
+                return True
     return False
 
 
@@ -231,6 +248,7 @@ class ClaimValidator:
             self._check_ref_marker_validity(),
             self._check_claim_source_ref_coverage(),
             self._check_source_verification(),
+            self._check_primary_source_ratio(),
         ]
 
     def _check_claim_metadata(self) -> CheckResult:
@@ -446,6 +464,88 @@ class ClaimValidator:
         if any(r == "source_confirmed" for r in results):
             return "source_confirmed"
         return "source_absent"
+
+    def _check_primary_source_ratio(self) -> CheckResult:
+        """WARN metric (ADR 0051): exposure of source concentration / tier skew.
+
+        Two signals, both advisory:
+        1. primary_ratio — fraction of claims resting on at least one Tier 1/2
+           (first-hand) source. Low ratio => over-reliance on low-tier sources.
+        2. single_platform_ratio — fraction of claims whose sources all come
+           from a single platform (e.g., only huggingface.co). High ratio =>
+           single-community bias (HF-only, etc.).
+        """
+        if not self._all_claims:
+            return CheckResult("primary_source_ratio", "WARN", True, "No claims to evaluate")
+        depth = self._depth()
+        if depth == "quick":
+            return CheckResult("primary_source_ratio", "WARN", True, "Skipped for quick depth")
+
+        primary_count = 0
+        single_platform_count = 0
+        host_claim_counts: dict[str, int] = {}
+        total = 0
+        for _sec_id, _si, claim in self._all_claims:
+            total += 1
+            urls = claim.get("sources", [])
+            if not urls:
+                continue
+            tiers = []
+            hosts = set()
+            for u in urls:
+                item = self._collected_by_url.get(normalize_url(u))
+                if item:
+                    t = item.get("source_tier")
+                    if isinstance(t, int):
+                        tiers.append(t)
+                try:
+                    host = urlparse(u).hostname
+                except Exception:
+                    host = None
+                if host:
+                    hosts.add(host)
+            if any(t <= 2 for t in tiers):
+                primary_count += 1
+            if len(hosts) == 1:
+                single_platform_count += 1
+                sole_host = next(iter(hosts))
+                host_claim_counts[sole_host] = host_claim_counts.get(sole_host, 0) + 1
+
+        primary_ratio = primary_count / total if total else 1.0
+        single_platform_ratio = single_platform_count / total if total else 0.0
+        primary_threshold = 0.5
+        sp_threshold = 0.5 if depth == "deep" else 0.7
+        # Only flag single-platform when one community actually dominates the
+        # report (e.g. HF-only). A cross-platform report where each claim cites a
+        # *different* single platform is not single-community bias and must pass.
+        dominant_host = max(host_claim_counts, key=host_claim_counts.get) if host_claim_counts else None
+        dominant_share = (host_claim_counts.get(dominant_host, 0) / total) if total else 0.0
+        issues = []
+        if primary_ratio < primary_threshold:
+            issues.append(f"only {primary_ratio:.0%} of claims rest on Tier 1/2 sources (<{primary_threshold:.0%})")
+        if single_platform_ratio > sp_threshold and dominant_share >= sp_threshold:
+            issues.append(
+                f"{single_platform_ratio:.0%} of claims cite a single platform (>{sp_threshold:.0%}); "
+                f"{dominant_host} dominates"
+            )
+        if issues:
+            return CheckResult(
+                "primary_source_ratio", "WARN", False,
+                "source concentration: " + "; ".join(issues),
+                repair_hints=[
+                    "Source concentration: add Tier 1/2 first-hand sources and diversify platforms "
+                    "(Reddit/HN/Zhihu/Weibo alongside HuggingFace). Use config.json sources toolbook "
+                    "for the missing tier/platform's site_query to broaden search."
+                ],
+            )
+        return CheckResult("primary_source_ratio", "WARN", True)
+
+    def _depth(self) -> str:
+        try:
+            scope = read_json(self._workdir / ARTIFACT_SCOPE)
+            return scope.get("depth", "standard")
+        except Exception:
+            return "standard"
 
     def _check_ref_marker_validity(self) -> CheckResult:
         all_refs = []

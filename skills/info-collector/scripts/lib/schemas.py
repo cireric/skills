@@ -73,6 +73,7 @@ class CollectedEntryDict(TypedDict, total=False):
     fetched_content: str
     vendor_affiliation: str
     source_file: str
+    direction: str  # ADR 0052: which scope.search_directions this source serves, or "other"
 
 
 _SCOPE_REQUIRED_FIELDS = (
@@ -293,4 +294,8 @@ def validate_collected(data: list) -> list[ValidationError]:
             sf = entry["source_file"]
             if not isinstance(sf, str) or not sf.strip():
                 errors.append(_err(f"{prefix}.source_file", "must be a non-empty string if present"))
+        if "direction" in entry:
+            d = entry["direction"]
+            if not isinstance(d, str) or not d.strip():
+                errors.append(_err(f"{prefix}.direction", "must be a non-empty string if present"))
     return errors

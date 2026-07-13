@@ -53,7 +53,7 @@ Language for the final report output (e.g., "zh", "en"). Stored in scope.json, f
 _Avoid_: output language
 
 **gate phase responsibility**:
-Each pipeline gate checks only its own phase's concerns. `_gate_analysis` (analysis→review) checks analysis-phase BLOCKERs only (including `ref_marker_validity`, `claim_source_ref_coverage`, `entity_number_conflict`), plus `source_verification_check` (INFO level, never BLOCKER) which writes back `source_verification` and `verified` on claims deterministically. `_gate_review` (review→review, review→final) runs advisory gateway checks and blocks on `review_report_exists` BLOCKER (review is mandatory, ADR 0028). `_gate_final` (final→cleanup) runs report checks; only BLOCKER-level failures block, WARN are advisory. See ADR 0025, ADR 0027, ADR 0028.
+Each pipeline gate checks only its own phase's concerns. `_gate_analysis` (analysis→review) checks analysis-phase BLOCKERs only (including `ref_marker_validity`, `claim_source_ref_coverage`, `entity_number_conflict`), plus `source_verification_check` (INFO level, never BLOCKER) which writes back `source_verification` and `verified` on claims deterministically. `_gate_review` (review→review, review→final) runs advisory gateway checks and blocks on `review_report_exists` BLOCKER (review is mandatory, ADR 0028). `_gate_final` (final gate, at review→final) runs report checks; only BLOCKER-level failures block, WARN are advisory. See ADR 0025, ADR 0027, ADR 0028.
 _Avoid_: gate scope, gate coverage, per-gate filtering
 
 **report_checks**:
@@ -61,7 +61,7 @@ The deep module that validates the final report file. Interface: `run_report_che
 _Avoid_: report gateway, report validator, final gate checks
 
 **BLOCKER report checks**:
-The 3 report-level checks that block the final→cleanup transition: `report_dangling_refs` (in-text citation with no source definition), `report_orphaned_defs` (source definition with no in-text citation), `report_front_matter` (missing or malformed YAML front matter). Upgraded from WARN in ADR 0026.
+The 3 report-level checks that block the review→final (final gate) transition: `report_dangling_refs` (in-text citation with no source definition), `report_orphaned_defs` (source definition with no in-text citation), `report_front_matter` (missing or malformed YAML front matter). Upgraded from WARN in ADR 0026.
 _Avoid_: hard report checks, mandatory report checks
 
 **review_report_exists**:
@@ -112,6 +112,18 @@ _Avoid_: synthesis rule, causation requirement
 Metadata about a claim's source testing conditions: test_conditions (hardware, OS, runtime), test_date, source_type (vendor_benchmark, independent_test, production_case, survey). Rendered as a structured table in the report.
 _Avoid_: test metadata, benchmark metadata
 
+**source_type**:
+Field inside a claim's `source_metadata` describing **benchmark/test provenance**, NOT the authority of the publishing venue. Five valid values: official_report, independent_test, production_case, survey, vendor_benchmark. `vendor_benchmark` means the number was produced by the vendor's own benchmark (inherently suspect). The verifier only flips a `vendor_benchmark` + `exact`/`range` claim to indirect when the source venue is itself non-authoritative (tier ≥ 3); an authoritative venue (tier ≤ 2, e.g. an arXiv paper) mislabeled as `vendor_benchmark` is NOT flipped.
+_Avoid_: conflating source_type with venue authority; tagging academic papers as vendor_benchmark
+
+**single_source_ratio**:
+Axis-B multi-source corroboration metric: ratio of claims whose `sources` has fewer than `_MIN_SOURCES` (2). WARN threshold is depth-dynamic via `single_source_ratio_threshold(depth)`: quick → not checked, standard → >70%, deep → >50%. Surfaces when a report relies on single-source claims; repair_hints suggest Tier1–3 sources from config.json toolbook.
+_Avoid_: single-source rate, source diversity ratio
+
+**Chinese community source**:
+Tier 4 UGC sources in Chinese: Zhihu (zhihu.com) and Weibo (weibo.com). Both carry `language: "zh"` and rely on exa (exa_web_fetch_exa / exa_web_search_exa) as the primary fetch path because autonomous fetch (webfetch/playwright) is unreachable in the no-egress environment. Weibo is best-effort (login-wall / anti-bot may yield fetch_failed); Zhihu is the dependable Chinese-community voice.
+_Avoid_: Chinese source, CN community source
+
 **review_status**:
 Renamed from `quality`. Front matter field in the final report indicating the review outcome: `passed` or `degraded`. The `unreviewed` option has been removed — review is mandatory, minimum level is degraded (inline review by the same agent). The rename avoids implying that "passed" means all content is verified.
 _Avoid_: quality, report quality, unreviewed
@@ -141,7 +153,35 @@ Removed (ADR 0042). Previously an optional field in collected.json entries decla
 _Avoid_: matched directions, direction tags
 
 **tier_coverage**:
-search→analysis gate check (WARN level) that verifies collected.json contains at least one source from each tier in the goal_type's route.
+search→analysis gate check that verifies collected.json contains at least one source from each tier in the goal_type's route. Required tiers missing → BLOCKER (search_gate.py:116, ADR 0042); optional tiers missing → INFO (search_gate.py:122-127). panoramic_understanding's Tier 2 is now required (ADR 0049).
+
+**direction (collected field)**:
+ADR 0052 field on each `collected.json` entry: the `scope.search_directions` value the source serves, or `"other"` for discoveries outside declared directions. Agent-assigned during free search (agent knows its search intent). Enables the user-declared breadth contract without narrowing horizon (ADR 0042 compatible).
+_Avoid_: facet, topic, coverage tag
+
+**direction_tagging**:
+SearchGate BLOCKER (ADR 0052) that fires only when `scope.search_directions` is non-empty: every collected entry must carry a non-empty `direction`. Enforces the breadth contract at the search→analysis gate.
+_Avoid_: direction_coverage, facet tagging
+
+**direction_coverage**:
+Dual check (ADR 0052). SearchGate BLOCKER (when search_directions present): every declared direction must have ≥1 collected entry tagged to it — the hard floor. Analysis-phase WARN claim-anchor (`artifact_checks.check_direction_coverage`): a direction with collected sources but no claim referencing them warns (anti-gaming backstop).
+_Avoid_: topic_coverage (removed, ADR 0042), facet_coverage
+
+**facet_coverage**:
+Analysis-phase WARN safety net (ADR 0050), orthogonal to the user-declared direction contract. Goal_type-aware fixed core facet set (panoramic/exploratory: technical_architecture, model_product_family, cost_economics, market_industry_impact, community_ecosystem, reported_limitations; narrower set for other goal_types). Derived from source tiers + claim content (not preset user directions, preserving ADR 0042). Community facet requires ≥2 platforms; reported_limitations requires a limitations claim.
+_Avoid_: direction_coverage, topic_coverage
+
+**primary_source_ratio**:
+ClaimValidator WARN metric (ADR 0051) exposing source concentration: (1) fraction of claims resting on ≥1 Tier 1/2 source; (2) fraction of claims citing a single platform. Deepens `single_source_ratio` with a tier/platform-skew axis. Advisory only.
+_Avoid_: single_source_ratio (different axis: claim source count)
+
+**reported_limitations**:
+facet_coverage facet (ADR 0050) for the subject's self-reported shortcomings (e.g., SimpleQA lag, R1-Zero repetition/readability). WARN-level; if present, its sources should be Tier 1/2 (WARN if not). Phase 1 interview should prompt the user to declare "limitations" as a search_direction → enters the hard direction contract (ADR 0052). Guards against all-praise bias.
+_Avoid_: limitations, weaknesses
+
+**community_ecosystem**:
+facet_coverage facet (ADR 0050) spanning HuggingFace + Reddit/HN + Zhihu/Weibo (Chinese community, see CONTEXT.md) + market news (Tier 3). Satisfied only when sources span ≥2 distinct platforms — closes the v2 single-platform (HF-only) gap.
+_Avoid_: Chinese community source (a Tier 4 source type, not the facet)
 _Avoid_: source diversity, tier balance
 
 **SearchGate**:
@@ -229,7 +269,7 @@ _Avoid_: repo root, workspace root
 - **covered_directions** overrides **topic_coverage** token matching when present — removed (ADR 0042), both concepts no longer exist
 - **precision: exact** requires **evidence_type: official_data** or **independent_benchmark**
 - A **gate phase responsibility** determines which checks run at each pipeline transition; BLOCKERs caught at earliest stage
-- **BLOCKER report checks** block final→cleanup; the 7 WARN report checks are advisory
+- **BLOCKER report checks** block the final gate (review→final); the 7 WARN report checks are advisory
 - **review_report_exists** blocks review→final; review is mandatory (ADR 0028)
 - **Reference numbering** uses `{{ref:URL}}` markers in analysis.json; claim.sources must be a subset of content `{{ref:URL}}` markers in the same section
 - **ref_marker_validity** and **claim_source_ref_coverage** are analysis-phase BLOCKERs ensuring URL consistency between analysis.json content and collected.json
@@ -268,7 +308,7 @@ Grilling session decisions on source routing. Rationale for each change from ori
 | market_analysis | [3,1,2] | [3,4,1,2] | +Tier 4 for early trend signals; community behavior (Reddit/HN/Zhihu) is the earliest market indicator |
 | academic_research | [1] | [1], optional_tiers=[2] | main line stays Tier 1; optional Tier 2 for tech docs when reproducing experiments |
 
-Unchanged routes: panoramic_understanding [4,3,1] optional_tiers=[2], fact_check [1,2,4], other [3,2,1].
+Unchanged routes: fact_check [1,2,4], other [3,2,1]. (panoramic_understanding changed to [2,1,3,4] by ADR 0049 — Tier 2 now required, supersedes ADR 0031's panoramic row.)
 
 New Tier 1 sources added for Chinese academic coverage:
 - **Wanfang** (wanfangdata.com.cn): Chinese academic database, same Tier 1 as CNKI

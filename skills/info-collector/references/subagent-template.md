@@ -1,4 +1,9 @@
-# Subagent Delegation Template
+# Subagent Delegation Template — SYSTEM PROMPT (paste verbatim)
+
+> **This entire file is the system prompt for any section-writing subagent.**
+> When delegating in Phase 3a, paste this whole file as the subagent's system
+> prompt prefix. Do NOT summarize it or link to it — the EXACT field table and
+> the 反例 below are what keep subagent output schema-valid.
 
 When delegating section writing to independent agent calls in Phase 3a, follow these rules.
 
@@ -55,6 +60,23 @@ Each subagent must output a JSON object with these EXACT fields (no others):
 
 ❌ "claims": [{"text": "...", "source_urls": [...]}]  — WRONG, use "summary" not "text", "sources" not "source_urls"
 ✅ "claims": [{"summary": "...", "sources": [...], "evidence_type": "...", ...}]
+
+## Source Type Vocabulary (`source_metadata.source_type`)
+
+`source_type` describes **benchmark/test provenance**, NOT the authority of the
+publishing venue. Use exactly one of:
+
+- `official_report` — an official technical report / paper from the publisher (e.g. an arXiv paper, a vendor's own spec).
+- `independent_test` — a benchmark or measurement run by an independent party.
+- `production_case` — a deployed production case study.
+- `survey` — an aggregated survey / poll.
+- `vendor_benchmark` — a number produced by the **vendor's own** benchmark (inherently suspect; the verifier marks such claims indirect unless the venue is itself authoritative).
+
+⚠️ **arXiv / peer-reviewed papers are NEVER `vendor_benchmark`.** A DeepSeek-V3
+technical report is `official_report`. Mislabeling an academic paper as
+`vendor_benchmark` with `precision: exact|range` wrongly marks the claim `‡`
+(indirect) even though the venue is Tier 1. Only tag `vendor_benchmark` when the
+source is genuinely the vendor's self-published benchmark.
 
 ## Source Content Injection
 

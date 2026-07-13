@@ -19,6 +19,7 @@ from .lib.constants import (
     ARTIFACT_PIPELINE_STATE,
     ARTIFACT_REVIEW_REPORT,
     ARTIFACT_SCOPE,
+    _EVIDENCE_TYPE_ALIASES,
     _NON_EXACT_EVIDENCE_TYPES,
     _VALID_CONFIDENCE,
     _VALID_EVIDENCE_TYPES,
@@ -112,7 +113,7 @@ def _sanitize_sections(analysis: dict, collected_urls: set[str] | None = None) -
         return result
 
     cleaned_sections = []
-    for section in sections:
+    for i, section in enumerate(sections):
         if not isinstance(section, dict):
             cleaned_sections.append(section)
             continue
@@ -121,6 +122,19 @@ def _sanitize_sections(analysis: dict, collected_urls: set[str] | None = None) -
             sec["id"] = sec.pop("section_id")
         if "claims" not in sec:
             sec["claims"] = []
+        # Structural safeguard: key_insights / tensions must be lists of dicts
+        # ({summary, sources}). A string array is a schema violation — raise a
+        # precise, actionable error instead of silently poisoning the analysis.
+        for field in ("key_insights", "tensions"):
+            items = sec.get(field)
+            if isinstance(items, list):
+                for j, item in enumerate(items):
+                    if not isinstance(item, dict):
+                        raise ValueError(
+                            f"sections[{i}].{field}[{j}] is a {type(item).__name__}, "
+                            f"not an object. Expected {{summary, sources}}. "
+                            f"Wrap each item as {{\"summary\": <text>, \"sources\": [<url>]}}."
+                        )
         claims = sec.get("claims")
         if isinstance(claims, list):
             cleaned_claims = []
@@ -133,9 +147,12 @@ def _sanitize_sections(analysis: dict, collected_urls: set[str] | None = None) -
                     cl["summary"] = cl.pop("text")
                 if "source_urls" in cl and "sources" not in cl:
                     cl["sources"] = cl.pop("source_urls")
-                # Auto-fix invalid evidence_type: downgrade to closest valid value
-                if "evidence_type" in cl and cl["evidence_type"] not in _VALID_EVIDENCE_TYPES:
-                    cl["evidence_type"] = "qualitative_trend"
+                # Auto-fix invalid evidence_type: try safe alias first, then
+                # downgrade to qualitative_trend (never escalate to official/independent).
+                if "evidence_type" in cl:
+                    et = cl["evidence_type"]
+                    if et not in _VALID_EVIDENCE_TYPES:
+                        cl["evidence_type"] = _EVIDENCE_TYPE_ALIASES.get(et, "qualitative_trend")
                 # Auto-fix invalid confidence: downgrade to medium
                 if "confidence" in cl and cl["confidence"] not in _VALID_CONFIDENCE:
                     cl["confidence"] = "medium"
@@ -300,7 +317,11 @@ def _gate_analysis(workdir: Path) -> list[str]:
             collected_urls = build_collected_url_set(collected)
     except ArtifactError:
         pass
-    analysis = _sanitize_sections(analysis, collected_urls=collected_urls)
+    try:
+        analysis = _sanitize_sections(analysis, collected_urls=collected_urls)
+    except ValueError as e:
+        errors.append(f"[BLOCKER] analysis_schema: {e}")
+        return errors
     write_json(analysis, workdir / ARTIFACT_ANALYSIS)
     from .lib.schemas import validate_analysis
     schema_errors = validate_analysis(analysis)

@@ -29,7 +29,7 @@ description: >
 
 1. **source file 由 fetch 工具写入，agent 不碰。** 你可以决定抓哪些 URL、用什么搜索策略，但 source file 的内容只能来自 fetch 工具的原始输出。
 2. **评判基础设施不可修改。** gate 的判定逻辑、config.json 的来源定义和路由是只读的 — 等同于 autoresearch 的 prepare.py。
-3. **子 agent 输出必须符合 JSON schema。** 你可以自由决定是否用子 agent、怎么分任务，但子 agent 的输出必须符合 `references/subagent-template.md` 定义的 JSON schema。
+3. **子 agent 输出必须符合 JSON schema。** 你可以自由决定是否用子 agent、怎么分任务，但子 agent 的输出必须符合 `references/subagent-template.md` 定义的 JSON schema。**硬约束：派生子 agent 时，必须把 `references/subagent-template.md` 全文（EXACT 字段表 + 反例置顶）作为子 agent system prompt 的前置内容；仅让子 agent 看概述会触发 schema 漂移（字符串数组、错字段名）。**
 
 ## 执行自由
 
@@ -61,12 +61,16 @@ description: >
 
 自由搜索、发现、抓取原文。无需遵守 search_plan。搜索策略由你决定。source file 必须通过 fetch 工具写入。
 
+**方向标注（ADR 0052）**：每条抓取的来源在写入 `collected.json` 时须带 `direction` 字段——取值为某个 `scope.search_directions`，或 `"other"`（搜索中发现、未归入任何声明方向）。`search→analysis` 门会 BLOCK 缺 `direction` 或某声明方向零来源的 entry。先用 `direction` 标注再写 collected.json，不要事后补。
+
 搜索策略建议：
 - **语言匹配**：对中文源（CNKI、Zhihu 等）用中文关键词搜索，对英文源用英文关键词。当 topic 包含中文实体名（如"玄铁"、"芯来"），中文搜索可能获得更精确的结果。
 - **实体发现驱动**：搜索过程中发现新实体时，主动追加搜索（而非只在 gate repair 时被动补充）。
 - **广度优先**：搜索阶段优先覆盖广度，先快速确认源的存在性和相关性（snippet 足够判断），再批量 fetch。
 - **兜底参考**：自由搜索无结果时，参考 scope.json 的 search_directions + config.json 的 source 列表作为兜底搜索方向。
 - **Exa fallback**：当 fetch 返回 content_insufficient 或 fetch_failed 时，用 exa 重新抓取后 pipe 给 CLI（`python -m scripts.cli fetch <url> --from-stdin`）。
+- **多平台社区覆盖（缺陷1 修复）**：当 goal_type 路由期望 Tier 4 社区信号时，社区源须覆盖 **≥2 个平台**（如 HuggingFace + Reddit/HN，或 Reddit + Zhihu/Weibo），不要只抓单一平台——这正是 v2 的 HF-only 缺陷。`facet_coverage` 会在单一平台时 WARN，repair_hints 指向 config.json 的 site_query。
+- **来源跨层分散（缺陷2 修复）**：避免单一平台 / 单一权威源主导。尽量跨 Tier 分散（Tier1 论文/标准 + Tier2 文档/开源 + Tier3 行业 + Tier4 社区）。单平台占比过高会在 analysis 阶段触发 `primary_source_ratio` WARN。
 
 完成后跑门：`python -m scripts.cli proceed --from search --to analysis`
 
@@ -75,6 +79,8 @@ description: >
 ### Phase 3: Analysis + Review
 
 分析 collected.json，写 analysis.json。建议参考 `references/writing-guide.md`（品味指南）。
+
+**避免重复劳动（supplement-1 缺陷修复）**：`analysis→review` 门要求多节报告必须由独立 subagent 写出 `analysis_section_{id}.json`（`check_subagent_delegation`，BLOCKER）。**不要先写单体 analysis.json 再拆**——直接让每个 subagent 写出对应的 `analysis_section_{id}.json`，最后合并为 analysis.json。否则门会 BLOCK 并要求返工。
 
 完成后跑门：`python -m scripts.cli proceed --from analysis --to review`
 
@@ -89,6 +95,8 @@ subagent 失败时降级为自审。
 生成最终报告，渲染验证。
 
 格式检查全部为 WARN — 不阻塞流程，但建议修复。
+
+**管线终点（supplement-2 缺陷修复 / ADR 0029）**：流程在 `post_final` 终止，**不存在 `final→cleanup` 转换**（`_VALID_TRANSITIONS_SET` 不含该转换）。报告生成后无需也不应执行 `proceed --from final --to cleanup`——该命令会报 `Invalid transition`。如需清理中间目录 `.workdir/`，用独立的 `python -m scripts.cli clean` 命令（手动，非管线阶段）。
 
 ## 参考文档
 

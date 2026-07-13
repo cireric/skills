@@ -44,7 +44,8 @@
       "sources": [
         {"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com", "fetch": {"tools": ["webfetch", "playwright"]}},
         {"name": "Stack Overflow", "domain": "stackoverflow.com", "site_query": "stackoverflow.com", "fetch": {"tools": ["webfetch", "playwright"]}},
-        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com", "language": "zh", "fetch": {"tools": ["webfetch", "playwright"]}},
+        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "exa_web_search_exa", "webfetch", "playwright"]}},
+        {"name": "Weibo", "domain": "weibo.com", "site_query": "weibo.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "exa_web_search_exa", "webfetch", "playwright"]}},
         {"name": "Hacker News", "domain": "news.ycombinator.com", "site_query": "news.ycombinator.com", "fetch": {"tools": ["webfetch", "playwright"]}},
         {"name": "Dev.to", "domain": "dev.to", "site_query": "dev.to", "fetch": {"tools": ["webfetch", "playwright"]}}
       ]
@@ -52,7 +53,7 @@
   },
   "routes": {
     "exploratory": {"entry_tier": 4, "path": [4, 3, 2]},
-    "panoramic_understanding": {"entry_tier": 4, "path": [4, 3, 1], "optional_tiers": [2]},
+    "panoramic_understanding": {"entry_tier": 2, "path": [2, 1, 3, 4]},
     "tech_selection": {"entry_tier": 2, "path": [2, 3, 4, 1]},
     "feasibility_assessment": {"entry_tier": 2, "path": [2, 1, 3]},
     "competitive_comparison": {"entry_tier": 2, "path": [2, 1, 3, 4]},
