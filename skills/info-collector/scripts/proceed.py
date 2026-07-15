@@ -24,6 +24,7 @@ from .lib.constants import (
     ARTIFACT_SCOPE,
     _EVIDENCE_TYPE_ALIASES,
     _NON_EXACT_EVIDENCE_TYPES,
+    _REQUIRED_SECTION_IDS,
     _SOURCE_TYPE_ALIASES,
     _VALID_CONFIDENCE,
     _VALID_EVIDENCE_TYPES,
@@ -32,7 +33,7 @@ from .lib.constants import (
     _VALID_TRANSITIONS_SET,
 )
 
-_SECTION_KEYS = frozenset({"id", "title", "content", "claims", "depth_strategy", "key_insights", "tensions"})
+_SECTION_KEYS = frozenset({"id", "title", "content", "claims", "depth_strategy", "key_insights", "tensions", "order"})
 _CLAIM_KEYS = frozenset({
     "summary", "sources", "evidence_type", "confidence",
     "precision", "metric_type", "source_metadata", "verified",
@@ -188,12 +189,37 @@ def is_section_incomplete(section_path: Path) -> bool:
 _MERGE_COMPLETED_KEY = "_merge_completed"
 
 
+def _sort_sections(sections: list[dict], goal_type: str = "") -> list[dict]:
+    """Sort sections into logical reading order.
+
+    Priority: explicit `order` field > _REQUIRED_SECTION_IDS position > id lexicographic.
+    Sections with an explicit `order` field always come before sections without one.
+    Sections not found in _REQUIRED_SECTION_IDS are placed after known sections,
+    preserving their relative id-lexicographic order.
+    """
+    id_order = _REQUIRED_SECTION_IDS.get(goal_type, [])
+    id_pos = {sid: i for i, sid in enumerate(id_order)}
+    max_known = len(id_order)
+
+    def _sort_key(sec: dict) -> tuple:
+        has_order = "order" in sec and isinstance(sec["order"], int)
+        if has_order:
+            return (0, sec["order"], sec.get("id", ""))
+        sid = sec.get("id", "")
+        pos = id_pos.get(sid, max_known)
+        return (1, pos, sid)
+
+    return sorted(sections, key=_sort_key)
+
+
 def _merge_section_files(workdir: Path, topic: str = "", goal_type: str = "") -> dict | None:
     """Merge analysis_section_*.json into analysis.json (ADR 0054).
 
     JSON merge only — never rewrite or rephrase section content.
     Idempotent: if analysis.json already exists and was produced by
     this function, returns the existing analysis without re-merging.
+    Sections are ordered by: explicit `order` field > _REQUIRED_SECTION_IDS
+    position > id-lexicographic (fallback).
     """
     section_files = sorted(workdir.glob("analysis_section_*.json"))
     if not section_files:
@@ -221,6 +247,8 @@ def _merge_section_files(workdir: Path, topic: str = "", goal_type: str = "") ->
 
     if not sections:
         return None
+
+    sections = _sort_sections(sections, goal_type)
 
     analysis = {
         "topic": topic,

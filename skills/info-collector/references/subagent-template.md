@@ -17,6 +17,7 @@ Each subagent must output a JSON object with these EXACT fields (no others):
   "title": "<section title>",
   "content": "<full Markdown content, must NOT start with ## >",
   "depth_strategy": "<overview|deep_dive|comparison|methodology>",
+  "order": <optional int — explicit reading position; omit if not specified>,
   "key_insights": [
     {
       "summary": "<insight statement with causal direction or key finding>",
@@ -48,6 +49,7 @@ Each subagent must output a JSON object with these EXACT fields (no others):
 - "key_insights" is REQUIRED for panoramic/exploratory sections (min 2), optional otherwise
 - "tensions" is optional — include only when sources genuinely disagree
 - "depth_strategy" is REQUIRED — must be one of: overview, deep_dive, comparison, methodology
+- "order" is OPTIONAL — an explicit integer for reading position in the final report. If omitted, the merge step infers position from _REQUIRED_SECTION_IDS for the goal_type, falling back to id-lexicographic order. Use this when the section id does not appear in the goal_type's required list or when you need a non-default position.
 - Do NOT add fields like "word_count", "language", "text", "description", "source_urls", etc.
 
 ## Common Mistakes (DO NOT DO THESE)

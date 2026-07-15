@@ -58,6 +58,7 @@ class SectionDict(TypedDict, total=False):
     depth_strategy: str
     key_insights: list[dict]
     tensions: list[dict]
+    order: int
 
 
 class AnalysisDict(TypedDict, total=False):
@@ -185,6 +186,10 @@ def _validate_sections(sections: list, errors: list[ValidationError]) -> None:
                 errors.append(_err(f"sections[{i}].depth_strategy", f"expected str, got {type(ds).__name__}"))
             elif ds not in _VALID_DEPTH_STRATEGIES:
                 errors.append(_err(f"sections[{i}].depth_strategy", f"invalid depth_strategy '{ds}' (must be one of {', '.join(sorted(_VALID_DEPTH_STRATEGIES))})"))
+        if "order" in sec:
+            od = sec["order"]
+            if not isinstance(od, int):
+                errors.append(_err(f"sections[{i}].order", f"expected int, got {type(od).__name__}"))
         if "key_insights" in sec:
             ki = sec["key_insights"]
             if not isinstance(ki, list):

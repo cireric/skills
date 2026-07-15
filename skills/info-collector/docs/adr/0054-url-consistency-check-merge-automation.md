@@ -24,4 +24,4 @@ v3 运行中子代理生成的 `{{ref:URL}}` 和 `sources` 中的 URL 与 collec
 
 URL 不匹配在合并后立即暴露（而非在 gate 阶段），修复路径更短。子代理 prompt 的 allowed URL list 约束减少初始不匹配概率。合并自动化消除手动重复合并的问题。与 ADR 0053 可并行实施。不取代任何旧 ADR。
 
-Status: Superseded by ADR-0056
+Status: Superseded by ADR-0056, ADR-0059

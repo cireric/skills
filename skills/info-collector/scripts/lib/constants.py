@@ -174,6 +174,12 @@ _VAGUE_PHRASES_EN = frozenset({
 
 # ── Required section IDs per goal_type ──
 
+_PANORAMIC_SECTION_ORDER: list[str] = [
+    "overview", "technical_architecture", "model_product_family",
+    "cost_economics", "open_source_strategy", "market_industry_impact",
+    "community_evaluation", "reported_limitations",
+]
+
 _REQUIRED_SECTION_IDS: dict[str, list[str]] = {
     "tech_selection": ["overview", "comparison", "recommendation", "methodology"],
     "feasibility_assessment": ["overview", "analysis", "conclusion", "methodology"],
@@ -181,6 +187,9 @@ _REQUIRED_SECTION_IDS: dict[str, list[str]] = {
     "competitive_comparison": ["overview", "comparison", "positioning", "methodology"],
     "academic_research": ["abstract", "findings", "references", "methodology"],
     "market_analysis": ["overview", "data", "trends", "conclusion", "methodology"],
+    "panoramic_understanding": _PANORAMIC_SECTION_ORDER,
+    "exploratory": _PANORAMIC_SECTION_ORDER,
+    "background_check": ["overview", "technical_architecture", "model_product_family", "open_source_strategy", "community_evaluation", "reported_limitations"],
 }
 
 
