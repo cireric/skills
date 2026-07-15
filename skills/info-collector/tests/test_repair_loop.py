@@ -8,7 +8,7 @@ import pytest
 
 from pathlib import Path
 
-from scripts.proceed import check_fix_report, determine_review_status
+from scripts.repair_loop import check_fix_report, determine_review_status
 
 
 def _write_json(path, data):

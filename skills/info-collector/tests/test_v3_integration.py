@@ -13,10 +13,9 @@ from scripts.proceed import (
     _merge_section_files,
     _preprocess_cjk_quotes,
     _validate_section_files,
-    check_fix_report,
-    determine_review_status,
     proceeds,
 )
+from scripts.repair_loop import check_fix_report, determine_review_status
 from scripts.trust_boundary import validate_section_output
 from scripts.reporter import sections_to_markdown
 
