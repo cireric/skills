@@ -156,7 +156,7 @@ class TestBatchFetchIntegration:
         args = argparse.Namespace(
             from_stdin=True,
             pending=False,
-            workdir=str(tmp_path),
+            _workdir=tmp_path,
         )
 
         import io
@@ -191,7 +191,7 @@ class TestBatchFetchIntegration:
         args = argparse.Namespace(
             from_stdin=False,
             pending=True,
-            workdir=str(tmp_path),
+            _workdir=tmp_path,
         )
         cmd_batch_fetch(args)
         captured = capsys.readouterr()

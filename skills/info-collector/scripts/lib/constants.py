@@ -177,8 +177,14 @@ ARTIFACT_COLLECTED = "collected.json"
 ARTIFACT_ANALYSIS = "analysis.json"
 ARTIFACT_PIPELINE_STATE = "pipeline_state.json"
 ARTIFACT_REVIEW_REPORT = "review_report.md"
-ARTIFACT_CONFIG = "config.json"
 
+ARTIFACT_FIX_LIST = "fix_list.json"
+
+ARTIFACT_FIX_REPORT = "fix_report.json"
+
+ARTIFACT_LIGHTWEIGHT_REVIEW = "lightweight_review_result.json"
+
+ARTIFACT_CONFIG = "config.json"
 
 # ── Pipeline configuration ──
 

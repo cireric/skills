@@ -82,11 +82,17 @@ description: >
 
 **避免重复劳动（supplement-1 缺陷修复）**：`analysis→review` 门要求多节报告必须由独立 subagent 写出 `analysis_section_{id}.json`（`check_subagent_delegation`，BLOCKER）。**不要先写单体 analysis.json 再拆**——直接让每个 subagent 写出对应的 `analysis_section_{id}.json`，最后合并为 analysis.json。否则门会 BLOCK 并要求返工。
 
+**信任边界验证（ADR 0053）**：子代理输出写入 section_file 前经过信任边界验证（结构验证 + 语义验证）。验证失败时，回注完整结构化验证报告并重试（最多 2 次）。3 次验证全失败 → BLOCK 管道，你需要手动重写该 section。手动重写也失败 → section 标记为 `status: "incomplete"`，review_status 必然为 `degraded`。
+
+**合并自动化（ADR 0054）**：当 `.workdir/` 下存在 `analysis_section_*.json` 但不存在 `analysis.json` 时，`proceed --from analysis --to review` 会自动合并 section 文件为 analysis.json，无需手动跑合并脚本。合并只执行一次。合并后会自动检查 URL 一致性（与 collected.json 比对），不匹配的 URL 输出 WARN。
+
 完成后跑门：`python -m scripts.cli proceed --from analysis --to review`
 
 门不通过 → 根据 repair_hints 修正 → 重跑门（最多 2 次）。
 
-**审查**：gate 通过后，自动启动一轮 review subagent。subagent 写 review_report.md，你读取后选择性修复 analysis.json，然后重跑门。
+**审查**：gate 通过后，自动启动一轮 review subagent。subagent 同时输出 `review_report.md`（人类可读）+ `fix_list.json`（结构化修复指令，ADR 0055）。你读取 review_report.md 后决定是否进入 repair loop。
+
+**Repair Loop（ADR 0055）**：review 发现问题后，启动 review-fix subagent 处理 `fix_list.json`，输出修复后 section 文件 + `fix_report.json`。修复后运行轻量 review（同一 subagent，prompt 限定只检查原 BLOCKER 问题是否已修复）。最多 2 轮修复。判定标准：所有 BLOCKER 级 issue 修复 + 轻量 review 确认 → `passed`；否则 → `degraded`。
 
 subagent 失败时降级为自审。
 
@@ -106,6 +112,8 @@ subagent 失败时降级为自审。
 - `references/GATES.md` — gate 系统参考
 - `references/cli-reference.md` — CLI 命令参考
 - `references/REVIEW_PROMPT.md` — review subagent 提示词
+- `references/REVIEW_FIX_PROMPT.md` — review-fix subagent 提示词
+- `references/LIGHTWEIGHT_REVIEW_PROMPT.md` — 轻量 review 提示词
 
 ## CLI Commands Reference
 

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from .lib.utils import config_path, ensure_dir, read_json, write_json, build_collected_url_set
+from .lib.utils import config_path, ensure_dir, read_json, write_json, build_collected_url_set, normalize_url
 from .artifact_checks import CheckResult, run_all as run_gateway
 from .report_checks import run_report_checks
 from .search_gate import SearchGate
@@ -16,6 +16,9 @@ from .lib.exceptions import ArtifactError
 from .lib.constants import (
     ARTIFACT_ANALYSIS,
     ARTIFACT_COLLECTED,
+    ARTIFACT_FIX_LIST,
+    ARTIFACT_FIX_REPORT,
+    ARTIFACT_LIGHTWEIGHT_REVIEW,
     ARTIFACT_PIPELINE_STATE,
     ARTIFACT_REVIEW_REPORT,
     ARTIFACT_SCOPE,
@@ -84,6 +87,17 @@ def _repair_json_text(raw: str) -> str:
     return ''.join(result)
 
 
+def _preprocess_cjk_quotes(raw: str) -> str:
+    """Replace CJK full-width double quotes with ASCII single quotes.
+
+    CJK full-width quotes \u201c\u201d inside JSON string values can break JSON
+    parsing when they contain unescaped ASCII double quotes. Replacing them with
+    ASCII single quotes (0x27) is a deterministic defense that does not rely on
+    prompt constraints. ADR 0053.
+    """
+    return raw.replace("\u201c", "'").replace("\u201d", "'")
+
+
 def _read_json_with_repair(path: Path) -> tuple[dict | list | None, str | None]:
     """Read JSON, attempting quote repair on JSONDecodeError.
 
@@ -97,12 +111,161 @@ def _read_json_with_repair(path: Path) -> tuple[dict | list | None, str | None]:
         if "Invalid JSON" not in str(e):
             return None, f"Cannot read {path.name}: {e}"
         raw_text = path.read_text(encoding="utf-8")
+        raw_text = _preprocess_cjk_quotes(raw_text)
         repaired = _repair_json_text(raw_text)
         try:
             data = json.loads(repaired)
             return data, None
         except json.JSONDecodeError as e2:
             return None, f"Cannot read {path.name}: Invalid JSON even after repair: {e2}"
+
+
+def _validate_section_files(workdir: Path) -> list[str]:
+    """Validate section files against trust boundary (ADR 0053).
+
+    Reads analysis_section_*.json files and validates each against
+    the trust boundary (structural + semantic). Returns error messages
+    for any failures.
+    """
+    from .trust_boundary import validate_section_output
+    from .lib.utils import build_collected_url_set
+
+    collected_urls: set[str] = set()
+    collected_path = workdir / ARTIFACT_COLLECTED
+    if collected_path.exists():
+        try:
+            collected = read_json(collected_path)
+            if isinstance(collected, list):
+                collected_urls = build_collected_url_set(collected)
+        except ArtifactError:
+            pass
+
+    errors: list[str] = []
+    section_files = sorted(workdir.glob("analysis_section_*.json"))
+    for sf in section_files:
+        if is_section_incomplete(sf):
+            continue
+        raw = sf.read_text(encoding="utf-8")
+        raw = _preprocess_cjk_quotes(raw)
+        result = validate_section_output(raw, collected_urls)
+        if not result.passed:
+            for err in result.errors:
+                errors.append(
+                    f"[BLOCKER] trust_boundary({sf.name}): {err.path} — {err.error}: "
+                    f"expected {err.expected}, got {err.actual}"
+                )
+    return errors
+
+
+def mark_section_incomplete(section_path: Path) -> None:
+    """Mark a section file as incomplete (ADR 0053).
+
+    Called when trust boundary validation fails 3 times and the
+    orchestrator's manual rewrite also fails. The section's content
+    remains but is flagged as unreliable.
+    """
+    try:
+        data = json.loads(section_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return
+    if not isinstance(data, dict):
+        return
+    data["status"] = "incomplete"
+    section_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def is_section_incomplete(section_path: Path) -> bool:
+    """Check whether a section file is marked incomplete (ADR 0053)."""
+    try:
+        data = json.loads(section_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    return isinstance(data, dict) and data.get("status") == "incomplete"
+
+
+_MERGE_COMPLETED_KEY = "_merge_completed"
+
+
+def _merge_section_files(workdir: Path, topic: str = "", goal_type: str = "") -> dict | None:
+    """Merge analysis_section_*.json into analysis.json (ADR 0054).
+
+    JSON merge only — never rewrite or rephrase section content.
+    Idempotent: if analysis.json already exists and was produced by
+    this function, returns the existing analysis without re-merging.
+    """
+    section_files = sorted(workdir.glob("analysis_section_*.json"))
+    if not section_files:
+        return None
+
+    analysis_path = workdir / ARTIFACT_ANALYSIS
+    if analysis_path.exists():
+        try:
+            existing = read_json(analysis_path)
+            if isinstance(existing, dict) and existing.get(_MERGE_COMPLETED_KEY) is True:
+                return existing
+        except (ArtifactError, json.JSONDecodeError):
+            pass
+
+    sections = []
+    for sf in section_files:
+        raw = sf.read_text(encoding="utf-8")
+        raw = _preprocess_cjk_quotes(raw)
+        try:
+            sec = json.loads(raw)
+            if isinstance(sec, dict):
+                sections.append(sec)
+        except json.JSONDecodeError:
+            continue
+
+    if not sections:
+        return None
+
+    analysis = {
+        "topic": topic,
+        "goal_type": goal_type,
+        "sections": sections,
+        _MERGE_COMPLETED_KEY: True,
+    }
+    write_json(analysis, analysis_path)
+    return analysis
+
+
+_REF_MARKER_RE = __import__("re").compile(r"\{\{ref:(.*?)\}\}")
+
+
+def _check_url_consistency(analysis: dict, collected_urls: set[str]) -> list[str]:
+    """Check URL consistency after merge (ADR 0054).
+
+    Scans all {{ref:URL}} markers and sources URLs in analysis.json,
+    compares against collected_urls. Returns WARN messages for mismatches
+    with "did you mean?" suggestions.
+    """
+    from .artifact_checks import _suggest_similar_urls
+
+    warnings: list[str] = []
+    for sec in analysis.get("sections", []):
+        content = sec.get("content", "")
+        for url in _REF_MARKER_RE.findall(content):
+            norm = normalize_url(url)
+            if norm not in collected_urls:
+                suggestions = _suggest_similar_urls(url, collected_urls)
+                hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
+                warnings.append(f"[WARN] URL not in collected.json: {url}{hint}")
+
+        for field_name in ("key_insights", "tensions", "claims"):
+            items = sec.get(field_name)
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                for url in item.get("sources", []):
+                    norm = normalize_url(url)
+                    if norm not in collected_urls:
+                        suggestions = _suggest_similar_urls(url, collected_urls)
+                        hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
+                        warnings.append(f"[WARN] URL not in collected.json: {url}{hint}")
+    return warnings
 
 
 def _sanitize_sections(analysis: dict, collected_urls: set[str] | None = None) -> dict:
@@ -306,6 +469,34 @@ def _gate_search(workdir: Path, config: dict | None) -> list[str]:
 
 def _gate_analysis(workdir: Path) -> list[str]:
     errors: list[str] = []
+    tb_errors = _validate_section_files(workdir)
+    if tb_errors:
+        return tb_errors
+
+    section_files = list(workdir.glob("analysis_section_*.json"))
+    if section_files and not (workdir / ARTIFACT_ANALYSIS).exists():
+        scope = {}
+        try:
+            scope = read_json(workdir / ARTIFACT_SCOPE)
+        except ArtifactError:
+            pass
+        merged = _merge_section_files(
+            workdir,
+            topic=scope.get("topic", ""),
+            goal_type=scope.get("goal_type", "other"),
+        )
+        if merged is not None:
+            collected_urls_for_check: set[str] = set()
+            try:
+                collected = read_json(workdir / ARTIFACT_COLLECTED)
+                if isinstance(collected, list):
+                    collected_urls_for_check = build_collected_url_set(collected)
+            except ArtifactError:
+                pass
+            url_warnings = _check_url_consistency(merged, collected_urls_for_check)
+            for w in url_warnings:
+                print(f"  {w}", file=sys.stderr)
+
     analysis, err = _read_json_with_repair(workdir / ARTIFACT_ANALYSIS)
     if err is not None:
         errors.append(err)
@@ -354,6 +545,78 @@ def _gate_analysis(workdir: Path) -> list[str]:
     return errors
 
 
+def check_fix_report(workdir: Path) -> dict | None:
+    """Parse fix_report.json and count BLOCKER/WARN fix status (ADR 0055).
+
+    Returns dict with blocker_fixed, blocker_skipped, warn_skipped counts,
+    or None if fix_report.json does not exist.
+    """
+    fix_report_path = workdir / ARTIFACT_FIX_REPORT
+    if not fix_report_path.exists():
+        return None
+    try:
+        fix_report = json.loads(fix_report_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    fix_list_path = workdir / ARTIFACT_FIX_LIST
+    severity_map: dict[int, str] = {}
+    if fix_list_path.exists():
+        try:
+            fix_list = json.loads(fix_list_path.read_text(encoding="utf-8"))
+            if isinstance(fix_list, list):
+                for item in fix_list:
+                    if isinstance(item, dict):
+                        severity_map[item.get("issue_id")] = item.get("severity", "BLOCKER")
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    blocker_fixed = 0
+    blocker_skipped = 0
+    warn_skipped = 0
+    for entry in fix_report:
+        if not isinstance(entry, dict):
+            continue
+        severity = severity_map.get(entry.get("issue_id"), "BLOCKER")
+        status = entry.get("status", "")
+        if severity == "BLOCKER":
+            if status == "fixed":
+                blocker_fixed += 1
+            else:
+                blocker_skipped += 1
+        else:
+            if status != "fixed":
+                warn_skipped += 1
+
+    return {"blocker_fixed": blocker_fixed, "blocker_skipped": blocker_skipped, "warn_skipped": warn_skipped}
+
+
+def determine_review_status(workdir: Path) -> str:
+    """Determine review_status based on fix_report + lightweight review (ADR 0055).
+
+    Returns "passed" or "degraded".
+    BLOCKER all fixed + lightweight review confirmed → passed.
+    Skipped WARNs do not cause degraded (spec: "Should fix but report is still usable").
+    """
+    fix_summary = check_fix_report(workdir)
+    if fix_summary is None:
+        return "degraded"
+
+    if fix_summary["blocker_skipped"] > 0:
+        return "degraded"
+
+    lw_path = workdir / ARTIFACT_LIGHTWEIGHT_REVIEW
+    if lw_path.exists():
+        try:
+            lw = json.loads(lw_path.read_text(encoding="utf-8"))
+            if not lw.get("all_blockers_fixed", False):
+                return "degraded"
+        except (json.JSONDecodeError, OSError):
+            return "degraded"
+
+    return "passed"
+
+
 def _check_review_report_exists(workdir: Path) -> CheckResult:
     """Check that review_report.md exists and is non-empty.
 
@@ -380,7 +643,7 @@ def _gate_review(workdir: Path, to_phase: str = "review") -> list[str]:
       agent-level concern (SKILL.md instructs the agent to auto-start a
       review subagent). Gateway checks are not re-run on self-loops.
     - review→final: runs advisory gateway checks + BLOCKER on missing
-      review_report.md.
+      review_report.md + repair loop status check (ADR 0055).
     """
     errors: list[str] = []
     if to_phase == "final":
@@ -398,6 +661,20 @@ def _gate_review(workdir: Path, to_phase: str = "review") -> list[str]:
                     errors.append(f"  → {hint}")
             else:
                 print(f"  [WARN] {rr_check.name}: {rr_check.message}", file=sys.stderr)
+
+        fix_summary = check_fix_report(workdir)
+        if fix_summary is not None:
+            if fix_summary["blocker_skipped"] > 0:
+                errors.append(
+                    f"[BLOCKER] repair_loop: {fix_summary['blocker_skipped']} BLOCKER issue(s) not fixed — "
+                    f"report status is degraded"
+                )
+            elif fix_summary["warn_skipped"] > 0:
+                print(
+                    f"  [WARN] repair_loop: {fix_summary['warn_skipped']} WARN issue(s) skipped — "
+                    f"report is usable but not all issues resolved",
+                    file=sys.stderr,
+                )
     return errors
 
 

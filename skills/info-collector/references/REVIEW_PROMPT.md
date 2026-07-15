@@ -72,3 +72,22 @@ Write your review to .workdir/review_report.md (NOT the project root) with this 
 ## Overall Verdict
 clean / issues_found
 ```
+
+Additionally, write a structured fix list to .workdir/fix_list.json for machine consumption by the review-fix subagent:
+
+```json
+[
+  {
+    "issue_id": 1,
+    "type": "context_twist",
+    "severity": "BLOCKER",
+    "section": "technical_architecture",
+    "description": "Source says 'improved in narrow case X' but report presents as 'improved generally'",
+    "recommendation": "Add qualifier: 'in the specific case of X'"
+  }
+]
+```
+
+**severity** classification:
+- **BLOCKER**: Must fix before report can be cited. Examples: context twist that reverses source meaning, cross-section inconsistency with contradictory numbers, precision inflation with exact numbers not in source, vendor bias undisclosed.
+- **WARN**: Should fix but report is still usable. Examples: audience misalignment, missing test conditions in text (present in source_metadata but not in content), terminology inconsistency.

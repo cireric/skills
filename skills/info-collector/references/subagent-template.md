@@ -61,6 +61,15 @@ Each subagent must output a JSON object with these EXACT fields (no others):
 ❌ "claims": [{"text": "...", "source_urls": [...]}]  — WRONG, use "summary" not "text", "sources" not "source_urls"
 ✅ "claims": [{"summary": "...", "sources": [...], "evidence_type": "...", ...}]
 
+❌ "claims": ["text as string"]  — WRONG, claims must be list of objects, not strings
+✅ "claims": [{"summary": "...", "sources": ["url"], "evidence_type": "...", "confidence": "...", "precision": "..."}]
+
+❌ 中文全角引号 ""内的内容"  — WRONG, full-width quotes inside JSON string values break JSON parsing
+✅ Use single quotes '' or backticks `` instead of full-width quotes within JSON string values
+
+❌ "evidence_type": "quantitative"  — WRONG, not a valid enum value
+✅ "evidence_type": "official_data" | "independent_benchmark" | "third_party_estimate" | "qualitative_trend" | "expert_opinion"
+
 ## Source Type Vocabulary (`source_metadata.source_type`)
 
 `source_type` describes **benchmark/test provenance**, NOT the authority of the
@@ -97,11 +106,15 @@ When constructing each subagent prompt, the orchestrator MUST inject ALL source 
    - Snippet: <snippet from collected.json>
    - source_file: sources/abc123def456.md
 
-   ### [URL2](url2)
-   - Title: <title from collected.json>
-   - Snippet: <snippet from collected.json>
-   - source_file: sources/def789ghi012.md
-   ```
+### [URL2](url2)
+    - Title: <title from collected.json>
+    - Snippet: <snippet from collected.json>
+    - source_file: sources/def789ghi012.md
+    ```
+
+## Allowed URLs
+
+All `{{ref:URL}}` markers and `sources` URLs must **exactly match** one of the URLs listed above in the Source Content section. Do not truncate, abbreviate, or invent URLs. If a URL in your output does not match a collected.json entry, the trust boundary validation will reject your output.
 
 ## Assembly Step 2: Write content FIRST, extract claims AFTER
 

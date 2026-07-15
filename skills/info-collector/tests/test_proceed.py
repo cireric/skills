@@ -206,7 +206,7 @@ class TestProceeds:
             _write_json(tmp_path / f"analysis_section_{sec['id']}.json", sec)
         ok, errors = proceeds(tmp_path, "analysis", "review")
         assert not ok
-        assert any("url_traceability" in e for e in errors)
+        assert any("url_traceability" in e or "trust_boundary" in e for e in errors)
 
     def test_analysis_to_review_gate_blocks_empty_sections(self, tmp_path):
         _make_scope(tmp_path)

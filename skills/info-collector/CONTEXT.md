@@ -248,6 +248,18 @@ _Avoid_: search strategy, search outline
 When search gate fires a BLOCKER, it queries config.json for the missing dimension's source list and emits concrete repair hints (e.g., "tier 2 零覆盖 → try site:github.com, site:en.wikipedia.org"). config.json's role shifts from "pre-search plan template" to "post-search repair toolbook" (ADR 0042).
 _Avoid_: gate fix hints, repair suggestions
 
+**信任边界 (trust boundary)**:
+The validation point between an untrusted producer (subagent) and a trusted artifact (section_file). Subagent output must pass two-layer validation before being written to section_file: (1) structural validation (JSON legality, field types, enum values, non-empty sources); (2) semantic validation (URLs in sources must exactly match collected.json entries). Validation failure triggers retry (max 2) with full structured error report injected into prompt. 3 failures → BLOCK pipeline, orchestrator manual rewrite. Orchestrator rewrite also fails → incomplete section. Introduced by ADR 0053.
+_Avoid_: output validation gate, intake check
+
+**repair loop**:
+The cycle of (detect issue → apply fix → re-validate) for review findings. After review subagent produces review_report.md + fix_list.json, a review-fix subagent processes issues and outputs fix_report.json (per-issue fixed/skipped status). If BLOCKER-level issues remain, a lightweight review (same subagent, targeted prompt checking only the original BLOCKER issues) verifies fixes. Max 2 repair rounds. BLOCKER all fixed + lightweight review confirmed → passed; otherwise → degraded. Introduced by ADR 0055.
+_Avoid_: review-fix cycle, fix loop
+
+**incomplete section**:
+A section in analysis.json marked `status: "incomplete"` after trust boundary validation failed 3 times and orchestrator manual rewrite also failed. The section's content is present but unreliable — readers should not cite claims from an incomplete section. An incomplete section necessarily results in `degraded` review_status, but `degraded` may also result from unresolved review issues without any incomplete section. Introduced by ADR 0053.
+_Avoid_: broken section, failed section
+
 **project root**:
 The directory containing `.git/`. Used as the base for resolving all relative paths (output_dir, WORKDIR). Auto-detected by walking up from CWD. Falls back to CWD if not in a git repository.
 _Avoid_: repo root, workspace root
@@ -257,6 +269,8 @@ _Avoid_: repo root, workspace root
 - **collected.json** — Phase 2 output: array of {url, title, snippet, source_tier, fetched_content, covered_directions?, vendor_affiliation?}
 - **analysis.json** — Phase 3a output: topic, goal_type, sections (each with id, title, content, depth_strategy, key_insights, tensions, claims)
 - **review_report.md** — Phase 3b output: subagent review findings
+- **fix_list.json** — Phase 3b output: structured fix list from review subagent (issue_id, type, severity, section, description, recommendation). Machine-consumable complement to review_report.md. Introduced by ADR 0055.
+- **fix_report.json** — Phase 3c output: per-issue fix status from review-fix subagent (fixed/skipped+reason). Consumed by repair loop to determine passed/degraded. Introduced by ADR 0055.
 - **config.json** — Skill configuration: sources (4 tiers, each with language field), routes (10 goal_types), output_dir, default_report_language, default_depth, goal_type_defaults
 
 ## Relationships
@@ -293,6 +307,9 @@ _Avoid_: repo root, workspace root
 - **fetch_defaults** in config.json provides global defaults including `playwright_enabled`; source-level `fetch` blocks override per-source; `--no-playwright` CLI flag > `playwright_enabled` config > `True` default
 - **source_file** in collected.json points to `.workdir/sources/{url_hash}.md`; subagents read original text via Read tool
 - subagent prompt injects source_file path + title only (no preview); subagent MUST use Read tool on source files to access original text before writing claims
+- **信任边界** validates subagent output before writing to section_file: structural validation (schema) + semantic validation (URL match against collected.json). `ref_marker_validity` and `claim_source_ref_coverage` remain as defense-in-depth at gate level (ADR 0053, ADR 0054)
+- **repair loop** closes the review→fix→re-validate cycle: review-fix subagent + fix_report.json self-report + lightweight review verification. Max 2 rounds. BLOCKER all fixed → passed, otherwise → degraded (ADR 0055)
+- **incomplete section** (`status: "incomplete"`) implies `degraded` review_status, but `degraded` does not imply incomplete section — degraded may also result from unresolved review issues in the repair loop
 
 ## Route Decisions (ADR 0031)
 

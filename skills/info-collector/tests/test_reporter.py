@@ -773,3 +773,37 @@ class TestVerificationSummary:
         result = _render_verification_summary(analysis)
         assert result == ""
 
+
+class TestIncompleteSection:
+    def test_incomplete_section_renders_warning(self):
+        analysis = {
+            "goal_type": "tech_selection",
+            "sections": [
+                {
+                    "id": "overview",
+                    "title": "Overview",
+                    "content": "Some content.",
+                    "status": "incomplete",
+                    "claims": [],
+                }
+            ],
+        }
+        result = sections_to_markdown(analysis)
+        assert "INCOMPLETE" in result
+        assert "unreliable" in result.lower()
+
+    def test_normal_section_no_warning(self):
+        analysis = {
+            "goal_type": "tech_selection",
+            "sections": [
+                {
+                    "id": "overview",
+                    "title": "Overview",
+                    "content": "Some content.",
+                    "claims": [],
+                }
+            ],
+        }
+        result = sections_to_markdown(analysis)
+        assert "INCOMPLETE" not in result
+

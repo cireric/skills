@@ -224,6 +224,8 @@ def sections_to_markdown(analysis: dict, collected: list[dict] | None = None, la
     for idx, sec in enumerate(analysis.get("sections", [])):
         title = sec.get("title", sec.get("id", ""))
         parts.append(f"\n## {title}\n")
+        if sec.get("status") == "incomplete":
+            parts.append("> **INCOMPLETE SECTION** — content is unreliable. Do not cite claims from this section.\n\n")
         parts.append(resolved_contents[idx])
         key_insights = sec.get("key_insights")
         if key_insights and isinstance(key_insights, list):
