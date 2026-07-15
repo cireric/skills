@@ -105,6 +105,19 @@ def cmd_report(args: argparse.Namespace) -> None:
     output_path.mkdir(parents=True, exist_ok=True)
     filename = _build_report_filename(scope_data, output_path)
     filename.write_text(report, encoding="utf-8")
+
+    from .report_checks import run_report_checks
+    report_results = run_report_checks(filename)
+    blockers = [r for r in report_results if r.level == "BLOCKER" and not r.passed]
+    if blockers:
+        filename.unlink(missing_ok=True)
+        for b in blockers:
+            print(f"  [BLOCKER] {b.name}: {b.message}", file=sys.stderr)
+            for hint in b.repair_hints:
+                print(f"  → {hint}", file=sys.stderr)
+        print("Report check FAILED — report not saved. Fix issues and re-run report.", file=sys.stderr)
+        sys.exit(1)
+
     print(f"Report saved: {filename}")
 
 

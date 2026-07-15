@@ -24,9 +24,11 @@ from .lib.constants import (
     ARTIFACT_SCOPE,
     _EVIDENCE_TYPE_ALIASES,
     _NON_EXACT_EVIDENCE_TYPES,
+    _SOURCE_TYPE_ALIASES,
     _VALID_CONFIDENCE,
     _VALID_EVIDENCE_TYPES,
     _VALID_PRECISION,
+    _VALID_SOURCE_TYPES,
     _VALID_TRANSITIONS_SET,
 )
 
@@ -329,6 +331,12 @@ def _sanitize_sections(analysis: dict, collected_urls: set[str] | None = None) -
                     and cl.get("evidence_type") in _NON_EXACT_EVIDENCE_TYPES
                 ):
                     cl["precision"] = "range"
+                # Auto-fix invalid source_type in source_metadata: try alias, then downgrade to survey
+                meta = cl.get("source_metadata")
+                if isinstance(meta, dict) and "source_type" in meta:
+                    st = meta["source_type"]
+                    if st not in _VALID_SOURCE_TYPES:
+                        meta["source_type"] = _SOURCE_TYPE_ALIASES.get(st, "survey")
                 # Auto-fix URL traceability: remove sources not in collected.json
                 if collected_urls is not None and "sources" in cl:
                     valid = [u for u in cl["sources"] if u in collected_urls]
@@ -555,20 +563,20 @@ def check_fix_report(workdir: Path) -> dict | None:
     if not fix_report_path.exists():
         return None
     try:
-        fix_report = json.loads(fix_report_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+        fix_report = read_json(fix_report_path)
+    except (ArtifactError, json.JSONDecodeError):
         return None
 
     fix_list_path = workdir / ARTIFACT_FIX_LIST
     severity_map: dict[int, str] = {}
     if fix_list_path.exists():
         try:
-            fix_list = json.loads(fix_list_path.read_text(encoding="utf-8"))
+            fix_list = read_json(fix_list_path)
             if isinstance(fix_list, list):
                 for item in fix_list:
                     if isinstance(item, dict):
                         severity_map[item.get("issue_id")] = item.get("severity", "BLOCKER")
-        except (json.JSONDecodeError, OSError):
+        except (ArtifactError, json.JSONDecodeError):
             pass
 
     blocker_fixed = 0
@@ -608,10 +616,10 @@ def determine_review_status(workdir: Path) -> str:
     lw_path = workdir / ARTIFACT_LIGHTWEIGHT_REVIEW
     if lw_path.exists():
         try:
-            lw = json.loads(lw_path.read_text(encoding="utf-8"))
+            lw = read_json(lw_path)
             if not lw.get("all_blockers_fixed", False):
                 return "degraded"
-        except (json.JSONDecodeError, OSError):
+        except (ArtifactError, json.JSONDecodeError):
             return "degraded"
 
     return "passed"
@@ -636,16 +644,55 @@ def _check_review_report_exists(workdir: Path) -> CheckResult:
     return CheckResult("review_report_exists", "BLOCKER", True)
 
 
+def _re_merge_after_fix(workdir: Path) -> None:
+    analysis_path = workdir / ARTIFACT_ANALYSIS
+    if analysis_path.exists():
+        try:
+            analysis_path.unlink()
+        except OSError:
+            pass
+    scope = {}
+    try:
+        scope = read_json(workdir / ARTIFACT_SCOPE)
+    except (ArtifactError, OSError):
+        pass
+    _merge_section_files(
+        workdir,
+        topic=scope.get("topic", ""),
+        goal_type=scope.get("goal_type", "other"),
+    )
+    collected_urls: set[str] | None = None
+    try:
+        collected = read_json(workdir / ARTIFACT_COLLECTED)
+        if isinstance(collected, list):
+            collected_urls = build_collected_url_set(collected)
+    except (ArtifactError, OSError):
+        pass
+    try:
+        analysis = read_json(workdir / ARTIFACT_ANALYSIS)
+        if isinstance(analysis, dict):
+            analysis = _sanitize_sections(analysis, collected_urls=collected_urls)
+            write_json(analysis, workdir / ARTIFACT_ANALYSIS)
+    except (ArtifactError, OSError):
+        pass
+
+
 def _gate_review(workdir: Path, to_phase: str = "review") -> list[str]:
     """Review gate: blocks on BLOCKER-level failures.
 
-    - analysis→review / review→review: just passes through. Review is an
-      agent-level concern (SKILL.md instructs the agent to auto-start a
-      review subagent). Gateway checks are not re-run on self-loops.
+    - analysis→review: passes through. Review is an agent-level concern.
+    - review→review (self-loop): requires review_report.md to exist (ADR 0056).
     - review→final: runs advisory gateway checks + BLOCKER on missing
-      review_report.md + repair loop status check (ADR 0055).
+      review_report.md + repair loop re-merge + status check (ADR 0055, ADR 0056).
     """
     errors: list[str] = []
+    if to_phase == "review":
+        current = detect_current_phase(workdir)
+        if current == "post_review":
+            rr_path = workdir / ARTIFACT_REVIEW_REPORT
+            if not rr_path.exists():
+                errors.append("[BLOCKER] review_report.md does not exist — no previous review found (self-loop guard)")
+        return errors
     if to_phase == "final":
         gateway_results = run_gateway(workdir, _get_goal_type(workdir))
         for r in gateway_results:
@@ -664,6 +711,8 @@ def _gate_review(workdir: Path, to_phase: str = "review") -> list[str]:
 
         fix_summary = check_fix_report(workdir)
         if fix_summary is not None:
+            if fix_summary["blocker_fixed"] > 0:
+                _re_merge_after_fix(workdir)
             if fix_summary["blocker_skipped"] > 0:
                 errors.append(
                     f"[BLOCKER] repair_loop: {fix_summary['blocker_skipped']} BLOCKER issue(s) not fixed — "
@@ -678,10 +727,14 @@ def _gate_review(workdir: Path, to_phase: str = "review") -> list[str]:
     return errors
 
 
-def _gate_final(workdir: Path) -> list[str]:
+def check_report(workdir: Path) -> list[str]:
+    """Run report checks on the generated report file (ADR 0056).
+
+    Called by cmd_report as a post-generation step. No longer a pipeline gate.
+    """
     report_path = _find_report_path(workdir)
     if report_path is None:
-        return ["No report file found in output directory for 3d verification"]
+        return ["No report file found in output directory"]
     report_results = run_report_checks(report_path)
     blockers = [r for r in report_results if r.level == "BLOCKER" and not r.passed]
     errors: list[str] = []
@@ -714,7 +767,6 @@ def proceeds(
         "search": lambda: _gate_search(workdir, config),
         "analysis": lambda: _gate_analysis(workdir),
         "review": lambda: _gate_review(workdir, to_phase),
-        "final": lambda: _gate_final(workdir),
     }.get(from_phase)
 
     # Retry limits (SKILL.md-level instruction, not auto-loop):

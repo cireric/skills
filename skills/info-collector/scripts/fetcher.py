@@ -62,9 +62,27 @@ def _fetch_requests(url: str) -> str | None:
         from markdownify import markdownify as md
         resp = requests.get(url, timeout=30, headers={"User-Agent": "InfoCollector/1.0"})
         resp.raise_for_status()
-        return md(resp.text)
+        text = _repair_encoding(resp)
+        return md(text)
     except Exception:
         return None
+
+
+def _repair_encoding(resp) -> str:
+    text = resp.text
+    try:
+        resp.content.decode("utf-8")
+        return text
+    except UnicodeDecodeError:
+        pass
+    try:
+        from charset_normalizer import from_bytes
+        result = from_bytes(resp.content).best()
+        if result:
+            return resp.content.decode(result.encoding, errors="replace")
+    except Exception:
+        pass
+    return text
 
 
 _AUTONOMOUS_TOOL_MAP = {

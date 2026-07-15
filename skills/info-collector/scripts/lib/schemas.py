@@ -21,6 +21,7 @@ from .constants import (
     _VALID_GOAL_TYPES,
     _VALID_METRIC_TYPES,
     _VALID_PRECISION,
+    _VALID_SOURCE_TYPES,
     _VALID_SOURCE_VERIFICATIONS,
 )
 from .exceptions import ValidationError
@@ -231,6 +232,10 @@ def _validate_claims(sec_idx: int, claims: list, errors: list[ValidationError]) 
             errors.append(_err(f"{prefix}.metric_type", f"invalid metric_type '{claim['metric_type']}'"))
         if "source_verification" in claim and claim["source_verification"] not in _VALID_SOURCE_VERIFICATIONS:
             errors.append(_err(f"{prefix}.source_verification", f"invalid source_verification '{claim['source_verification']}'"))
+        if "source_metadata" in claim and isinstance(claim["source_metadata"], dict):
+            st = claim["source_metadata"].get("source_type")
+            if st is not None and st not in _VALID_SOURCE_TYPES:
+                errors.append(_err(f"{prefix}.source_metadata.source_type", f"invalid source_type '{st}'"))
 
 
 def _validate_key_insights(sec_idx: int, insights: list, errors: list[ValidationError]) -> None:

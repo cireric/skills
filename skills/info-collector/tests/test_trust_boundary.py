@@ -68,6 +68,11 @@ class TestStructuralValidation:
         assert result.passed is False
         assert result.errors[0].error == "invalid_json"
 
+    def test_bom_stripped_before_parse(self):
+        raw = '\ufeff' + _valid_section_json()
+        result = validate_section_output(raw, _collected_urls())
+        assert result.passed is True
+
     def test_missing_required_field_id(self):
         data = json.loads(_valid_section_json())
         del data["id"]

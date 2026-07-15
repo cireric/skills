@@ -62,6 +62,7 @@ _EVIDENCE_TYPE_ALIASES = {
     "article": "third_party_estimate",
     "opinion": "expert_opinion",
     "commentary": "expert_opinion",
+    "independent_test": "independent_benchmark",
 }
 
 _VALID_CONFIDENCE = frozenset({"high", "medium", "low"})
@@ -78,6 +79,19 @@ _INDIRECT_CITATION_PATTERNS = (
     re.compile(r"\S+\s*(报告|预测|发现|统计|调查|研究|分析)\s*(显示|指出|表明|称)"),
     re.compile(r"(according to|based on|cited in|reported by)\s+\S+", re.IGNORECASE),
 )
+_VALID_SOURCE_TYPES = frozenset({
+    "official_report", "independent_test", "production_case",
+    "survey", "vendor_benchmark", "analyst_forecast",
+    "vendor_survey", "vendor_blog",
+})
+
+_SOURCE_TYPE_ALIASES = {
+    "independent_benchmark": "independent_test",
+    "benchmark": "independent_test",
+    "official": "official_report",
+    "production": "production_case",
+}
+
 _VENDOR_SOURCE_TYPES = frozenset({
     "analyst_forecast", "vendor_benchmark", "vendor_survey", "vendor_blog",
 })

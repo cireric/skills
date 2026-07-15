@@ -552,3 +552,64 @@ class TestCmdFetch:
             cmd_fetch(args)
         MockFetcher.return_value.fetch.assert_called_once()
         assert MockFetcher.return_value.fetch.call_args[1]["tier"] == 1
+
+
+class TestCmdReportPostChecks:
+    def test_report_with_blocker_not_saved(self, tmp_path):
+        from scripts.report_checks import CheckResult
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        _write_json(
+            workdir / "scope.json",
+            {"topic": "Test", "goal_type": "tech_selection", "depth": "standard", "audience": "engineer", "scope_description": "Test", "search_directions": ["AI"]},
+        )
+        _write_json(
+            workdir / "collected.json",
+            [{"url": "https://a.com", "title": "AI", "snippet": "About AI"}],
+        )
+        _write_json(
+            workdir / "analysis.json",
+            {"topic": "Test", "goal_type": "tech_selection", "sections": [
+                {"id": "overview", "title": "O", "content": "C", "claims": [{"summary": "T", "sources": ["https://a.com"]}]},
+                {"id": "comparison", "title": "Cmp", "content": "C", "claims": [{"summary": "T", "sources": ["https://a.com"]}]},
+                {"id": "recommendation", "title": "Rec", "content": "C", "claims": [{"summary": "T", "sources": ["https://a.com"]}]},
+                {"id": "methodology", "title": "M", "content": "M", "claims": []},
+            ]},
+        )
+        output_dir = tmp_path / "reports"
+        with patch("scripts.report_checks.run_report_checks", return_value=[
+            CheckResult("report_dangling_refs", "BLOCKER", False, "Dangling ref found"),
+        ]):
+            with patch("sys.exit") as mock_exit:
+                cmd_report(_make_namespace(review_status="passed", search_rounds=1, source_count=1, output=str(output_dir), _workdir=workdir))
+            mock_exit.assert_called_with(1)
+        report_files = list(output_dir.glob("*.md"))
+        assert len(report_files) == 0
+
+    def test_report_with_no_blockers_saved(self, tmp_path):
+        from scripts.report_checks import CheckResult
+        workdir = tmp_path / ".workdir"
+        workdir.mkdir()
+        _write_json(
+            workdir / "scope.json",
+            {"topic": "Test", "goal_type": "tech_selection", "depth": "standard", "audience": "engineer", "scope_description": "Test", "search_directions": ["AI"]},
+        )
+        _write_json(
+            workdir / "collected.json",
+            [{"url": "https://a.com", "title": "AI", "snippet": "About AI"}],
+        )
+        _write_json(
+            workdir / "analysis.json",
+            {"topic": "Test", "goal_type": "tech_selection", "sections": [
+                {"id": "overview", "title": "O", "content": "C", "claims": [{"summary": "T", "sources": ["https://a.com"]}]},
+                {"id": "comparison", "title": "Cmp", "content": "C", "claims": [{"summary": "T", "sources": ["https://a.com"]}]},
+                {"id": "recommendation", "title": "Rec", "content": "C", "claims": [{"summary": "T", "sources": ["https://a.com"]}]},
+                {"id": "methodology", "title": "M", "content": "M", "claims": []},
+            ]},
+        )
+        output_dir = tmp_path / "reports"
+        with patch("scripts.report_checks.run_report_checks", return_value=[]):
+            with patch("sys.exit"):
+                cmd_report(_make_namespace(review_status="passed", search_rounds=1, source_count=1, output=str(output_dir), _workdir=workdir))
+        report_files = list(output_dir.glob("*.md"))
+        assert len(report_files) >= 1

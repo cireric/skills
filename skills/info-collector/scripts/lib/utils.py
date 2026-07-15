@@ -31,7 +31,7 @@ def compute_url_hash(url: str) -> str:
 def read_json(path: Path, retries: int = 2, delay: float = 0.5) -> Any:
     for attempt in range(retries + 1):
         try:
-            with open(path, encoding="utf-8") as f:
+            with open(path, encoding="utf-8-sig") as f:
                 return json.load(f)
         except json.JSONDecodeError as e:
             raise ArtifactError(str(path), f"Invalid JSON: {e}") from e

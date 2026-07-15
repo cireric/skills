@@ -198,3 +198,68 @@ class TestGateReviewRepairLoop:
         assert errors == []
         captured = capsys.readouterr()
         assert "WARN" in captured.err
+
+
+class TestGateReviewReMergeAfterFix:
+    def test_re_merge_triggered_when_blockers_fixed(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: [])
+        monkeypatch.setattr("scripts.proceed._get_goal_type", lambda w: "exploratory")
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+
+        section_data = {"id": "s1", "title": "S1", "content": "Fixed content",
+                        "claims": [{"summary": "c1", "sources": ["https://a.com"], "evidence_type": "official_data", "confidence": "high", "precision": "exact"}]}
+        _write_json(tmp_path / "analysis_section_01.json", section_data)
+
+        old_analysis = {"topic": "T", "goal_type": "exploratory", "sections": [{"id": "s1", "title": "S1", "content": "OLD content", "claims": []}], "_merge_completed": True}
+        _write_json(tmp_path / "analysis.json", old_analysis)
+        _write_json(tmp_path / "scope.json", {"topic": "T", "goal_type": "exploratory"})
+        _write_json(tmp_path / "collected.json", [{"url": "https://a.com", "title": "A", "snippet": "s"}])
+
+        _write_json(tmp_path / "fix_report.json", [{"issue_id": 1, "status": "fixed"}])
+        _write_json(tmp_path / "fix_list.json", [{"issue_id": 1, "severity": "BLOCKER"}])
+        _write_json(tmp_path / "lightweight_review_result.json", {"all_blockers_fixed": True, "remaining_blockers": []})
+
+        from scripts.proceed import _gate_review
+        errors = _gate_review(tmp_path, to_phase="final")
+        assert errors == []
+
+        from scripts.lib.utils import read_json
+        merged = read_json(tmp_path / "analysis.json")
+        assert merged["sections"][0]["content"] == "Fixed content"
+
+    def test_no_re_merge_when_no_fix_report(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: [])
+        monkeypatch.setattr("scripts.proceed._get_goal_type", lambda w: "exploratory")
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+
+        old_analysis = {"topic": "T", "goal_type": "exploratory", "sections": [{"id": "s1", "title": "S1", "content": "OLD content"}], "_merge_completed": True}
+        _write_json(tmp_path / "analysis.json", old_analysis)
+
+        from scripts.proceed import _gate_review
+        errors = _gate_review(tmp_path, to_phase="final")
+        assert errors == []
+
+        from scripts.lib.utils import read_json
+        analysis = read_json(tmp_path / "analysis.json")
+        assert analysis["sections"][0]["content"] == "OLD content"
+
+
+class TestGateReviewSelfLoop:
+    def test_self_loop_blocks_without_review_report(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: [])
+        monkeypatch.setattr("scripts.proceed._get_goal_type", lambda w: "exploratory")
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+
+        from scripts.proceed import _gate_review
+        errors = _gate_review(tmp_path, to_phase="review")
+        assert any("review_report" in e.lower() for e in errors)
+
+    def test_self_loop_passes_with_review_report(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: [])
+        monkeypatch.setattr("scripts.proceed._get_goal_type", lambda w: "exploratory")
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass_with_issues**\n", encoding="utf-8")
+
+        from scripts.proceed import _gate_review
+        errors = _gate_review(tmp_path, to_phase="review")
+        assert errors == []

@@ -62,4 +62,8 @@ review 子代理同时输出：
 
 review 修复自动化，degraded 可升级为 passed。修复子代理调用增加 1-2 次 + 轻量 review 1-2 次，但总修复时间减少。软依赖 ADR 0053 + ADR 0054——不实施也能工作，但 section 结构损坏和 URL 不匹配会增加修复轮次消耗。不取代任何旧 ADR。
 
+### Amendment (ADR-0056)
+
+repair loop 修复 section 文件后，`_gate_review(to_phase="final")` 自动重合并 section 文件到 analysis.json（删除旧 analysis.json → 重新 `_merge_section_files` + `_sanitize_sections`）。原 ADR 0054 的"合并只执行一次"规则被 ADR-0056 取代为新规则：合并只在显式触发条件下执行（首次由 `_gate_analysis` 触发，修复后由 `_gate_review` 触发）。
+
 Status: accepted

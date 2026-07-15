@@ -242,3 +242,35 @@ class TestPlaywrightConfig:
                 result = fetcher.fetch("https://medium.com/@user/article", tier=3, no_playwright=True)
         mock_pw.assert_not_called()
         assert result.fetch_failed is True
+
+
+class TestFetchRequestsEncodingRepair:
+    def test_gbk_content_redecoded(self):
+        from scripts.fetcher import _fetch_requests
+        gbk_bytes = "深度学习在自然语言处理中的应用".encode("gbk")
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.text = gbk_bytes.decode("latin-1")
+        mock_resp.content = gbk_bytes
+        mock_resp.encoding = "latin-1"
+        with patch("requests.get", return_value=mock_resp):
+            with patch("markdownify.markdownify", side_effect=lambda x, **kw: x):
+                result = _fetch_requests("https://36kr.com/p/test")
+        assert result is not None
+        assert "深度学习" in result
+
+    def test_utf8_content_unchanged(self):
+        from scripts.fetcher import _fetch_requests
+        utf8_bytes = "深度学习在自然语言处理中的应用".encode("utf-8")
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.text = utf8_bytes.decode("utf-8")
+        mock_resp.content = utf8_bytes
+        mock_resp.encoding = "utf-8"
+        with patch("requests.get", return_value=mock_resp):
+            with patch("markdownify.markdownify", side_effect=lambda x, **kw: x):
+                result = _fetch_requests("https://example.com/paper")
+        assert result is not None
+        assert "深度学习" in result

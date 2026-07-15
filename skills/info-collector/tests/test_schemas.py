@@ -511,3 +511,35 @@ class TestValidateCollectedVendorAffiliationNull:
         data = [{"url": "https://example.com", "title": "Test", "snippet": "s", "vendor_affiliation": "Anthropic"}]
         errors = validate_collected(data)
         assert not any("vendor_affiliation" in e.field for e in errors)
+
+
+class TestValidateAnalysisSourceType:
+    def test_valid_source_type(self):
+        for st in ("official_report", "independent_test", "production_case",
+                    "survey", "vendor_benchmark", "analyst_forecast",
+                    "vendor_survey", "vendor_blog"):
+            claim = {"summary": "T", "sources": ["https://a.com"],
+                     "source_metadata": {"source_type": st}}
+            errors = validate_analysis({"topic": "T", "goal_type": "other",
+                                        "sections": [{"id": "s1", "title": "S", "content": "C", "claims": [claim]}]})
+            assert not any("source_type" in e.field for e in errors), f"source_type={st} should be valid"
+
+    def test_invalid_source_type(self):
+        claim = {"summary": "T", "sources": ["https://a.com"],
+                 "source_metadata": {"source_type": "random_value"}}
+        errors = validate_analysis({"topic": "T", "goal_type": "other",
+                                    "sections": [{"id": "s1", "title": "S", "content": "C", "claims": [claim]}]})
+        assert any("source_type" in e.field and "invalid" in e.message for e in errors)
+
+    def test_source_type_optional(self):
+        claim = {"summary": "T", "sources": ["https://a.com"],
+                 "source_metadata": {"test_conditions": "N/A"}}
+        errors = validate_analysis({"topic": "T", "goal_type": "other",
+                                    "sections": [{"id": "s1", "title": "S", "content": "C", "claims": [claim]}]})
+        assert not any("source_type" in e.field for e in errors)
+
+    def test_source_metadata_optional(self):
+        claim = {"summary": "T", "sources": ["https://a.com"]}
+        errors = validate_analysis({"topic": "T", "goal_type": "other",
+                                    "sections": [{"id": "s1", "title": "S", "content": "C", "claims": [claim]}]})
+        assert not any("source_metadata" in e.field for e in errors)

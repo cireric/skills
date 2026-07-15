@@ -61,7 +61,7 @@ def validate_section_output(
     errors: list[ValidationError] = []
 
     try:
-        data = json.loads(raw_json)
+        data = json.loads(raw_json.lstrip('\ufeff'))
     except json.JSONDecodeError as e:
         return ValidationResult(
             passed=False,

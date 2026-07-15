@@ -53,15 +53,15 @@ Language for the final report output (e.g., "zh", "en"). Stored in scope.json, f
 _Avoid_: output language
 
 **gate phase responsibility**:
-Each pipeline gate checks only its own phase's concerns. `_gate_analysis` (analysis→review) checks analysis-phase BLOCKERs only (including `ref_marker_validity`, `claim_source_ref_coverage`, `entity_number_conflict`), plus `source_verification_check` (INFO level, never BLOCKER) which writes back `source_verification` and `verified` on claims deterministically. `_gate_review` (review→review, review→final) runs advisory gateway checks and blocks on `review_report_exists` BLOCKER (review is mandatory, ADR 0028). `_gate_final` (final gate, at review→final) runs report checks; only BLOCKER-level failures block, WARN are advisory. See ADR 0025, ADR 0027, ADR 0028.
+Each pipeline gate checks only its own phase's concerns. `_gate_analysis` (analysis→review) checks analysis-phase BLOCKERs only (including `ref_marker_validity`, `claim_source_ref_coverage`, `entity_number_conflict`), plus `source_verification_check` (INFO level, never BLOCKER) which writes back `source_verification` and `verified` on claims deterministically. `_gate_review` (review→review self-loop: requires `review_report.md` to exist; review→final: runs advisory gateway checks + repair loop re-merge + blocks on `review_report_exists` BLOCKER + repair loop status). Report checks run as CLI post-step in `cmd_report`, not as a pipeline gate (ADR 0056). See ADR 0025, ADR 0027, ADR 0028, ADR 0056.
 _Avoid_: gate scope, gate coverage, per-gate filtering
 
 **report_checks**:
-The deep module that validates the final report file. Interface: `run_report_checks(report_path) → list[CheckResult]`. Owns 10 checks: 3 BLOCKER (dangling refs F1, orphaned defs F2, front matter 9) + 7 WARN (refs visibility, table delimiters, heading levels, duplicate headings, unclosed code blocks, empty sections, overlong lines). See ADR 0026.
+The deep module that validates the final report file. Interface: `run_report_checks(report_path) → list[CheckResult]`. Owns 10 checks: 3 BLOCKER (dangling refs F1, orphaned defs F2, front matter 9) + 7 WARN (refs visibility, table delimiters, heading levels, duplicate headings, unclosed code blocks, empty sections, overlong lines). Called by `cmd_report` as a post-generation step; BLOCKER-level failures prevent report from being saved (ADR 0056). See ADR 0026.
 _Avoid_: report gateway, report validator, final gate checks
 
 **BLOCKER report checks**:
-The 3 report-level checks that block the review→final (final gate) transition: `report_dangling_refs` (in-text citation with no source definition), `report_orphaned_defs` (source definition with no in-text citation), `report_front_matter` (missing or malformed YAML front matter). Upgraded from WARN in ADR 0026.
+The 3 report-level checks that block report saving in `cmd_report`: `report_dangling_refs` (in-text citation with no source definition), `report_orphaned_defs` (source definition with no in-text citation), `report_front_matter` (missing or malformed YAML front matter). Upgraded from WARN in ADR 0026.
 _Avoid_: hard report checks, mandatory report checks
 
 **review_report_exists**:
@@ -109,11 +109,11 @@ The standard for genuine synthesis: causal direction must be explicitly stated (
 _Avoid_: synthesis rule, causation requirement
 
 **source_metadata**:
-Metadata about a claim's source testing conditions: test_conditions (hardware, OS, runtime), test_date, source_type (vendor_benchmark, independent_test, production_case, survey). Rendered as a structured table in the report.
+Metadata about a claim's source testing conditions: test_conditions (hardware, OS, runtime), test_date, source_type (official_report, independent_test, production_case, survey, vendor_benchmark, analyst_forecast, vendor_survey, vendor_blog). Rendered as a structured table in the report.
 _Avoid_: test metadata, benchmark metadata
 
 **source_type**:
-Field inside a claim's `source_metadata` describing **benchmark/test provenance**, NOT the authority of the publishing venue. Five valid values: official_report, independent_test, production_case, survey, vendor_benchmark. `vendor_benchmark` means the number was produced by the vendor's own benchmark (inherently suspect). The verifier only flips a `vendor_benchmark` + `exact`/`range` claim to indirect when the source venue is itself non-authoritative (tier ≥ 3); an authoritative venue (tier ≤ 2, e.g. an arXiv paper) mislabeled as `vendor_benchmark` is NOT flipped.
+Field inside a claim's `source_metadata` describing **benchmark/test provenance**, NOT the authority of the publishing venue. Eight valid values: official_report, independent_test, production_case, survey, vendor_benchmark, analyst_forecast, vendor_survey, vendor_blog. `vendor_benchmark` means the number was produced by the vendor's own benchmark (inherently suspect). The verifier only flips a `vendor_benchmark` + `exact`/`range` claim to indirect when the source venue is itself non-authoritative (tier ≥ 3); an authoritative venue (tier ≤ 2, e.g. an arXiv paper) mislabeled as `vendor_benchmark` is NOT flipped. Invalid values are auto-fixed via `_SOURCE_TYPE_ALIASES` (e.g. `independent_benchmark` → `independent_test`) or downgraded to `survey` (ADR 0058).
 _Avoid_: conflating source_type with venue authority; tagging academic papers as vendor_benchmark
 
 **single_source_ratio**:

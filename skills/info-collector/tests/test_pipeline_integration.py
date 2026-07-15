@@ -7,7 +7,7 @@ from scripts.artifact_checks import CheckResult
 from scripts.lib.utils import compute_url_hash
 from scripts.proceed import (
     _check_review_report_exists,
-    _gate_final,
+    check_report,
     detect_current_phase,
     proceeds,
     write_phase_state,
@@ -159,7 +159,7 @@ class TestTechSelectionHappyPath:
         report_path = _write_report_to_reports_dir(workdir, report)
         monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
 
-        errors = _gate_final(workdir)
+        errors = check_report(workdir)
         assert errors == [], f"report BLOCKERs: {errors}"
 
         report_checks = run_report_checks(report_path)
@@ -291,7 +291,7 @@ class TestAcademicResearchChinese:
         report_path = _write_report_to_reports_dir(workdir, report)
         monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
 
-        errors = _gate_final(workdir)
+        errors = check_report(workdir)
         assert errors == [], f"report BLOCKERs: {errors}"
 
 
@@ -402,7 +402,7 @@ class TestMarketAnalysisDegraded:
         report_path = _write_report_to_reports_dir(workdir, report)
         monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
 
-        errors = _gate_final(workdir)
+        errors = check_report(workdir)
         assert errors == [], f"report BLOCKERs: {errors}"
 
 
@@ -502,7 +502,7 @@ class TestFactCheckMinimal:
         report_path = _write_report_to_reports_dir(workdir, report)
         monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
 
-        errors = _gate_final(workdir)
+        errors = check_report(workdir)
         assert errors == [], f"report BLOCKERs: {errors}"
 
         assert "## Claims" in report
@@ -625,7 +625,7 @@ class TestExploratoryDeepDive:
         report_path = _write_report_to_reports_dir(workdir, report)
         monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
 
-        errors = _gate_final(workdir)
+        errors = check_report(workdir)
         assert errors == [], f"report BLOCKERs: {errors}"
 
         assert "**Key Insights:**" in report

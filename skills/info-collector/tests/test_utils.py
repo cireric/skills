@@ -43,6 +43,12 @@ class TestReadWriteJson:
         with pytest.raises(ArtifactError):
             read_json(tmp_path / "nope.json")
 
+    def test_read_json_strips_bom(self, tmp_path):
+        data = {"key": "value"}
+        path = tmp_path / "bom.json"
+        path.write_bytes(b'\xef\xbb\xbf{"key": "value"}')
+        assert read_json(path) == data
+
 
 class TestEnsureDir:
     def test_creates_directory(self, tmp_path):

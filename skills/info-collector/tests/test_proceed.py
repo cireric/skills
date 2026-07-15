@@ -19,7 +19,7 @@ from scripts.proceed import (
     _check_review_report_exists,
     _fill_scope_defaults,
     _gate_analysis,
-    _gate_final,
+    check_report,
     _repair_json_text,
     _read_json_with_repair,
     _sanitize_sections,
@@ -503,6 +503,54 @@ class TestSanitizeSections:
             _sanitize_sections(raw)
         assert "tensions[0]" in str(exc.value)
 
+    def test_source_type_alias_mapped(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [
+                {"id": "s1", "title": "S1", "content": "C",
+                 "claims": [{"summary": "c1", "sources": ["https://a.com"],
+                             "source_metadata": {"source_type": "independent_benchmark"}}]},
+            ],
+        }
+        result = _sanitize_sections(raw)
+        assert result["sections"][0]["claims"][0]["source_metadata"]["source_type"] == "independent_test"
+
+    def test_source_type_invalid_downgraded_to_survey(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [
+                {"id": "s1", "title": "S1", "content": "C",
+                 "claims": [{"summary": "c1", "sources": ["https://a.com"],
+                             "source_metadata": {"source_type": "garbage"}}]},
+            ],
+        }
+        result = _sanitize_sections(raw)
+        assert result["sections"][0]["claims"][0]["source_metadata"]["source_type"] == "survey"
+
+    def test_source_type_valid_unchanged(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [
+                {"id": "s1", "title": "S1", "content": "C",
+                 "claims": [{"summary": "c1", "sources": ["https://a.com"],
+                             "source_metadata": {"source_type": "vendor_benchmark"}}]},
+            ],
+        }
+        result = _sanitize_sections(raw)
+        assert result["sections"][0]["claims"][0]["source_metadata"]["source_type"] == "vendor_benchmark"
+
+    def test_evidence_type_independent_test_alias(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [
+                {"id": "s1", "title": "S1", "content": "C",
+                 "claims": [{"summary": "c1", "sources": ["https://a.com"],
+                             "evidence_type": "independent_test"}]},
+            ],
+        }
+        result = _sanitize_sections(raw)
+        assert result["sections"][0]["claims"][0]["evidence_type"] == "independent_benchmark"
+
 
 class TestRepairJsonText:
     """_repair_json_text escapes unescaped quotes inside JSON string values."""
@@ -692,14 +740,14 @@ class TestReviewSelfLoop:
 
 
 class TestGateFinalOnlyBlocksBlocker:
-    """_gate_final only blocks on BLOCKER-level failures, not WARN."""
+    """check_report only blocks on BLOCKER-level failures, not WARN."""
 
     def test_warn_does_not_block_final(self, tmp_path, monkeypatch):
         report = "---\ntopic: T\ngoal_type: exploratory\ndate: 2026-06-26\nreview_status: draft\n---\n## Overview\nContent with cite [&#91;1&#93;](#refs).\n\n## References\n- [1] [Title](https://a.com)\n"
         report_path = tmp_path / "report.md"
         report_path.write_text(report, encoding="utf-8")
         monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
-        errors = _gate_final(tmp_path)
+        errors = check_report(tmp_path)
         assert errors == [], f"WARN-only failures should not block: {errors}"
 
     def test_blocker_blocks_final(self, tmp_path, monkeypatch):
@@ -708,7 +756,7 @@ class TestGateFinalOnlyBlocksBlocker:
         report_path = tmp_path / "report.md"
         report_path.write_text(report, encoding="utf-8")
         monkeypatch.setattr("scripts.proceed._find_report_path", lambda w: report_path)
-        errors = _gate_final(tmp_path)
+        errors = check_report(tmp_path)
         assert errors, "BLOCKER report checks should block: front matter is missing"
         assert any("report_front_matter" in e for e in errors)
 
@@ -1114,7 +1162,7 @@ class TestReviewReportExistsCheck:
         ok, errors = proceeds(tmp_path, "review", "final")
         assert ok, errors
 
-    def test_review_to_review_does_not_check_review_report(self, tmp_path):
+    def test_review_to_review_checks_review_report_exists(self, tmp_path):
         _write_scope_and_collected(tmp_path)
         _write_json(
             tmp_path / "analysis.json",
@@ -1133,8 +1181,30 @@ class TestReviewReportExistsCheck:
         )
         _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "review")
+        assert not ok
+        assert any("review_report" in e.lower() for e in errors)
+
+    def test_review_to_review_passes_with_review_report(self, tmp_path):
+        _write_scope_and_collected(tmp_path)
+        _write_json(
+            tmp_path / "analysis.json",
+            {
+                "topic": "T",
+                "goal_type": "tech_selection",
+                "sections": [
+                    {
+                        "id": "overview",
+                        "title": "O",
+                        "content": "Content.",
+                        "claims": [{"summary": "C1", "sources": ["https://example.com"]}],
+                    },
+                ],
+            },
+        )
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass_with_issues**\n", encoding="utf-8")
+        _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
+        ok, errors = proceeds(tmp_path, "review", "review")
         assert ok
-        assert not any("review_report_exists" in e for e in errors)
 
 
 class TestEmptyArtifactHandling:
@@ -1367,7 +1437,7 @@ class TestRepairHintsInOutput:
         assert "→ consider fixing" in captured.err
         assert errors == []
 
-    def test_gate_final_includes_repair_hints(self, tmp_path, monkeypatch):
+    def testcheck_report_includes_repair_hints(self, tmp_path, monkeypatch):
         from scripts.artifact_checks import CheckResult
 
         report_path = tmp_path / "report.md"
@@ -1379,8 +1449,8 @@ class TestRepairHintsInOutput:
         ]
         monkeypatch.setattr("scripts.proceed.run_report_checks", lambda p: fake_results)
 
-        from scripts.proceed import _gate_final
-        errors = _gate_final(tmp_path)
+        from scripts.proceed import check_report
+        errors = check_report(tmp_path)
         error_text = "\n".join(errors)
         assert "→ add YAML front matter" in error_text
 
