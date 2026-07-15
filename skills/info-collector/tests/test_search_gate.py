@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from scripts.search_gate import SearchGate
-from scripts.artifact_checks import CheckResult
+from scripts.lib.check_types import CheckResult
 from scripts.lib.utils import compute_url_hash
 
 

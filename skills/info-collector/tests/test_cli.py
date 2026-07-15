@@ -556,7 +556,7 @@ class TestCmdFetch:
 
 class TestCmdReportPostChecks:
     def test_report_with_blocker_not_saved(self, tmp_path):
-        from scripts.report_checks import CheckResult
+        from scripts.lib.check_types import CheckResult
         workdir = tmp_path / ".workdir"
         workdir.mkdir()
         _write_json(
@@ -587,7 +587,7 @@ class TestCmdReportPostChecks:
         assert len(report_files) == 0
 
     def test_report_with_no_blockers_saved(self, tmp_path):
-        from scripts.report_checks import CheckResult
+        from scripts.lib.check_types import CheckResult
         workdir = tmp_path / ".workdir"
         workdir.mkdir()
         _write_json(

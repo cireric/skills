@@ -348,7 +348,7 @@ class TestGetGatewayResults:
         results = get_gateway_results(tmp_path)
         assert isinstance(results, list)
         assert len(results) >= 1
-        from scripts.artifact_checks import CheckResult
+        from scripts.lib.check_types import CheckResult
 
         assert all(isinstance(r, CheckResult) for r in results)
 
@@ -1334,7 +1334,7 @@ class TestRepairHintsInOutput:
     """repair_hints appear in output when gate fails with repair_hints."""
 
     def test_gateway_cmd_prints_repair_hints(self, tmp_path, capsys, monkeypatch):
-        from scripts.artifact_checks import CheckResult
+        from scripts.lib.check_types import CheckResult
 
         fake_results = [
             CheckResult("test_check", "BLOCKER", False, "something broke", repair_hints=["fix A", "fix B"]),
@@ -1354,7 +1354,7 @@ class TestRepairHintsInOutput:
         assert "→ try X" in captured.out
 
     def test_gateway_cmd_no_hints_when_empty(self, tmp_path, capsys, monkeypatch):
-        from scripts.artifact_checks import CheckResult
+        from scripts.lib.check_types import CheckResult
 
         fake_results = [
             CheckResult("test_check", "BLOCKER", False, "something broke"),
@@ -1370,7 +1370,7 @@ class TestRepairHintsInOutput:
         assert "→" not in captured.out
 
     def test_gate_analysis_includes_repair_hints_in_errors(self, tmp_path, monkeypatch):
-        from scripts.artifact_checks import CheckResult
+        from scripts.lib.check_types import CheckResult
 
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://a.com"}])
@@ -1390,7 +1390,7 @@ class TestRepairHintsInOutput:
         assert "→ add missing URLs" in error_text
 
     def test_gate_analysis_no_hints_when_empty(self, tmp_path, monkeypatch):
-        from scripts.artifact_checks import CheckResult
+        from scripts.lib.check_types import CheckResult
 
         _make_scope(tmp_path)
         _write_json(tmp_path / "collected.json", [{"url": "https://a.com"}])
@@ -1407,7 +1407,7 @@ class TestRepairHintsInOutput:
         assert not any("→" in e for e in errors)
 
     def test_gate_search_prints_repair_hints_for_blocker(self, tmp_path, capsys, monkeypatch):
-        from scripts.artifact_checks import CheckResult
+        from scripts.lib.check_types import CheckResult
 
         fake_results = [
             CheckResult("min_sources", "BLOCKER", False, "too few", repair_hints=["add more sources"]),
@@ -1422,7 +1422,7 @@ class TestRepairHintsInOutput:
         assert "→ search broader" in captured.err
 
     def test_gate_review_prints_repair_hints(self, tmp_path, capsys, monkeypatch):
-        from scripts.artifact_checks import CheckResult
+        from scripts.lib.check_types import CheckResult
 
         fake_results = [
             CheckResult("some_check", "WARN", False, "advisory", repair_hints=["consider fixing"]),
@@ -1438,7 +1438,7 @@ class TestRepairHintsInOutput:
         assert errors == []
 
     def testcheck_report_includes_repair_hints(self, tmp_path, monkeypatch):
-        from scripts.artifact_checks import CheckResult
+        from scripts.lib.check_types import CheckResult
 
         report_path = tmp_path / "report.md"
         report_path.write_text("bad report", encoding="utf-8")

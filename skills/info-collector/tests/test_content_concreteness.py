@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from scripts.lib.check_types import CheckResult
 from scripts.artifact_checks import (
     _count_words,
     _has_concrete_name,

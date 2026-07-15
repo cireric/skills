@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.artifact_checks import CheckResult
+from scripts.lib.check_types import CheckResult
 from scripts.report_checks import (
     _extract_cited_nums,
     check_report_dangling_refs,

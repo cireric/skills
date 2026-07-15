@@ -8,8 +8,9 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from .lib.utils import config_path, ensure_dir, read_json, write_json, build_collected_url_set, normalize_url
-from .artifact_checks import CheckResult, run_all as run_gateway
+from .lib.utils import config_path, ensure_dir, read_json, write_json, build_collected_url_set, normalize_url, suggest_similar_urls
+from .lib.check_types import CheckResult
+from .artifact_checks import run_all as run_gateway
 from .report_checks import run_report_checks
 from .search_gate import SearchGate
 from .lib.exceptions import ArtifactError
@@ -276,15 +277,13 @@ def _check_url_consistency(analysis: dict, collected_urls: set[str]) -> list[str
     compares against collected_urls. Returns WARN messages for mismatches
     with "did you mean?" suggestions.
     """
-    from .artifact_checks import _suggest_similar_urls
-
     warnings: list[str] = []
     for sec in analysis.get("sections", []):
         content = sec.get("content", "")
         for url in _REF_MARKER_RE.findall(content):
             norm = normalize_url(url)
             if norm not in collected_urls:
-                suggestions = _suggest_similar_urls(url, collected_urls)
+                suggestions = suggest_similar_urls(url, collected_urls)
                 hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
                 warnings.append(f"[WARN] URL not in collected.json: {url}{hint}")
 
@@ -298,7 +297,7 @@ def _check_url_consistency(analysis: dict, collected_urls: set[str]) -> list[str
                 for url in item.get("sources", []):
                     norm = normalize_url(url)
                     if norm not in collected_urls:
-                        suggestions = _suggest_similar_urls(url, collected_urls)
+                        suggestions = suggest_similar_urls(url, collected_urls)
                         hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
                         warnings.append(f"[WARN] URL not in collected.json: {url}{hint}")
     return warnings

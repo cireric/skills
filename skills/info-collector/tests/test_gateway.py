@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from scripts.lib.check_types import CheckResult
 from scripts.artifact_checks import (
-    CheckResult,
     check_analysis_schema,
     check_artifact_exists,
     check_key_insights_coverage,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.artifact_checks import CheckResult
+from scripts.lib.check_types import CheckResult
 from scripts.lib.utils import compute_url_hash
 from scripts.proceed import (
     _check_review_report_exists,

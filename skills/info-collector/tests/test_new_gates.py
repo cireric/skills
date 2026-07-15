@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 
 from scripts.search_gate import SearchGate
-from scripts.artifact_checks import CheckResult, check_subagent_delegation, check_direction_coverage, check_facet_coverage, check_key_insights_coverage
+from scripts.lib.check_types import CheckResult
+from scripts.artifact_checks import check_subagent_delegation, check_direction_coverage, check_facet_coverage, check_key_insights_coverage
 from scripts.lib.utils import compute_url_hash
 
 

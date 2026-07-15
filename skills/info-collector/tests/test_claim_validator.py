@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.artifact_checks import CheckResult
+from scripts.lib.check_types import CheckResult
 from scripts.claim_validator import ClaimValidator, _normalize_numbers, _number_found_in_source, _is_indirect_source, _source_text
 from scripts.lib.constants import _INDIRECT_CITATION_PATTERNS
 

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .lib.check_types import CheckResult, read_artifact
 from .lib.constants import (
     ARTIFACT_ANALYSIS,
     ARTIFACT_COLLECTED,
@@ -26,28 +26,9 @@ from .lib.constants import (
     single_source_ratio_threshold,
 )
 from .lib.exceptions import ArtifactError
-from .lib.utils import build_collected_by_url, build_collected_url_set, normalize_url, read_json, tokenize_cjk_aware
+from .lib.utils import build_collected_by_url, build_collected_url_set, normalize_url, read_json, suggest_similar_urls, tokenize_cjk_aware
 
 _YEAR_PATTERN = re.compile(r'\b(20[0-9]{2})\b')
-
-def _suggest_similar_urls(url: str, known_urls: set[str], max_suggestions: int = 3) -> list[str]:
-    """Find URLs in known_urls that are prefix-matches or have small edit distance."""
-    norm = normalize_url(url)
-    suggestions = []
-    for known in known_urls:
-        if known.startswith(norm[:40]) or norm.startswith(known[:40]):
-            suggestions.append(known)
-            if len(suggestions) >= max_suggestions:
-                break
-    return suggestions
-
-@dataclass
-class CheckResult:
-    name: str
-    level: str  # "BLOCKER" | "WARN" | "INFO"
-    passed: bool
-    message: str = ""
-    repair_hints: list[str] = field(default_factory=list)
 
 def _read_depth(workdir: Path) -> str:
     """Read the search depth from scope.json, defaulting to 'standard'."""
@@ -58,21 +39,6 @@ def _read_depth(workdir: Path) -> str:
     depth = scope.get("depth")
     return depth if isinstance(depth, str) else "standard"
 
-
-def _read_artifact(path: Path, check_name: str, read_error_level: str = "BLOCKER") -> tuple[dict | None, CheckResult | None]:
-    """Read a JSON artifact, returning (data, None) on success or (None, CheckResult) on failure.
-
-    On ArtifactError:
-      - read_error_level="BLOCKER" → CheckResult(name, "BLOCKER", False, str(e))
-      - read_error_level="WARN"    → CheckResult(name, "WARN", True, f"Cannot read {path.name}")
-    """
-    try:
-        data = read_json(path)
-    except ArtifactError as e:
-        if read_error_level == "BLOCKER":
-            return None, CheckResult(check_name, "BLOCKER", False, str(e))
-        return None, CheckResult(check_name, "WARN", True, f"Cannot read {path.name}")
-    return data, None
 
 def check_artifact_exists(workdir: Path) -> CheckResult:
     missing = []
@@ -89,10 +55,10 @@ def check_artifact_exists(workdir: Path) -> CheckResult:
 
 
 def check_url_traceability(workdir: Path) -> CheckResult:
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "url_traceability")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "url_traceability")
     if err:
         return err
-    collected, err = _read_artifact(workdir / ARTIFACT_COLLECTED, "url_traceability")
+    collected, err = read_artifact(workdir / ARTIFACT_COLLECTED, "url_traceability")
     if err:
         return err
     collected_urls = build_collected_url_set(collected)
@@ -104,7 +70,7 @@ def check_url_traceability(workdir: Path) -> CheckResult:
                 norm = normalize_url(url)
                 if norm not in collected_urls:
                     detail = f"sections.{sec_id}.claims[{ci}]: {url}"
-                    suggestions = _suggest_similar_urls(url, collected_urls)
+                    suggestions = suggest_similar_urls(url, collected_urls)
                     if suggestions:
                         detail += f" (did you mean {suggestions[0]}?)"
                     untraceable.append(detail)
@@ -123,7 +89,7 @@ def check_url_traceability(workdir: Path) -> CheckResult:
 
 
 def check_section_coverage(workdir: Path, goal_type: str) -> CheckResult:
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "section_coverage")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "section_coverage")
     if err:
         return err
     if goal_type in _EXPLORATORY_GOAL_TYPES:
@@ -162,7 +128,7 @@ def check_section_coverage(workdir: Path, goal_type: str) -> CheckResult:
 
 
 def check_analysis_schema(workdir: Path) -> CheckResult:
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "analysis_schema")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "analysis_schema")
     if err:
         return err
     from .lib.schemas import validate_analysis
@@ -184,7 +150,7 @@ def check_analysis_schema(workdir: Path) -> CheckResult:
 
 
 def check_quality_heuristics(workdir: Path) -> CheckResult:
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "quality_heuristics", "WARN")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "quality_heuristics", "WARN")
     if err:
         return err
     single_source_claims = 0
@@ -265,7 +231,7 @@ def _has_concrete_name(text: str) -> bool:
 def check_content_concreteness(workdir: Path, goal_type: str) -> CheckResult:
     if goal_type not in _QUANTITATIVE_GOAL_TYPES:
         return CheckResult("content_concreteness", "WARN", True, "Skipped (non-quantitative goal type)")
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "content_concreteness", "WARN")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "content_concreteness", "WARN")
     if err:
         return err
     vague_issues = []
@@ -300,7 +266,7 @@ def check_methodology_depth(workdir: Path, goal_type: str) -> CheckResult:
     """WARN if methodology section is too short or lacks a Markdown table."""
     if goal_type not in _QUANTITATIVE_GOAL_TYPES:
         return CheckResult("methodology_depth", "WARN", True, "Skipped (non-quantitative goal type)")
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "methodology_depth", "WARN")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "methodology_depth", "WARN")
     if err:
         return err
     methodology = None
@@ -328,7 +294,7 @@ def check_recommendation_structure(workdir: Path, goal_type: str) -> CheckResult
         return CheckResult(
             "recommendation_structure", "WARN", True, "Skipped (non-applicable goal type)"
         )
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "recommendation_structure", "WARN")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "recommendation_structure", "WARN")
     if err:
         return err
     recommendation = None
@@ -358,10 +324,10 @@ def check_source_tier_balance(workdir: Path, goal_type: str) -> CheckResult:
     """WARN if referenced sources have <30% Tier 1+2 sources."""
     if goal_type not in _QUANTITATIVE_GOAL_TYPES:
         return CheckResult("source_tier_balance", "WARN", True, "Skipped (non-quantitative goal type)")
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "source_tier_balance", "WARN")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "source_tier_balance", "WARN")
     if err:
         return err
-    collected, err = _read_artifact(workdir / ARTIFACT_COLLECTED, "source_tier_balance", "WARN")
+    collected, err = read_artifact(workdir / ARTIFACT_COLLECTED, "source_tier_balance", "WARN")
     if err:
         return err
     if not collected:
@@ -401,7 +367,7 @@ def check_source_tier_balance(workdir: Path, goal_type: str) -> CheckResult:
 def check_key_insights_coverage(workdir: Path, goal_type: str) -> CheckResult:
     if goal_type not in _EXPLORATORY_GOAL_TYPES:
         return CheckResult("key_insights_coverage", "WARN", True, "Skipped (non-exploratory goal type)")
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "key_insights_coverage", "WARN")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "key_insights_coverage", "WARN")
     if err:
         return err
     issues = []
@@ -436,7 +402,7 @@ def check_key_insights_coverage(workdir: Path, goal_type: str) -> CheckResult:
 def check_subagent_delegation(workdir: Path) -> CheckResult:
     if not workdir.exists():
         return CheckResult("subagent_delegation", "BLOCKER", True, "Skipped (workdir not found)")
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "subagent_delegation", "WARN")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "subagent_delegation", "WARN")
     if err:
         return err
     sections = analysis.get("sections", [])
@@ -479,7 +445,7 @@ def check_section_deviation(workdir: Path) -> CheckResult:
     merge, or split sections. But extreme deviation may indicate the agent lost
     track of the plan. This is advisory, not blocking.
     """
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "section_deviation", "WARN")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "section_deviation", "WARN")
     if err:
         return err
     plan_ids = {s.get("id", "") for s in analysis.get("sections", []) if s.get("id")}
@@ -519,7 +485,7 @@ def check_table_suggestion(workdir: Path) -> CheckResult:
     Reads analysis.json to count claims per section.
     If a section has ≥4 claims, suggests using tables (ADR 0044).
     """
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "table_suggestion", "WARN")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "table_suggestion", "WARN")
     if err:
         return err
     sections = analysis.get("sections", [])
@@ -548,7 +514,7 @@ def check_direction_coverage(workdir: Path) -> CheckResult:
     source serving that direction. This is the soft anti-gaming backstop;
     the hard coverage floor lives in SearchGate.direction_coverage (BLOCKER).
     """
-    scope, err = _read_artifact(workdir / ARTIFACT_SCOPE, "direction_coverage", "WARN")
+    scope, err = read_artifact(workdir / ARTIFACT_SCOPE, "direction_coverage", "WARN")
     if err:
         return err
     directions = scope.get("search_directions")
@@ -575,7 +541,7 @@ def check_direction_coverage(workdir: Path) -> CheckResult:
     declared_with_sources = [d for d in norm_dirs if d in dir_urls]
     if not declared_with_sources:
         return CheckResult("direction_coverage", "WARN", True, "No collected sources tagged to declared directions, check skipped")
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "direction_coverage", "WARN")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "direction_coverage", "WARN")
     if err:
         return err
     covered: set[str] = set()
@@ -624,7 +590,7 @@ def check_facet_coverage(workdir: Path) -> CheckResult:
     """WARN safety net (ADR 0050): goal_type-aware facet coverage derived from
     source tiers + claim content. Does not block (it is the system safety net,
     orthogonal to the user-declared direction contract in ADR 0052)."""
-    scope, err = _read_artifact(workdir / ARTIFACT_SCOPE, "facet_coverage", "WARN")
+    scope, err = read_artifact(workdir / ARTIFACT_SCOPE, "facet_coverage", "WARN")
     if err:
         return err
     goal_type = scope.get("goal_type", "other")
@@ -651,7 +617,7 @@ def check_facet_coverage(workdir: Path) -> CheckResult:
     has_t12 = bool(tier_entries.get(1) or tier_entries.get(2))
     has_t3 = bool(tier_entries.get(3))
     has_t4 = bool(tier_entries.get(4))
-    analysis, err = _read_artifact(workdir / ARTIFACT_ANALYSIS, "facet_coverage", "WARN")
+    analysis, err = read_artifact(workdir / ARTIFACT_ANALYSIS, "facet_coverage", "WARN")
     if err:
         return err
     limitation_claims = 0

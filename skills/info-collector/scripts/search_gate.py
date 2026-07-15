@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .artifact_checks import CheckResult
+from .lib.check_types import CheckResult
 from .lib.constants import (
     ARTIFACT_COLLECTED,
     ARTIFACT_SCOPE,

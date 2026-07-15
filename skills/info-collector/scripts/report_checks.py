@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .artifact_checks import CheckResult
+from .lib.check_types import CheckResult
 from .lib.constants import _OVERLONG_LINE_THRESHOLD
 
 

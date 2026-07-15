@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .artifact_checks import CheckResult, _read_artifact
+from .lib.check_types import CheckResult, read_artifact
 from .lib.constants import (
     ARTIFACT_ANALYSIS,
     ARTIFACT_COLLECTED,
@@ -214,7 +214,7 @@ class ClaimValidator:
         self._load_data()
 
     def _load_data(self) -> None:
-        analysis, err = _read_artifact(
+        analysis, err = read_artifact(
             self._workdir / ARTIFACT_ANALYSIS, "claim_validator", "WARN"
         )
         if err:

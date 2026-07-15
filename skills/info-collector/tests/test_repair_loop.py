@@ -130,7 +130,7 @@ class TestDetermineReviewStatus:
 
 class TestGateReviewRepairLoop:
     def test_blocker_skipped_blocks_final(self, tmp_path, monkeypatch):
-        from scripts.artifact_checks import CheckResult
+        from scripts.lib.check_types import CheckResult
 
         monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: [])
         monkeypatch.setattr("scripts.proceed._get_goal_type", lambda w: "exploratory")
@@ -147,7 +147,7 @@ class TestGateReviewRepairLoop:
         assert any("repair_loop" in e and "BLOCKER" in e for e in errors)
 
     def test_all_fixed_passes_final(self, tmp_path, monkeypatch):
-        from scripts.artifact_checks import CheckResult
+        from scripts.lib.check_types import CheckResult
 
         monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: [])
         monkeypatch.setattr("scripts.proceed._get_goal_type", lambda w: "exploratory")
