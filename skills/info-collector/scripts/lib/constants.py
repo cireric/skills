@@ -92,6 +92,14 @@ _SOURCE_TYPE_ALIASES = {
     "production": "production_case",
 }
 
+_SECTION_KEYS = frozenset({"id", "title", "content", "claims", "depth_strategy", "key_insights", "tensions", "order"})
+
+_CLAIM_KEYS = frozenset({
+    "summary", "sources", "evidence_type", "confidence",
+    "precision", "metric_type", "source_metadata", "verified",
+    "source_verification",
+})
+
 _VENDOR_SOURCE_TYPES = frozenset({
     "analyst_forecast", "vendor_benchmark", "vendor_survey", "vendor_blog",
 })

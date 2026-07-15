@@ -22,12 +22,12 @@ from scripts.proceed import (
     check_report,
     _repair_json_text,
     _read_json_with_repair,
-    _sanitize_sections,
     write_phase_state,
     detect_current_phase,
     get_gateway_results,
     proceeds,
 )
+from scripts.sanitizer import sanitize_sections
 
 
 def _write_scope_and_collected(workdir):
@@ -383,11 +383,11 @@ class TestGetGatewayResults:
 
 
 class TestSanitizeSections:
-    """_sanitize_sections cleans subagent output before schema validation."""
+    """sanitize_sections cleans subagent output before schema validation."""
 
     def test_section_id_mapped_to_id(self):
         raw = {"topic": "T", "goal_type": "exploratory", "sections": [{"section_id": "s1", "title": "S1", "content": "C"}]}
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         assert "section_id" not in result["sections"][0]
         assert result["sections"][0]["id"] == "s1"
 
@@ -396,7 +396,7 @@ class TestSanitizeSections:
             "topic": "T", "goal_type": "exploratory",
             "sections": [{"id": "s1", "title": "S1", "content": "C", "claims": [{"summary": "claim1", "source_urls": ["https://a.com"]}]}],
         }
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         claim = result["sections"][0]["claims"][0]
         assert "source_urls" not in claim
         assert claim["sources"] == ["https://a.com"]
@@ -406,7 +406,7 @@ class TestSanitizeSections:
             "topic": "T", "goal_type": "exploratory",
             "sections": [{"id": "s1", "title": "S1", "content": "C", "word_count": 500, "language": "en"}],
         }
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         assert "word_count" not in result["sections"][0]
         assert "language" not in result["sections"][0]
 
@@ -415,7 +415,7 @@ class TestSanitizeSections:
             "topic": "T", "goal_type": "exploratory",
             "sections": [{"id": "s1", "title": "S1", "content": "C", "claims": [{"summary": "c1", "sources": ["https://a.com"], "relevance_score": 0.9}]}],
         }
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         assert "relevance_score" not in result["sections"][0]["claims"][0]
 
     def test_missing_claims_defaults_to_empty_list(self):
@@ -423,7 +423,7 @@ class TestSanitizeSections:
             "topic": "T", "goal_type": "exploratory",
             "sections": [{"id": "s1", "title": "S1", "content": "C"}],
         }
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         assert result["sections"][0]["claims"] == []
 
     def test_valid_input_passes_through_unchanged(self):
@@ -436,7 +436,7 @@ class TestSanitizeSections:
                 },
             ],
         }
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         assert result == raw
 
     def test_input_not_mutated(self):
@@ -444,13 +444,13 @@ class TestSanitizeSections:
             "topic": "T", "goal_type": "exploratory",
             "sections": [{"section_id": "s1", "title": "S1", "content": "C", "word_count": 500}],
         }
-        _sanitize_sections(original)
+        sanitize_sections(original)
         assert "section_id" in original["sections"][0]
         assert "word_count" in original["sections"][0]
 
     def test_top_level_keys_preserved(self):
         raw = {"topic": "T", "goal_type": "exploratory", "custom_key": "keep", "sections": []}
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         assert result["topic"] == "T"
         assert result["goal_type"] == "exploratory"
         assert result["custom_key"] == "keep"
@@ -466,7 +466,7 @@ class TestSanitizeSections:
                  ]},
             ],
         }
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         claims = result["sections"][0]["claims"]
         assert claims[0]["evidence_type"] == "third_party_estimate"
         assert claims[1]["evidence_type"] == "expert_opinion"
@@ -479,7 +479,7 @@ class TestSanitizeSections:
                  "claims": [{"summary": "c1", "sources": ["https://a.com"], "evidence_type": "mystery"}]},
             ],
         }
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         assert result["sections"][0]["claims"][0]["evidence_type"] == "qualitative_trend"
 
     def test_key_insights_string_array_raises(self):
@@ -489,7 +489,7 @@ class TestSanitizeSections:
                           "key_insights": ["just a string"]}],
         }
         with pytest.raises(ValueError) as exc:
-            _sanitize_sections(raw)
+            sanitize_sections(raw)
         assert "key_insights[0]" in str(exc.value)
         assert "summary" in str(exc.value)
 
@@ -500,7 +500,7 @@ class TestSanitizeSections:
                           "tensions": ["disagreement as string"]}],
         }
         with pytest.raises(ValueError) as exc:
-            _sanitize_sections(raw)
+            sanitize_sections(raw)
         assert "tensions[0]" in str(exc.value)
 
     def test_source_type_alias_mapped(self):
@@ -512,7 +512,7 @@ class TestSanitizeSections:
                              "source_metadata": {"source_type": "independent_benchmark"}}]},
             ],
         }
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         assert result["sections"][0]["claims"][0]["source_metadata"]["source_type"] == "independent_test"
 
     def test_source_type_invalid_downgraded_to_survey(self):
@@ -524,7 +524,7 @@ class TestSanitizeSections:
                              "source_metadata": {"source_type": "garbage"}}]},
             ],
         }
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         assert result["sections"][0]["claims"][0]["source_metadata"]["source_type"] == "survey"
 
     def test_source_type_valid_unchanged(self):
@@ -536,7 +536,7 @@ class TestSanitizeSections:
                              "source_metadata": {"source_type": "vendor_benchmark"}}]},
             ],
         }
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         assert result["sections"][0]["claims"][0]["source_metadata"]["source_type"] == "vendor_benchmark"
 
     def test_evidence_type_independent_test_alias(self):
@@ -548,7 +548,7 @@ class TestSanitizeSections:
                              "evidence_type": "independent_test"}]},
             ],
         }
-        result = _sanitize_sections(raw)
+        result = sanitize_sections(raw)
         assert result["sections"][0]["claims"][0]["evidence_type"] == "independent_benchmark"
 
 

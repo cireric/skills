@@ -13,6 +13,7 @@ from .lib.check_types import CheckResult
 from .artifact_checks import run_all as run_gateway
 from .repair_loop import check_fix_report, determine_review_status, re_merge_after_fix
 from .report_checks import run_report_checks
+from .sanitizer import sanitize_sections
 from .search_gate import SearchGate
 from .lib.exceptions import ArtifactError
 from .lib.constants import (
@@ -21,23 +22,9 @@ from .lib.constants import (
     ARTIFACT_PIPELINE_STATE,
     ARTIFACT_REVIEW_REPORT,
     ARTIFACT_SCOPE,
-    _EVIDENCE_TYPE_ALIASES,
-    _NON_EXACT_EVIDENCE_TYPES,
     _REQUIRED_SECTION_IDS,
-    _SOURCE_TYPE_ALIASES,
-    _VALID_CONFIDENCE,
-    _VALID_EVIDENCE_TYPES,
-    _VALID_PRECISION,
-    _VALID_SOURCE_TYPES,
     _VALID_TRANSITIONS_SET,
 )
-
-_SECTION_KEYS = frozenset({"id", "title", "content", "claims", "depth_strategy", "key_insights", "tensions", "order"})
-_CLAIM_KEYS = frozenset({
-    "summary", "sources", "evidence_type", "confidence",
-    "precision", "metric_type", "source_metadata", "verified",
-    "source_verification",
-})
 
 
 def _repair_json_text(raw: str) -> str:
@@ -301,85 +288,6 @@ def _check_url_consistency(analysis: dict, collected_urls: set[str]) -> list[str
     return warnings
 
 
-def _sanitize_sections(analysis: dict, collected_urls: set[str] | None = None) -> dict:
-    """Clean subagent output before schema validation."""
-    result = dict(analysis)
-    sections = result.get("sections")
-    if not isinstance(sections, list):
-        return result
-
-    cleaned_sections = []
-    for i, section in enumerate(sections):
-        if not isinstance(section, dict):
-            cleaned_sections.append(section)
-            continue
-        sec = dict(section)
-        if "section_id" in sec and "id" not in sec:
-            sec["id"] = sec.pop("section_id")
-        if "claims" not in sec:
-            sec["claims"] = []
-        # Structural safeguard: key_insights / tensions must be lists of dicts
-        # ({summary, sources}). A string array is a schema violation — raise a
-        # precise, actionable error instead of silently poisoning the analysis.
-        for field in ("key_insights", "tensions"):
-            items = sec.get(field)
-            if isinstance(items, list):
-                for j, item in enumerate(items):
-                    if not isinstance(item, dict):
-                        raise ValueError(
-                            f"sections[{i}].{field}[{j}] is a {type(item).__name__}, "
-                            f"not an object. Expected {{summary, sources}}. "
-                            f"Wrap each item as {{\"summary\": <text>, \"sources\": [<url>]}}."
-                        )
-        claims = sec.get("claims")
-        if isinstance(claims, list):
-            cleaned_claims = []
-            for claim in claims:
-                if not isinstance(claim, dict):
-                    cleaned_claims.append(claim)
-                    continue
-                cl = dict(claim)
-                if "text" in cl and "summary" not in cl:
-                    cl["summary"] = cl.pop("text")
-                if "source_urls" in cl and "sources" not in cl:
-                    cl["sources"] = cl.pop("source_urls")
-                # Auto-fix invalid evidence_type: try safe alias first, then
-                # downgrade to qualitative_trend (never escalate to official/independent).
-                if "evidence_type" in cl:
-                    et = cl["evidence_type"]
-                    if et not in _VALID_EVIDENCE_TYPES:
-                        cl["evidence_type"] = _EVIDENCE_TYPE_ALIASES.get(et, "qualitative_trend")
-                # Auto-fix invalid confidence: downgrade to medium
-                if "confidence" in cl and cl["confidence"] not in _VALID_CONFIDENCE:
-                    cl["confidence"] = "medium"
-                # Auto-fix invalid precision: downgrade to qualitative
-                if "precision" in cl and cl["precision"] not in _VALID_PRECISION:
-                    cl["precision"] = "qualitative"
-                # Auto-fix precision inflation: downgrade exact -> range for non-official evidence
-                # Must run AFTER evidence_type sanitization so it sees the corrected type
-                if (
-                    cl.get("precision") == "exact"
-                    and cl.get("evidence_type") in _NON_EXACT_EVIDENCE_TYPES
-                ):
-                    cl["precision"] = "range"
-                # Auto-fix invalid source_type in source_metadata: try alias, then downgrade to survey
-                meta = cl.get("source_metadata")
-                if isinstance(meta, dict) and "source_type" in meta:
-                    st = meta["source_type"]
-                    if st not in _VALID_SOURCE_TYPES:
-                        meta["source_type"] = _SOURCE_TYPE_ALIASES.get(st, "survey")
-                # Auto-fix URL traceability: remove sources not in collected.json
-                if collected_urls is not None and "sources" in cl:
-                    valid = [u for u in cl["sources"] if u in collected_urls]
-                    if valid:
-                        cl["sources"] = valid
-                cleaned_claims.append({k: v for k, v in cl.items() if k in _CLAIM_KEYS})
-            sec["claims"] = cleaned_claims
-        cleaned_sections.append({k: v for k, v in sec.items() if k in _SECTION_KEYS})
-    result["sections"] = cleaned_sections
-    return result
-
-
 def write_phase_state(workdir: Path, phase: str) -> None:
     state_path = workdir / ARTIFACT_PIPELINE_STATE
     try:
@@ -548,7 +456,7 @@ def _gate_analysis(workdir: Path) -> list[str]:
     except ArtifactError:
         pass
     try:
-        analysis = _sanitize_sections(analysis, collected_urls=collected_urls)
+        analysis = sanitize_sections(analysis, collected_urls=collected_urls)
     except ValueError as e:
         errors.append(f"[BLOCKER] analysis_schema: {e}")
         return errors

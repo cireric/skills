@@ -90,7 +90,8 @@ def determine_review_status(workdir: Path) -> str:
 
 
 def re_merge_after_fix(workdir: Path) -> None:
-    from .proceed import _merge_section_files, _sanitize_sections
+    from .proceed import _merge_section_files
+    from .sanitizer import sanitize_sections
 
     analysis_path = workdir / ARTIFACT_ANALYSIS
     if analysis_path.exists():
@@ -118,7 +119,7 @@ def re_merge_after_fix(workdir: Path) -> None:
     try:
         analysis = read_json(workdir / ARTIFACT_ANALYSIS)
         if isinstance(analysis, dict):
-            analysis = _sanitize_sections(analysis, collected_urls=collected_urls)
+            analysis = sanitize_sections(analysis, collected_urls=collected_urls)
             write_json(analysis, workdir / ARTIFACT_ANALYSIS)
     except (ArtifactError, OSError):
         pass
