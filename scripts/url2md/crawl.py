@@ -1,9 +1,8 @@
 #!/usr/bin/env python
-"""url2md inline crawl script — invoked by the url2md skill.
+"""url2md CLI — crawl web articles to Markdown.
 
 Self-contained: all logic lives in the lib/ package next to this script.
-No dependency on src/data_crawl or any project module.
-Reads config from config.yaml in the skill directory.
+Reads config from config.yaml in the same directory.
 """
 
 import argparse
@@ -15,11 +14,11 @@ from pathlib import Path
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-SKILL_DIR = Path(__file__).resolve().parent.parent
-LIB_DIR = SKILL_DIR / "lib"
-CONFIG_PATH = SKILL_DIR / "config.yaml"
+SCRIPT_DIR = Path(__file__).resolve().parent
+LIB_DIR = SCRIPT_DIR / "lib"
+CONFIG_PATH = SCRIPT_DIR / "config.yaml"
 
-sys.path.insert(0, str(SKILL_DIR))
+sys.path.insert(0, str(SCRIPT_DIR))
 
 
 def _venv_python() -> str:

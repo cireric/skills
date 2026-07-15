@@ -25,7 +25,9 @@
         {"name": "Wikipedia", "domain": "en.wikipedia.org", "site_query": "en.wikipedia.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
         {"name": "Hugging Face", "domain": "huggingface.co", "site_query": "huggingface.co", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
         {"name": "PyPI", "domain": "pypi.org", "site_query": "pypi.org", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
-        {"name": "ReadTheDocs", "domain": "readthedocs.io", "site_query": "readthedocs.io", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}}
+        {"name": "ReadTheDocs", "domain": "readthedocs.io", "site_query": "readthedocs.io", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "Gitee", "domain": "gitee.com", "site_query": "gitee.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "Wikipedia (zh)", "domain": "zh.wikipedia.org", "site_query": "zh.wikipedia.org", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "exa_web_search_exa", "webfetch", "playwright"]}}
       ]
     },
     "3": {
@@ -36,7 +38,12 @@
         {"name": "MIT Technology Review", "domain": "technologyreview.com", "site_query": "technologyreview.com", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}},
         {"name": "Substack", "domain": "substack.com", "site_query": "substack.com", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}},
         {"name": "Towards Data Science", "domain": "towardsdatascience.com", "site_query": "towardsdatascience.com", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}},
-        {"name": "The New Stack", "domain": "thenewstack.io", "site_query": "thenewstack.io", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}}
+        {"name": "The New Stack", "domain": "thenewstack.io", "site_query": "thenewstack.io", "fetch": {"tools": ["webfetch", "exa_web_fetch_exa", "playwright"]}},
+        {"name": "36氪", "domain": "36kr.com", "site_query": "36kr.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "exa_web_search_exa", "webfetch", "playwright"]}},
+        {"name": "InfoQ 中文", "domain": "infoq.cn", "site_query": "infoq.cn", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "机器之心", "domain": "jiqizhixin.com", "site_query": "jiqizhixin.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "exa_web_search_exa", "webfetch", "playwright"]}},
+        {"name": "少数派", "domain": "sspai.com", "site_query": "sspai.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "CSDN", "domain": "csdn.net", "site_query": "csdn.net", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}}
       ]
     },
     "4": {
@@ -47,7 +54,11 @@
         {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "exa_web_search_exa", "webfetch", "playwright"]}},
         {"name": "Weibo", "domain": "weibo.com", "site_query": "weibo.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "exa_web_search_exa", "webfetch", "playwright"]}},
         {"name": "Hacker News", "domain": "news.ycombinator.com", "site_query": "news.ycombinator.com", "fetch": {"tools": ["webfetch", "playwright"]}},
-        {"name": "Dev.to", "domain": "dev.to", "site_query": "dev.to", "fetch": {"tools": ["webfetch", "playwright"]}}
+        {"name": "Dev.to", "domain": "dev.to", "site_query": "dev.to", "fetch": {"tools": ["webfetch", "playwright"]}},
+        {"name": "V2EX", "domain": "v2ex.com", "site_query": "v2ex.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "exa_web_search_exa", "webfetch", "playwright"]}},
+        {"name": "掘金", "domain": "juejin.cn", "site_query": "juejin.cn", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "exa_web_search_exa", "webfetch", "playwright"]}},
+        {"name": "豆瓣", "domain": "douban.com", "site_query": "douban.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "webfetch", "playwright"]}},
+        {"name": "小红书", "domain": "xiaohongshu.com", "site_query": "xiaohongshu.com", "language": "zh", "fetch": {"tools": ["exa_web_fetch_exa", "exa_web_search_exa", "webfetch", "playwright"]}}
       ]
     }
   },
