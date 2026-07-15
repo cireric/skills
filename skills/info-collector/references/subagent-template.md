@@ -49,7 +49,7 @@ Each subagent must output a JSON object with these EXACT fields (no others):
 - "key_insights" is REQUIRED for panoramic/exploratory sections (min 2), optional otherwise
 - "tensions" is optional — include only when sources genuinely disagree
 - "depth_strategy" is REQUIRED — must be one of: overview, deep_dive, comparison, methodology
-- "order" is OPTIONAL — an explicit integer for reading position in the final report. If omitted, the merge step infers position from _REQUIRED_SECTION_IDS for the goal_type, falling back to id-lexicographic order. Use this when the section id does not appear in the goal_type's required list or when you need a non-default position.
+- "order" is OPTIONAL for quantitative goal_types (the merge step falls back to `_REQUIRED_SECTION_IDS` position). For exploratory goal_types (panoramic, exploratory, background_check, other), `order` is **effectively required** — without it, sections default to id-lexicographic order, which places "overview" after most other sections. Set `order` to the reading position you intend (e.g., overview=0, tech_architecture=1, ...).
 - Do NOT add fields like "word_count", "language", "text", "description", "source_urls", etc.
 
 ## Common Mistakes (DO NOT DO THESE)

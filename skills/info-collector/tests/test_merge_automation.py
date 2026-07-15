@@ -93,7 +93,7 @@ class TestCheckUrlConsistency:
 
 
 class TestSortSections:
-    def test_overview_comes_first_for_tech_selection(self):
+    def test_quantitative_uses_required_ids_fallback(self):
         sections = [
             {"id": "comparison", "title": "Comparison", "content": "B"},
             {"id": "overview", "title": "Overview", "content": "A"},
@@ -104,22 +104,31 @@ class TestSortSections:
         ids = [s["id"] for s in result]
         assert ids == ["overview", "comparison", "recommendation", "methodology"]
 
-    def test_overview_comes_first_for_panoramic(self):
+    def test_panoramic_without_order_falls_to_id_lexicographic(self):
         sections = [
             {"id": "community_evaluation", "title": "Community", "content": "E"},
-            {"id": "technical_architecture", "title": "Tech", "content": "A"},
             {"id": "overview", "title": "Overview", "content": "O"},
-            {"id": "reported_limitations", "title": "Limits", "content": "F"},
-            {"id": "model_product_family", "title": "Models", "content": "B"},
-            {"id": "open_source_strategy", "title": "OSS", "content": "C"},
+            {"id": "technical_architecture", "title": "Tech", "content": "A"},
         ]
         result = _sort_sections(sections, goal_type="panoramic_understanding")
         ids = [s["id"] for s in result]
-        assert ids[0] == "overview"
-        assert ids.index("technical_architecture") < ids.index("model_product_family")
-        assert ids.index("model_product_family") < ids.index("open_source_strategy")
-        assert ids.index("open_source_strategy") < ids.index("community_evaluation")
-        assert ids.index("community_evaluation") < ids.index("reported_limitations")
+        assert ids == ["community_evaluation", "overview", "technical_architecture"]
+
+    def test_panoramic_with_order_uses_order(self):
+        sections = [
+            {"id": "community_evaluation", "title": "Community", "content": "E", "order": 4},
+            {"id": "overview", "title": "Overview", "content": "O", "order": 0},
+            {"id": "technical_architecture", "title": "Tech", "content": "A", "order": 1},
+            {"id": "reported_limitations", "title": "Limits", "content": "F", "order": 5},
+            {"id": "model_product_family", "title": "Models", "content": "B", "order": 2},
+            {"id": "open_source_strategy", "title": "OSS", "content": "C", "order": 3},
+        ]
+        result = _sort_sections(sections, goal_type="panoramic_understanding")
+        ids = [s["id"] for s in result]
+        assert ids == [
+            "overview", "technical_architecture", "model_product_family",
+            "open_source_strategy", "community_evaluation", "reported_limitations",
+        ]
 
     def test_explicit_order_overrides_required_ids(self):
         sections = [
@@ -130,7 +139,7 @@ class TestSortSections:
         ids = [s["id"] for s in result]
         assert ids == ["comparison", "overview"]
 
-    def test_mixed_order_and_no_order(self):
+    def test_mixed_order_and_no_order_quantitative(self):
         sections = [
             {"id": "overview", "title": "Overview", "content": "A"},
             {"id": "comparison", "title": "Comparison", "content": "B", "order": 0},
@@ -144,7 +153,19 @@ class TestSortSections:
         assert ids[2] == "overview"
         assert ids[3] == "methodology"
 
-    def test_unknown_ids_after_known_ids(self):
+    def test_mixed_order_and_no_order_exploratory(self):
+        sections = [
+            {"id": "overview", "title": "Overview", "content": "A", "order": 0},
+            {"id": "community_evaluation", "title": "Community", "content": "E"},
+            {"id": "technical_architecture", "title": "Tech", "content": "A", "order": 1},
+        ]
+        result = _sort_sections(sections, goal_type="panoramic_understanding")
+        ids = [s["id"] for s in result]
+        assert ids[0] == "overview"
+        assert ids[1] == "technical_architecture"
+        assert ids[2] == "community_evaluation"
+
+    def test_unknown_ids_after_known_ids_quantitative(self):
         sections = [
             {"id": "custom_section", "title": "Custom", "content": "X"},
             {"id": "overview", "title": "Overview", "content": "A"},
@@ -165,29 +186,38 @@ class TestSortSections:
         ids = [s["id"] for s in result]
         assert ids == ["a_section", "z_section"]
 
-    def test_merge_uses_sort_for_panoramic(self, tmp_path):
+    def test_merge_uses_order_for_panoramic(self, tmp_path):
         _write_json(tmp_path / "analysis_section_community_evaluation.json", {
-            "id": "community_evaluation", "title": "Community", "content": "E", "depth_strategy": "overview", "claims": [],
+            "id": "community_evaluation", "title": "Community", "content": "E", "depth_strategy": "overview", "order": 4, "claims": [],
         })
         _write_json(tmp_path / "analysis_section_overview.json", {
-            "id": "overview", "title": "Overview", "content": "O", "depth_strategy": "overview", "claims": [],
+            "id": "overview", "title": "Overview", "content": "O", "depth_strategy": "overview", "order": 0, "claims": [],
         })
         _write_json(tmp_path / "analysis_section_technical_architecture.json", {
-            "id": "technical_architecture", "title": "Tech", "content": "A", "depth_strategy": "overview", "claims": [],
+            "id": "technical_architecture", "title": "Tech", "content": "A", "depth_strategy": "overview", "order": 1, "claims": [],
         })
         result = _merge_section_files(tmp_path, topic="T", goal_type="panoramic_understanding")
         ids = [s["id"] for s in result["sections"]]
-        assert ids[0] == "overview"
-        assert ids.index("technical_architecture") < ids.index("community_evaluation")
+        assert ids == ["overview", "technical_architecture", "community_evaluation"]
 
-    def test_background_check_ordering(self):
+    def test_background_check_without_order_falls_to_id_lexicographic(self):
         sections = [
             {"id": "reported_limitations", "title": "Limits", "content": "F"},
             {"id": "overview", "title": "Overview", "content": "O"},
             {"id": "technical_architecture", "title": "Tech", "content": "A"},
-            {"id": "community_evaluation", "title": "Community", "content": "E"},
-            {"id": "open_source_strategy", "title": "OSS", "content": "C"},
-            {"id": "model_product_family", "title": "Models", "content": "B"},
+        ]
+        result = _sort_sections(sections, goal_type="background_check")
+        ids = [s["id"] for s in result]
+        assert ids == ["overview", "reported_limitations", "technical_architecture"]
+
+    def test_background_check_with_order(self):
+        sections = [
+            {"id": "reported_limitations", "title": "Limits", "content": "F", "order": 5},
+            {"id": "overview", "title": "Overview", "content": "O", "order": 0},
+            {"id": "technical_architecture", "title": "Tech", "content": "A", "order": 1},
+            {"id": "community_evaluation", "title": "Community", "content": "E", "order": 4},
+            {"id": "open_source_strategy", "title": "OSS", "content": "C", "order": 3},
+            {"id": "model_product_family", "title": "Models", "content": "B", "order": 2},
         ]
         result = _sort_sections(sections, goal_type="background_check")
         ids = [s["id"] for s in result]

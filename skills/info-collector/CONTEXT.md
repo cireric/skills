@@ -193,7 +193,7 @@ Phase 3a Step 1 output: `{id, title, depth_strategy, order?, deep_dive_topics: [
 _Avoid_: section outline, section schema
 
 **section order**:
-The reading order of sections in the final report, determined during merge by `_sort_sections()`. Three-tier priority: (1) explicit `order` field on the section dict (integer, lower = earlier); (2) position in `_REQUIRED_SECTION_IDS[goal_type]` for the section's id; (3) id-lexicographic fallback. Sections with `order` always precede sections without it. The reporter renders sections in the exact order they appear in `analysis.json["sections"]`, so correct ordering at merge time is critical. Before this mechanism, sections were ordered by filename lexicographic sort, which placed "overview" after "comparison" and "methodology" — a structural defect for panoramic reports.
+The reading order of sections in the final report, determined during merge by `_sort_sections()`. Two regimes: (1) **Quantitative goal_types** (have entries in `_REQUIRED_SECTION_IDS`): `order` field > `_REQUIRED_SECTION_IDS` position > id-lexicographic. (2) **Exploratory goal_types** (no entry): `order` field > id-lexicographic. For exploratory reports, the `order` field is the sole mechanism for correct ordering — without it, sections default to id-lexicographic (which placed "overview" after "community_evaluation"). The orchestrator must instruct subagents to assign `order` values in the section plan. ADR 0060.
 _Avoid_: section sequence, section arrangement
 
 **ClaimValidator**:

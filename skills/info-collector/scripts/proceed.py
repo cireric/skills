@@ -190,24 +190,30 @@ _MERGE_COMPLETED_KEY = "_merge_completed"
 
 
 def _sort_sections(sections: list[dict], goal_type: str = "") -> list[dict]:
-    """Sort sections into logical reading order.
+    """Sort sections into reading order.
 
-    Priority: explicit `order` field > _REQUIRED_SECTION_IDS position > id lexicographic.
-    Sections with an explicit `order` field always come before sections without one.
-    Sections not found in _REQUIRED_SECTION_IDS are placed after known sections,
-    preserving their relative id-lexicographic order.
+    For quantitative goal_types (tech_selection, etc.), sections are ordered
+    by _REQUIRED_SECTION_IDS position, with `order` field as override.
+    For exploratory goal_types (panoramic, exploratory, etc.), ordering is
+    entirely driven by the agent-assigned `order` field; sections without
+    `order` fall back to id-lexicographic.
     """
     id_order = _REQUIRED_SECTION_IDS.get(goal_type, [])
-    id_pos = {sid: i for i, sid in enumerate(id_order)}
-    max_known = len(id_order)
+    has_canonical_order = bool(id_order)
 
     def _sort_key(sec: dict) -> tuple:
         has_order = "order" in sec and isinstance(sec["order"], int)
-        if has_order:
-            return (0, sec["order"], sec.get("id", ""))
         sid = sec.get("id", "")
-        pos = id_pos.get(sid, max_known)
-        return (1, pos, sid)
+        if has_canonical_order:
+            id_pos = {s: i for i, s in enumerate(id_order)}
+            if has_order:
+                return (0, sec["order"], sid)
+            pos = id_pos.get(sid, len(id_order))
+            return (1, pos, sid)
+        else:
+            if has_order:
+                return (0, sec["order"], sid)
+            return (1, 0, sid)
 
     return sorted(sections, key=_sort_key)
 
@@ -219,7 +225,7 @@ def _merge_section_files(workdir: Path, topic: str = "", goal_type: str = "") ->
     Idempotent: if analysis.json already exists and was produced by
     this function, returns the existing analysis without re-merging.
     Sections are ordered by: explicit `order` field > _REQUIRED_SECTION_IDS
-    position > id-lexicographic (fallback).
+    position (quantitative goal_types only) > id-lexicographic (fallback).
     """
     section_files = sorted(workdir.glob("analysis_section_*.json"))
     if not section_files:

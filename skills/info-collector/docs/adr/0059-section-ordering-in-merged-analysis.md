@@ -1,7 +1,7 @@
 # ADR 0059: Section Ordering in Merged Analysis
 
-| Status | Decided |
-|--------|---------|
+| Status | Superseded by ADR-0060 |
+|--------|------------------------|
 | Date   | 2026-07-15 |
 
 ## Context
