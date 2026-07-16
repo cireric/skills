@@ -45,7 +45,6 @@ nuxt/
 !.env.example
 
 # OpenCode
-.opencode/
 
 # omo
 .omo/run-continuation/
@@ -60,4 +59,4 @@ docs/domain-knowledge/
 reports/
 .workdir/
 .scratch/
-
+.playwright-mcp

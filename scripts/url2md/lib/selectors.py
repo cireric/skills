@@ -20,6 +20,7 @@ class Platform(Enum):
     ZHIHU = "zhihu"
     JIANSHU = "jianshu"
     BILIBILI = "bilibili"
+    SSPAI = "sspai"
     GENERIC = "generic"
 
 

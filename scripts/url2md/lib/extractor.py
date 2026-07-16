@@ -1,6 +1,7 @@
 """内容提取器：文章提取、列表提取、Markdown 转换."""
 
 import asyncio
+import html
 import logging
 import random
 import re
@@ -266,8 +267,44 @@ _HTML_TO_MD_STEPS: list[tuple[str, str | re.Pattern, str]] = [
 ]
 
 
+def _extract_code_lang(tag: str) -> str:
+    m = re.search(r'class=["\'](?:language-|lang-)(\w+)["\']', tag)
+    return m.group(1) if m else ""
+
+
 def _convert_html_to_markdown(content: str, platform: Platform | None = None, image_width: int = DEFAULT_IMAGE_WIDTH) -> str:
     content = remove_noise_elements(content, platform=platform)
+
+    pre_placeholders: list[str] = []
+
+    def _convert_pre_to_fence(match: re.Match) -> str:
+        open_tag = match.group(1)
+        inner = match.group(2)
+        lang = _extract_code_lang(open_tag)
+        code_m = re.search(r"<code([^>]*)>", inner)
+        if code_m and not lang:
+            lang = _extract_code_lang(code_m.group(1))
+        inner = re.sub(r"<code[^>]*>", "", inner)
+        inner = re.sub(r"</code>", "", inner)
+        inner = re.sub(r"<br\s*/?>", "\n", inner)
+        inner = re.sub(r"<[^>]+>", "", inner)
+        inner = html.unescape(inner)
+        inner = inner.replace("\xa0", " ")
+        idx = len(pre_placeholders)
+        pre_placeholders.append(f"\n```{lang}\n{inner.strip()}\n```\n")
+        return f"\x00PRE{idx}\x00"
+
+    content = re.sub(
+        r"<pre([^>]*)>(.*?)</pre>",
+        _convert_pre_to_fence,
+        content,
+        flags=re.DOTALL,
+    )
+    content = re.sub(
+        r"<code([^>]*)>(.*?)</code>",
+        lambda m: f"`{re.sub(r'<[^>]+>', '', m.group(2))}`",
+        content,
+    )
     for _name, pattern, replacement in _HTML_TO_MD_STEPS:
         content = re.sub(pattern, replacement, content, flags=re.DOTALL)
     content = re.sub(
@@ -279,6 +316,8 @@ def _convert_html_to_markdown(content: str, platform: Platform | None = None, im
     content = re.sub(r"<img[^>]*>", lambda m: convert_img_tag(m.group(0), platform=platform, image_width=image_width), content)
     content = re.sub(r"!\[.*?\]\(data:image[^)]+\)", "", content)
     content = re.sub(r"<[^>]+>", "", content)
+    for i, block in enumerate(pre_placeholders):
+        content = content.replace(f"\x00PRE{i}\x00", block)
     content = re.sub(r"\n{3,}", "\n\n", content)
     return content.strip()
 

@@ -3,10 +3,11 @@
 import asyncio
 import logging
 import os
+import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .utils import exponential_backoff, sanitize_filename
+from .utils import exponential_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +146,7 @@ async def download_images(
     if not image_urls:
         return {}
     if article_title:
-        subdir = sanitize_filename(article_title)
+        subdir = uuid.uuid4().hex[:8]
         output_dir = os.path.join(output_dir, subdir)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     seen_urls: set[str] = set()

@@ -2,6 +2,7 @@ import asyncio
 from unittest.mock import AsyncMock
 
 from lib.extractor import (
+    _convert_html_to_markdown,
     clean_image_url,
     convert_img_tag,
     convert_to_markdown,
@@ -178,3 +179,70 @@ class TestTruncateTailNoise:
         assert "会议推荐" not in result
         assert "广告" not in result
         assert "正文" in result
+
+
+class TestCodeBlockConversion:
+    def test_pre_basic(self):
+        html = "<p>Text</p><pre>code here</pre><p>More</p>"
+        md = _convert_html_to_markdown(html)
+        assert "```" in md
+        assert "code here" in md
+
+    def test_pre_with_language(self):
+        html = '<pre class="language-python">print("hello")</pre>'
+        md = _convert_html_to_markdown(html)
+        assert "```python" in md
+        assert 'print("hello")' in md
+
+    def test_pre_with_code_tag(self):
+        html = '<pre><code class="language-javascript">const x = 1;</code></pre>'
+        md = _convert_html_to_markdown(html)
+        assert "```javascript" in md
+        assert "const x = 1;" in md
+
+    def test_pre_with_lang_prefix(self):
+        html = '<pre><code class="lang-bash">echo hello</code></pre>'
+        md = _convert_html_to_markdown(html)
+        assert "```bash" in md
+        assert "echo hello" in md
+
+    def test_pre_preserves_html_entities(self):
+        html = "<pre>x &lt; 10 &amp;&amp; y &gt; 5</pre>"
+        md = _convert_html_to_markdown(html)
+        assert "x < 10 && y > 5" in md
+
+    def test_pre_preserves_nbsp(self):
+        html = "<pre>line1&nbsp;&nbsp;&nbsp;line2</pre>"
+        md = _convert_html_to_markdown(html)
+        assert "line1   line2" in md
+
+    def test_inline_code(self):
+        html = "<p>Use <code>pip install</code> to install</p>"
+        md = _convert_html_to_markdown(html)
+        assert "`pip install`" in md
+
+    def test_pre_multiline(self):
+        html = "<pre>line1\nline2\nline3</pre>"
+        md = _convert_html_to_markdown(html)
+        assert "```" in md
+        assert "line1\nline2" in md
+
+    def test_pre_no_language(self):
+        html = "<pre>plain code block</pre>"
+        md = _convert_html_to_markdown(html)
+        assert "```\nplain code block\n```" in md
+
+    def test_pre_with_br(self):
+        html = "<pre>line1<br/>line2</pre>"
+        md = _convert_html_to_markdown(html)
+        assert "line1\nline2" in md
+
+    def test_pre_numeric_entities(self):
+        html = "<pre>a &#39;b&#39; c &#x2F; d</pre>"
+        md = _convert_html_to_markdown(html)
+        assert "a 'b' c / d" in md
+
+    def test_inline_code_not_multiline(self):
+        html = "<p>text</p>\n<code>line1\nline2</code>\n<p>more</p>"
+        md = _convert_html_to_markdown(html)
+        assert "`line1\nline2`" not in md

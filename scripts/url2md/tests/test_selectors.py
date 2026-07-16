@@ -10,7 +10,7 @@ _SKILL_DIR = Path(__file__).parent.parent
 class TestLoadPlatformConfigs:
     def test_loads_all_platforms_from_yaml(self):
         configs = load_platform_configs(_SKILL_DIR / "platforms.yaml")
-        assert set(configs.keys()) == {Platform.WECHAT, Platform.ZHIHU, Platform.JIANSHU, Platform.BILIBILI, Platform.GENERIC}
+        assert set(configs.keys()) == {Platform.WECHAT, Platform.ZHIHU, Platform.JIANSHU, Platform.BILIBILI, Platform.SSPAI, Platform.GENERIC}
 
     def test_wechat_config_has_required_fields(self):
         configs = load_platform_configs(_SKILL_DIR / "platforms.yaml")
@@ -61,6 +61,12 @@ class TestDetectPlatform:
 
     def test_bilibili_article(self):
         assert detect_platform("https://www.bilibili.com/read/cv12345") == Platform.BILIBILI
+
+    def test_sspai_article(self):
+        assert detect_platform("https://sspai.com/post/111297") == Platform.SSPAI
+
+    def test_sspai_list(self):
+        assert detect_platform("https://sspai.com/matrix") == Platform.SSPAI
 
     def test_generic(self):
         assert detect_platform("https://example.com/article") == Platform.GENERIC

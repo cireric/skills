@@ -178,7 +178,7 @@ def main() -> None:
         print(f"配置错误: {e}")
         sys.exit(1)
 
-    download_images = args.download_images or config.get("download_images", False)
+    download_images = args.download_images if args.download_images else None
 
     errors = _preflight_check(strict=bool(download_images))
     if errors:

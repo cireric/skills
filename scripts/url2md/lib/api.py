@@ -44,7 +44,7 @@ async def crawl_single_article(
     url: str,
     output_dir: str,
     browser_manager: BrowserManager | None = None,
-    download_imgs: bool = False,
+    download_imgs: bool | None = None,
     images_dir: str | None = None,
     filename: str | None = None,
     headless: bool = True,
@@ -86,6 +86,8 @@ async def crawl_single_article(
     try:
         config = get_platform_config(platform)
         wait_until = config.get("wait_until", "networkidle")
+        if download_imgs is None:
+            download_imgs = config.get("download_images", False)
         await page.goto(url, wait_until=wait_until)
         article = await extract_article(page, platform, scroll_step_delay=scroll_step_delay, scroll_settle_delay=scroll_settle_delay)
         if article is None:
@@ -122,7 +124,7 @@ async def _crawl_list_page(
     url: str,
     output_dir: str,
     browser_manager: BrowserManager | None = None,
-    download_imgs: bool = False,
+    download_imgs: bool | None = None,
     images_dir: str | None = None,
     limit: int | None = None,
     delay: float = 2.0,
@@ -208,7 +210,7 @@ async def _crawl_list_page(
 
 
 async def _crawl_article(
-    url: str, output_dir: str, download_imgs: bool, filename: str | None = None,
+    url: str, output_dir: str, download_imgs: bool | None, filename: str | None = None,
     headless: bool = True, max_concurrent: int = 3, max_retries: int = 3,
     cookies_file: str | None = None,
     user_agent: str | None = None,
@@ -258,7 +260,7 @@ async def _crawl_article(
 def crawl_url(
     url: str,
     output_dir: str | None = None,
-    download_images: bool = False,
+    download_images: bool | None = None,
     limit: int | None = None,
     delay: float = 2.0,
     filename: str | None = None,

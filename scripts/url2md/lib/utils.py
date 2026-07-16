@@ -19,7 +19,7 @@ def sanitize_filename(filename: str, max_length: int = 200) -> str:
     if not filename or not filename.strip():
         return "untitled"
     filename = filename.strip()
-    invalid_chars = r'[<>:"/\\|?*]'
+    invalid_chars = r'[<>:"/\\|?*\uff1a\uff1f\uff01\u300a\u300b]'
     filename = re.sub(invalid_chars, "", filename)
     filename = filename.replace(" ", "_")
     if len(filename) > max_length:

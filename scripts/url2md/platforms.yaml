@@ -1,4 +1,4 @@
-# 平台配置 - 支持微信、知乎、简书、Bilibili 专栏和通用网页
+# 平台配置 - 支持微信、知乎、简书、Bilibili 专栏、少数派和通用网页
 
 platforms:
   wechat:
@@ -140,6 +140,39 @@ platforms:
     noise_html_patterns: []
     keep_query_params: []
     wait_until: "domcontentloaded"
+
+  sspai:
+    name: "少数派"
+    article_patterns:
+      - 'sspai\.com/post/'
+    list_patterns:
+      - 'sspai\.com/user/.*/posts'
+      - 'sspai\.com/matrix'
+    article_selector: ".wangEditor-txt, .article-body"
+    title_selector: "h1.article__header__title, h1.article-title, h1"
+    author_selector: ".ss__user__card__nickname__wrapper, .article__header__author"
+    date_selector: ".article__header__date"
+    list_link_selector: "a[href*='/post/']"
+    needs_scroll: false
+    wait_selector: ".wangEditor-txt, .article-body"
+    tail_noise_markers:
+      - "相关推荐"
+      - "猜你喜欢"
+      - "为你推荐"
+      - "热门推荐"
+      - "广告"
+      - "推广"
+      - "赞助"
+      - "商务合作"
+      - "扫码关注"
+      - "长按关注"
+      - "阅读原文"
+      - "点击阅读原文"
+      - "转载请联系"
+    noise_html_patterns: []
+    keep_query_params: []
+    wait_until: "domcontentloaded"
+    download_images: true
 
   generic:
     name: "通用网页"
