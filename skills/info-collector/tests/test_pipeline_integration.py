@@ -142,6 +142,7 @@ class TestTechSelectionHappyPath:
 
         (workdir / "review_report.md").write_text(
             "## Overall Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(workdir / "fix_list.json", [])
 
         write_phase_state(workdir, "post_review")
         ok, errors = proceeds(workdir, "review", "final")
@@ -268,6 +269,7 @@ class TestAcademicResearchChinese:
 
         (workdir / "review_report.md").write_text(
             "## Overall Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(workdir / "fix_list.json", [])
 
         write_phase_state(workdir, "post_review")
         ok, errors = proceeds(workdir, "review", "final")
@@ -384,6 +386,7 @@ class TestMarketAnalysisDegraded:
 
         (workdir / "review_report.md").write_text(
             "## Overall Verdict\n**pass_with_issues**\n\nSome minor concerns.", encoding="utf-8")
+        _write_json(workdir / "fix_list.json", [])
 
         write_phase_state(workdir, "post_review")
         ok, errors = proceeds(workdir, "review", "final")
@@ -487,6 +490,7 @@ class TestFactCheckMinimal:
 
         (workdir / "review_report.md").write_text(
             "## Overall Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(workdir / "fix_list.json", [])
 
         write_phase_state(workdir, "post_review")
         ok, errors = proceeds(workdir, "review", "final")
@@ -610,6 +614,7 @@ class TestExploratoryDeepDive:
 
         (workdir / "review_report.md").write_text(
             "## Overall Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(workdir / "fix_list.json", [])
 
         write_phase_state(workdir, "post_review")
         ok, errors = proceeds(workdir, "review", "final")
@@ -745,6 +750,7 @@ class TestPipelineStateConsistency:
         assert detect_current_phase(workdir) == "post_review"
 
         (workdir / "review_report.md").write_text("## Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(workdir / "fix_list.json", [])
         write_phase_state(workdir, "post_review")
 
         proceeds(workdir, "review", "final")

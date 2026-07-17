@@ -429,13 +429,13 @@ class ClaimValidator:
 
         sv_counts = {"source_confirmed": 0, "source_absent": 0, "source_indirect": 0}
         total = 0
-        sv_data: list[tuple[int, int, str]] = []
+        sv_data: list[tuple[int, int, str, str]] = []
 
         for sec_idx, section in enumerate(self._sections):
             for ci, claim in enumerate(section.get("claims", [])):
                 total += 1
-                sv = self._compute_source_verification(claim)
-                sv_data.append((sec_idx, ci, sv))
+                sv, detail = self._compute_source_verification(claim)
+                sv_data.append((sec_idx, ci, sv, detail))
                 sv_counts[sv] += 1
 
         self._sv_data = sv_data
@@ -445,25 +445,34 @@ class ClaimValidator:
 
         return CheckResult("source_verification_check", "INFO", True, msg)
 
-    def _compute_source_verification(self, claim: dict) -> str:
-        if _is_indirect_source(claim, self._collected_by_url):
-            return "source_indirect"
-
-        source_texts = []
+    def _collect_source_texts(self, claim: dict) -> list[str]:
+        texts = []
         for url in claim.get("sources", []):
             item = self._collected_by_url.get(normalize_url(url))
             if item:
-                source_texts.append(_source_text(item, self._workdir))
+                texts.append(_source_text(item, self._workdir))
+        return texts
+
+    def _compute_source_verification(self, claim: dict) -> tuple[str, str]:
+        source_texts = self._collect_source_texts(claim)
+        if _is_indirect_source(claim, self._collected_by_url):
+            number_result = "number_found" if (
+                source_texts and any(
+                    _number_found_in_source(claim.get("summary", ""), src) == "source_confirmed"
+                    for src in source_texts
+                )
+            ) else "number_not_found"
+            return "source_indirect", number_result
 
         if not source_texts:
             if _PRECISE_NUMBER_PATTERN.search(claim.get("summary", "")):
-                return "source_absent"
-            return "source_confirmed"
+                return "source_absent", ""
+            return "source_confirmed", ""
 
         results = [_number_found_in_source(claim.get("summary", ""), src) for src in source_texts]
         if any(r == "source_confirmed" for r in results):
-            return "source_confirmed"
-        return "source_absent"
+            return "source_confirmed", ""
+        return "source_absent", ""
 
     def _check_primary_source_ratio(self) -> CheckResult:
         """WARN metric (ADR 0051): exposure of source concentration / tier skew.
@@ -634,10 +643,12 @@ def apply_source_verification(workdir: Path) -> None:
         analysis = _rj(workdir / ARTIFACT_ANALYSIS)
     except ArtifactError:
         return
-    for sec_idx, ci, sv in validator._sv_data:
+    for sec_idx, ci, sv, detail in validator._sv_data:
         try:
             analysis["sections"][sec_idx]["claims"][ci]["source_verification"] = sv
             analysis["sections"][sec_idx]["claims"][ci]["verified"] = (sv != "source_absent")
+            if detail:
+                analysis["sections"][sec_idx]["claims"][ci]["source_verification_detail"] = detail
         except (IndexError, KeyError):
             pass
     _wj(analysis, workdir / ARTIFACT_ANALYSIS)

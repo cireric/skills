@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -15,6 +16,19 @@ from .lib.constants import (
     _SOURCES_DIR,
 )
 from .lib.utils import compute_url_hash
+
+
+_PADDING_LINE_RE = re.compile(r'^[\.\s…·•]+$')
+_TEMPLATE_SENTENCE_RE = re.compile(
+    r'(This source provides (information|details|insight|data) (about|on|into|regarding)'
+    r'|本来源提供了关于'
+    r'|该来源提供了.*的(信息|详情|数据|洞察)'
+    r'|此来源包含关于'
+    r'|This article provides (information|details|insight) (about|on|into))',
+    re.IGNORECASE,
+)
+_PADDING_RATIO_THRESHOLD = 0.30
+_TEMPLATE_RATIO_THRESHOLD = 0.40
 
 
 @dataclass
@@ -92,6 +106,24 @@ _AUTONOMOUS_TOOL_MAP = {
 }
 
 
+def _detect_content_quality(content: str) -> tuple[bool, str]:
+    if not content or not content.strip():
+        return False, "empty content"
+    lines = content.strip().split('\n')
+    non_empty_lines = [l for l in lines if l.strip()]
+    if not non_empty_lines:
+        return False, "all lines empty"
+    padding_lines = sum(1 for l in non_empty_lines if _PADDING_LINE_RE.match(l.strip()))
+    padding_ratio = padding_lines / len(non_empty_lines)
+    if padding_ratio > _PADDING_RATIO_THRESHOLD:
+        return False, f"padding ratio {padding_ratio:.0%} > {_PADDING_RATIO_THRESHOLD:.0%}"
+    template_lines = sum(1 for l in non_empty_lines if _TEMPLATE_SENTENCE_RE.search(l))
+    template_ratio = template_lines / len(non_empty_lines)
+    if template_ratio > _TEMPLATE_RATIO_THRESHOLD:
+        return False, f"template sentence ratio {template_ratio:.0%} > {_TEMPLATE_RATIO_THRESHOLD:.0%}"
+    return True, "accepted"
+
+
 class Fetcher:
     def __init__(self, workdir: Path, config: dict | None = None):
         self._workdir = workdir
@@ -128,6 +160,14 @@ class Fetcher:
         url_hash = compute_url_hash(url)
         content, parsed_tool, parsed_actual = _parse_piped_raw(raw, tool_used, actual_url or url)
         if not content:
+            return FetchResult(
+                url=url, actual_url=parsed_actual, source_file=None,
+                url_hash=url_hash, char_count=0, fetched_content="",
+                fetch_failed=True, tool_used=parsed_tool, content_insufficient=True,
+                source_tier=self.infer_tier(url),
+            )
+        acceptable, reason = _detect_content_quality(content)
+        if not acceptable:
             return FetchResult(
                 url=url, actual_url=parsed_actual, source_file=None,
                 url_hash=url_hash, char_count=0, fetched_content="",

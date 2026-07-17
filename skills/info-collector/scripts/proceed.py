@@ -19,6 +19,7 @@ from .lib.exceptions import ArtifactError
 from .lib.constants import (
     ARTIFACT_ANALYSIS,
     ARTIFACT_COLLECTED,
+    ARTIFACT_FIX_LIST,
     ARTIFACT_PIPELINE_STATE,
     ARTIFACT_REVIEW_REPORT,
     ARTIFACT_SCOPE,
@@ -557,6 +558,14 @@ def _gate_review(workdir: Path, to_phase: str = "review") -> list[str]:
                     f"  [WARN] repair_loop: {fix_summary['warn_skipped']} WARN issue(s) skipped — "
                     f"report is usable but not all issues resolved",
                     file=sys.stderr,
+                )
+        else:
+            fl_path = workdir / ARTIFACT_FIX_LIST
+            if not fl_path.exists():
+                errors.append(
+                    "[BLOCKER] repair_loop_not_started: review_report.md exists but fix_list.json "
+                    "does not — repair loop was not started. Run review-fix subagent to produce "
+                    "fix_list.json and fix_report.json before proceeding."
                 )
     return errors
 

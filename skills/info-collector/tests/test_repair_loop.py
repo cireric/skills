@@ -171,10 +171,20 @@ class TestGateReviewRepairLoop:
         monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: [])
         monkeypatch.setattr("scripts.proceed._get_goal_type", lambda w: "exploratory")
         (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(tmp_path / "fix_list.json", [])
 
         from scripts.proceed import _gate_review
         errors = _gate_review(tmp_path, to_phase="final")
         assert errors == []
+
+    def test_no_fix_list_blocks_when_review_report_exists(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: [])
+        monkeypatch.setattr("scripts.proceed._get_goal_type", lambda w: "exploratory")
+        (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+
+        from scripts.proceed import _gate_review
+        errors = _gate_review(tmp_path, to_phase="final")
+        assert any("repair_loop_not_started" in e for e in errors)
 
     def test_warn_skipped_does_not_block(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: [])
@@ -231,6 +241,7 @@ class TestGateReviewReMergeAfterFix:
         monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: [])
         monkeypatch.setattr("scripts.proceed._get_goal_type", lambda w: "exploratory")
         (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(tmp_path / "fix_list.json", [])
 
         old_analysis = {"topic": "T", "goal_type": "exploratory", "sections": [{"id": "s1", "title": "S1", "content": "OLD content"}], "_merge_completed": True}
         _write_json(tmp_path / "analysis.json", old_analysis)

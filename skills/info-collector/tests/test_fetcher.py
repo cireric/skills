@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
-from scripts.fetcher import Fetcher, FetchResult, _parse_piped_raw
+from scripts.fetcher import Fetcher, FetchResult, _parse_piped_raw, _detect_content_quality
 from scripts.lib.utils import compute_url_hash
 
 
@@ -274,3 +274,124 @@ class TestFetchRequestsEncodingRepair:
                 result = _fetch_requests("https://example.com/paper")
         assert result is not None
         assert "深度学习" in result
+
+
+class TestDetectContentQuality:
+    def test_empty_content_rejected(self):
+        ok, reason = _detect_content_quality("")
+        assert ok is False
+        assert "empty" in reason
+
+    def test_whitespace_only_rejected(self):
+        ok, reason = _detect_content_quality("   \n  \n  ")
+        assert ok is False
+
+    def test_normal_content_accepted(self):
+        content = "# Paper Title\n\n" + "x" * 3000
+        ok, reason = _detect_content_quality(content)
+        assert ok is True
+        assert reason == "accepted"
+
+    def test_short_content_accepted(self):
+        ok, reason = _detect_content_quality("# Short\n\nSome text")
+        assert ok is True
+        assert reason == "accepted"
+
+    def test_dot_padding_rejected(self):
+        lines = ["# Title"] + [". . ."] * 10
+        content = "\n".join(lines)
+        ok, reason = _detect_content_quality(content)
+        assert ok is False
+        assert "padding" in reason.lower()
+
+    def test_ellipsis_padding_rejected(self):
+        lines = ["# Title"] + ["…"] * 10
+        content = "\n".join(lines)
+        ok, reason = _detect_content_quality(content)
+        assert ok is False
+
+    def test_english_template_sentences_rejected(self):
+        lines = ["# Title"]
+        for _ in range(10):
+            lines.append("This source provides information about DeepSeek architecture and cost analysis.")
+        content = "\n".join(lines)
+        ok, reason = _detect_content_quality(content)
+        assert ok is False
+        assert "template" in reason.lower()
+
+    def test_chinese_template_sentences_rejected(self):
+        lines = ["# 标题"]
+        for _ in range(10):
+            lines.append("本来源提供了关于DeepSeek架构和成本分析的信息。")
+        content = "\n".join(lines)
+        ok, reason = _detect_content_quality(content)
+        assert ok is False
+        assert "template" in reason.lower()
+
+    def test_chinese_alt_template_rejected(self):
+        lines = ["# 标题"]
+        for _ in range(10):
+            lines.append("该来源提供了关于DeepSeek技术架构的详情。")
+        content = "\n".join(lines)
+        ok, reason = _detect_content_quality(content)
+        assert ok is False
+
+    def test_mixed_content_with_minor_padding_passes(self):
+        content = "# Paper Title\n\nReal content here. " * 50 + "\n. . .\n"
+        ok, reason = _detect_content_quality(content)
+        assert ok is True
+
+    def test_below_padding_threshold_passes(self):
+        lines = ["# Title", "Real content line.", ". . .", "More real content."]
+        content = "\n".join(lines)
+        ok, reason = _detect_content_quality(content)
+        assert ok is True
+
+    def test_below_template_threshold_passes(self):
+        lines = [
+            "# Title",
+            "This source provides information about the topic.",
+            "Real analysis paragraph with substantive content.",
+            "Another real paragraph with detailed findings.",
+        ]
+        content = "\n".join(lines)
+        ok, reason = _detect_content_quality(content)
+        assert ok is True
+
+
+class TestPipedContentQualityGate:
+    def test_piped_dot_padding_rejected(self, fetcher, workdir):
+        lines = ["# Title"] + [". . ."] * 10
+        content = "\n".join(lines)
+        result = fetcher.save_piped("https://example.com/paper", content, tier=2)
+        assert result.fetch_failed is True
+        assert result.source_file is None
+
+    def test_piped_template_english_rejected(self, fetcher, workdir):
+        lines = ["# Title"]
+        for _ in range(10):
+            lines.append("This source provides information about the research topic.")
+        content = "\n".join(lines)
+        result = fetcher.save_piped("https://example.com/paper", content, tier=2)
+        assert result.fetch_failed is True
+        assert result.source_file is None
+
+    def test_piped_template_chinese_rejected(self, fetcher, workdir):
+        lines = ["# 标题"]
+        for _ in range(10):
+            lines.append("本来源提供了关于DeepSeek技术架构的信息。")
+        content = "\n".join(lines)
+        result = fetcher.save_piped("https://example.com/paper", content, tier=2)
+        assert result.fetch_failed is True
+
+    def test_piped_legitimate_content_passes(self, fetcher, workdir):
+        content = "# Paper Title\n\n" + "x" * 3000
+        result = fetcher.save_piped("https://example.com/paper", content, tier=2)
+        assert result.fetch_failed is False
+        assert (workdir / result.source_file).exists()
+
+    def test_piped_short_but_real_content_passes(self, fetcher, workdir):
+        content = "# Title\n\nSome real content about the topic."
+        result = fetcher.save_piped("https://example.com/paper", content, tier=2)
+        assert result.fetch_failed is False
+        assert result.content_insufficient is True

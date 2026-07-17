@@ -7,6 +7,8 @@ from .fetch_strategies.default import DefaultStrategy
 
 _STRATEGY_DIR = Path(__file__).parent / "fetch_strategies"
 
+_AGENT_ONLY_TOOLS = frozenset({"exa_web_fetch_exa", "exa_web_search_exa"})
+
 
 class ComposedStrategy:
     def __init__(self, rewriter: UrlRewriter | None, tools: list[str] | None = None,

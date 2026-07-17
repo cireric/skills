@@ -68,7 +68,8 @@ description: >
 - **实体发现驱动**：搜索过程中发现新实体时，主动追加搜索（而非只在 gate repair 时被动补充）。
 - **广度优先**：搜索阶段优先覆盖广度，先快速确认源的存在性和相关性（snippet 足够判断），再批量 fetch。
 - **兜底参考**：自由搜索无结果时，参考 scope.json 的 search_directions + config.json 的 source 列表作为兜底搜索方向。
-- **Exa fallback**：当 fetch 返回 content_insufficient 或 fetch_failed 时，用 exa 重新抓取后 pipe 给 CLI（`python -m scripts.cli fetch <url> --from-stdin`）。
+- **Exa fallback**：当 fetch 返回 content_insufficient 或 fetch_failed 时，先检查 config.json 中该来源的 tools 是否包含 exa——有则用 exa 重新抓取后 pipe 给 CLI（`python -m scripts.cli fetch <url> --from-stdin`），无则用 exa_web_search_exa 搜索替代来源。
+- **禁止填充**：如果抓取内容不足，**不要用点填充或模板句补足**。pipe mode 会检测并拒绝填充内容（连续点行占比 >30% 或模板句占比 >40% → fetch_failed）。内容不足时标记 `content_insufficient: true`，gate 会 WARN，但填充会导致 fetch_failed 更难修复。
 - **多平台社区覆盖（缺陷1 修复）**：当 goal_type 路由期望 Tier 4 社区信号时，社区源须覆盖 **≥2 个平台**（如 HuggingFace + Reddit/HN，或 Reddit + Zhihu/Weibo），不要只抓单一平台——这正是 v2 的 HF-only 缺陷。`facet_coverage` 会在单一平台时 WARN，repair_hints 指向 config.json 的 site_query。
 - **来源跨层分散（缺陷2 修复）**：避免单一平台 / 单一权威源主导。尽量跨 Tier 分散（Tier1 论文/标准 + Tier2 文档/开源 + Tier3 行业 + Tier4 社区）。单平台占比过高会在 analysis 阶段触发 `primary_source_ratio` WARN。
 

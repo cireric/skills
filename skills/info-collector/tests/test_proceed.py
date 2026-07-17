@@ -261,6 +261,7 @@ class TestProceeds:
         for sec in analysis["sections"]:
             _write_json(tmp_path / f"analysis_section_{sec['id']}.json", sec)
         _write_json(tmp_path / "review_report.md", {})
+        _write_json(tmp_path / "fix_list.json", [])
         ok, errors = proceeds(tmp_path, "review", "final")
         assert ok, errors
 
@@ -539,6 +540,66 @@ class TestSanitizeSections:
         result = sanitize_sections(raw)
         assert result["sections"][0]["claims"][0]["source_metadata"]["source_type"] == "vendor_benchmark"
 
+    def test_source_type_peer_reviewed_study_aliased(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [
+                {"id": "s1", "title": "S1", "content": "C",
+                 "claims": [{"summary": "c1", "sources": ["https://a.com"],
+                             "source_metadata": {"source_type": "peer_reviewed_study"}}]},
+            ],
+        }
+        result = sanitize_sections(raw)
+        assert result["sections"][0]["claims"][0]["source_metadata"]["source_type"] == "official_report"
+
+    def test_source_type_industry_analysis_aliased(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [
+                {"id": "s1", "title": "S1", "content": "C",
+                 "claims": [{"summary": "c1", "sources": ["https://a.com"],
+                             "source_metadata": {"source_type": "industry_analysis"}}]},
+            ],
+        }
+        result = sanitize_sections(raw)
+        assert result["sections"][0]["claims"][0]["source_metadata"]["source_type"] == "analyst_forecast"
+
+    def test_source_type_official_repository_aliased(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [
+                {"id": "s1", "title": "S1", "content": "C",
+                 "claims": [{"summary": "c1", "sources": ["https://a.com"],
+                             "source_metadata": {"source_type": "official_repository"}}]},
+            ],
+        }
+        result = sanitize_sections(raw)
+        assert result["sections"][0]["claims"][0]["source_metadata"]["source_type"] == "vendor_blog"
+
+    def test_source_type_news_report_aliased(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [
+                {"id": "s1", "title": "S1", "content": "C",
+                 "claims": [{"summary": "c1", "sources": ["https://a.com"],
+                             "source_metadata": {"source_type": "news_report"}}]},
+            ],
+        }
+        result = sanitize_sections(raw)
+        assert result["sections"][0]["claims"][0]["source_metadata"]["source_type"] == "analyst_forecast"
+
+    def test_source_type_platform_data_aliased(self):
+        raw = {
+            "topic": "T", "goal_type": "exploratory",
+            "sections": [
+                {"id": "s1", "title": "S1", "content": "C",
+                 "claims": [{"summary": "c1", "sources": ["https://a.com"],
+                             "source_metadata": {"source_type": "platform_data"}}]},
+            ],
+        }
+        result = sanitize_sections(raw)
+        assert result["sections"][0]["claims"][0]["source_metadata"]["source_type"] == "survey"
+
     def test_evidence_type_independent_test_alias(self):
         raw = {
             "topic": "T", "goal_type": "exploratory",
@@ -694,6 +755,7 @@ class TestReviewSelfLoop:
             },
         )
         _write_json(tmp_path / "review_report.md", {})
+        _write_json(tmp_path / "fix_list.json", [])
         _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "review")
         assert ok, errors
@@ -734,6 +796,7 @@ class TestReviewSelfLoop:
             },
         )
         _write_json(tmp_path / "review_report.md", {})
+        _write_json(tmp_path / "fix_list.json", [])
         _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "review")
         assert ok
@@ -808,6 +871,7 @@ class TestIntegrationMediumComplexity:
         proceeds(workdir, "analysis", "review")
         assert detect_current_phase(workdir) == "post_review"
         (workdir / "review_report.md").write_text("## Overall Verdict\n**pass_with_issues**\n", encoding="utf-8")
+        _write_json(workdir / "fix_list.json", [])
         write_phase_state(workdir, "post_review")
         passed, errors = proceeds(workdir, "review", "review")
         assert passed
@@ -1027,6 +1091,7 @@ class TestGateReviewNoLongerBlocks:
             },
         )
         (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(tmp_path / "fix_list.json", [])
         _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "final")
         assert ok
@@ -1158,6 +1223,7 @@ class TestReviewReportExistsCheck:
             },
         )
         (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(tmp_path / "fix_list.json", [])
         _write_json(tmp_path / "pipeline_state.json", {"current_phase": "post_review"})
         ok, errors = proceeds(tmp_path, "review", "final")
         assert ok, errors
@@ -1430,6 +1496,7 @@ class TestRepairHintsInOutput:
         monkeypatch.setattr("scripts.proceed.run_gateway", lambda w, g: fake_results)
         monkeypatch.setattr("scripts.proceed._get_goal_type", lambda w: "exploratory")
         (tmp_path / "review_report.md").write_text("## Overall Verdict\n**pass**\n", encoding="utf-8")
+        _write_json(tmp_path / "fix_list.json", [])
 
         from scripts.proceed import _gate_review
         errors = _gate_review(tmp_path, to_phase="final")
