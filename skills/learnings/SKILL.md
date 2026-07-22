@@ -31,6 +31,30 @@ Two modes, lightest first:
 - **When the USER explicitly asks** to consolidate recurring lessons into rules — run `debrief`.
 - **Never** auto-edit `AGENTS.md`. Upcycle only on explicit user request, and only after a pitfall recurs across tasks.
 
+## What to capture (triage rubric)
+
+Before `capture`, decide if it is worth surviving across sessions. Use the rubric below so every
+`/learnings` run applies the same standard — neither over-capturing noise nor missing real lessons.
+
+**The five buckets**
+
+| Category | Capture | Skip |
+|---|---|---|
+| `learnings` | reusable working patterns ("do this next time") | one-off slips / typos |
+| `decisions` | key choices **+ why** (stops mindless reverts) | anything already in AGENTS.md |
+| `issues` | pitfalls / blockers / gotchas — the trap **and** the fix | raw task-progress chatter |
+| `problems` | unsolved items / tech debt | throwaway state that dies at the next refactor |
+| `verification` | "X works / X doesn't" conclusions | secrets / customer data |
+
+**Capture only if ≥2 of these hold:**
+
+1. **Reusable** — a future similar task will hit it again (not one-task progress).
+2. **Non-obvious** — not visible from code / docs / error text alone; it is tacit "you had to learn it".
+3. **Costly or valuable** — it burned debugging time, or will save someone else's.
+
+**Skip (noise):** one-off typos · pure task-progress logs · anything already in AGENTS.md ·
+throwaway state that dies at the next refactor · secrets / customer data.
+
 ## Core loop (3 phases)
 
 ### 1. Retrieve (optional, before a future task)

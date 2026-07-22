@@ -37,6 +37,15 @@ def root() -> Path:
     return Path(env) if env else DEFAULT_ROOT
 
 
+def default_scope() -> str:
+    """Fallback scope when --scope is omitted: the current working directory's name.
+
+    This makes `/learnings` robust even if the agent forgets to pass a scope — the
+    notepad lands in the current project's bucket instead of erroring out.
+    """
+    return Path.cwd().name
+
+
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -129,24 +138,28 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     pi = sub.add_parser("init")
-    pi.add_argument("--scope", required=True)
+    pi.add_argument("--scope", default=default_scope(),
+                    help="notepad bucket; defaults to the current directory name")
     pi.set_defaults(func=cmd_init)
 
     pr = sub.add_parser("retrieve")
-    pr.add_argument("--scope")
+    pr.add_argument("--scope", default=default_scope(),
+                   help="notepad bucket; defaults to the current directory name")
     pr.add_argument("--category")
     pr.add_argument("--topic")
     pr.set_defaults(func=cmd_retrieve)
 
     pc = sub.add_parser("capture")
-    pc.add_argument("--scope", required=True)
+    pc.add_argument("--scope", default=default_scope(),
+                   help="notepad bucket; defaults to the current directory name")
     pc.add_argument("--category", required=True, choices=CATEGORIES)
     pc.add_argument("--task-id", required=True)
     pc.add_argument("--content", required=True)
     pc.set_defaults(func=cmd_capture)
 
     pd = sub.add_parser("debrief")
-    pd.add_argument("--scope")
+    pd.add_argument("--scope", default=default_scope(),
+                   help="notepad bucket; defaults to the current directory name")
     pd.set_defaults(func=cmd_debrief)
     return p
 
