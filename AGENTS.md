@@ -32,6 +32,10 @@
 5. 角色分离 — orchestrator 规划调度不写代码，worker 实施不规划
 6. Prometheus→Atlas 为备选 — 大多数时候用 TDD worker，特别复杂 issue 可用 Prometheus→Atlas
 
+## task-observer 激活
+
+任何任务导向会话开始时（将使用工具并产出交付物），先加载 `task-observer` skill，确保技能改进机会在整个会话中被捕获。加载任何 skill 时，检查 `skill-observations/log.md` 中该 skill 的 OPEN 观察记录，在当前工作中应用其洞察。
+
 ## 知识层级
 
 | 位置             | 定位                       | 生命周期            |

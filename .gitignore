@@ -49,9 +49,6 @@ nuxt/
 # omo
 .omo/run-continuation/
 
-# superPowers
-docs/superpowers/
-
 docs/research/
 docs/misc/
 docs/propose/
@@ -59,4 +56,9 @@ docs/domain-knowledge/
 reports/
 .workdir/
 .scratch/
-.playwright-mcp
+
+.playwright-mcp/
+
+# agents
+.workbuddy/
+.trae/
