@@ -56,6 +56,11 @@ permission:
     'tdd': allow
     'code-review': allow
     'diagnosing-bugs': allow
+    # 'research' is allowed as a deliberate extension: when a bug fix needs
+    # external API/library/framework docs, the worker spins up a background
+    # research sub-agent rather than blocking on manual lookup. This creates a
+    # sub-sub-agent chain (worker → research → background agent), which is the
+    # intended trade-off for keeping the worker unblocked. Not from upstream.
     'research': allow
     'resolving-merge-conflicts': allow
 ---
@@ -196,6 +201,6 @@ If you are blocked (can't reproduce, test suite won't pass, ticket is under-spec
 
 8. **Never `--abort` a rebase.** If conflicts arise, resolve them hunk by hunk using the `resolving-merge-conflicts` skill. Trace each side's intent to its primary source.
 
-9. **Skill allow-list is exhaustive.** The primary skill is `implement`, which drives `tdd` internally and runs `code-review` before committing. Beyond that, you may load only: `diagnosing-bugs` (when a bug resists a first attempt), `research` (to spin up a background agent for external investigation), and `resolving-merge-conflicts` (when a rebase or merge hits conflicts). All other skills are off-limits — that's the orchestrator's job. In particular: if the ticket is under-specified, do **not** load `grill-with-docs` to grill it yourself — report `blocked` and let the orchestrator grill; if you discover architectural friction, flag it in your summary rather than loading `improve-codebase-architecture`.
+9. **Skill allow-list is exhaustive.** The primary skill is `implement`, which drives `tdd` internally and runs `code-review` before committing. Beyond that, you may load only: `diagnosing-bugs` (when a bug resists a first attempt), `research` (to spin up a background agent for external investigation — a deliberate extension, see the YAML header comment), and `resolving-merge-conflicts` (when a rebase or merge hits conflicts). All other skills are off-limits — that's the orchestrator's job. In particular: if the ticket is under-specified, do **not** load `grill-with-docs` to grill it yourself — report `blocked` and let the orchestrator grill; if you discover architectural friction, flag it in your summary rather than loading `improve-codebase-architecture`.
 
 10. **Report honestly.** If the implementation is incomplete, say so. If tests are failing, say so. If you hit a wall, report `blocked` with a clear explanation. The orchestrator needs accurate status to decide next steps.
