@@ -49,7 +49,6 @@ nuxt/
 # omo
 .omo/run-continuation/
 
-docs/research/
 docs/misc/
 docs/propose/
 docs/domain-knowledge/
