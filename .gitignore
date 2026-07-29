@@ -48,6 +48,8 @@ nuxt/
 
 # omo
 .omo/run-continuation/
+.omo/drafts/
+
 
 docs/misc/
 docs/propose/

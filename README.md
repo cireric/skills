@@ -14,7 +14,8 @@ Agent 使用的 OpenCode skill 合集。每个 skill 独立，互不依赖。
 skills/
 ├── info-collector/        # 结构化技术调研报告（Python CLI）
 ├── reading-grill/         # 苏格拉底式阅读拷问（纯 Markdown）
-└── book-grill/            # 读书反思与笔记（纯 Markdown）
+├── book-grill/            # 读书反思与笔记（纯 Markdown）
+└── daily-focus/           # 每日聚焦：重要-紧急矩阵挑出今日 Top 3（纯 Markdown）
 ```
 
 - 各 skill 互相独立，无共享代码
@@ -27,6 +28,7 @@ skills/
 | [info-collector](./skills/info-collector/README.md) | 结构化技术调研报告 | Python CLI，scope→search→analyze→review→report 管道 |
 | reading-grill | 苏格拉底式阅读拷问 | 纯 Markdown，L1 回忆→L2 理解→L3 批判性反思 |
 | book-grill | 读书反思与笔记 | 纯 Markdown，4 阶段类型自适应提问 |
+| daily-focus | 每日聚焦，挑出今日 Top 3 | 纯 Markdown，脑暴+本地待办→重要-紧急矩阵→Top 3→每日存盘 |
 
 ## 运行测试
 

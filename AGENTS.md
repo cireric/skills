@@ -34,7 +34,9 @@
 
 ## task-observer 激活
 
-任何任务导向会话开始时（将使用工具并产出交付物），先加载 `task-observer` skill，确保技能改进机会在整个会话中被捕获。加载任何 skill 时，检查 `skill-observations/log.md` 中该 skill 的 OPEN 观察记录，在当前工作中应用其洞察。
+任何任务导向会话开始时（将使用工具并产出交付物），先加载 `task-observer` skill，确保技能改进机会在整个会话中被捕获。加载任何 skill 时，检查 `.omo/skill-observations/log.md` 中该 skill 的 OPEN 观察记录，在当前工作中应用其洞察。
+
+task-observer 观察范围：skill 文件缺陷（L1）、skill 间协作（L2）、工作流/方法论缺陷（L3）。项目经验、agent 行为、工具 quirks 归 `learnings` skill。
 
 ## 知识层级
 
@@ -42,7 +44,9 @@
 | ---------------- | -------------------------- | ------------------- |
 | `AGENTS.md`      | 行为规则（必做/禁做/约定） | 持久                |
 | `skills/<skill>/docs/adr/` | 不可逆架构决策快照（per skill） | 持久，可 supersede  |
-| `.omo/notepads/` | 临时踩坑记录               | 临时 — 被吸收后删除 |
+| `.omo/notepads/` | 临时踩坑记录（learnings skill）  | 临时 — 被吸收后删除 |
+| `.omo/skill-observations/` | skill 改进观察（task-observer skill） | 临时 — 被 ACTIONED/DECLINED 并归档后清理 |
+| `.omo/daily-focus/` | 每日聚焦数据（daily-focus skill） | 持久 — 跨天延续依赖此目录 |
 
 notepads 清理规则：
 
@@ -53,11 +57,13 @@ notepads 清理规则：
 
 `.omo/` 归档规则：
 
-项目任务完成后，`.omo/` 下仅保留 `notepads/`（未吸收的踩坑经验），其余目录删除。
+项目任务完成后，`.omo/` 下仅保留 `notepads/`（未吸收的踩坑经验）、`skill-observations/`（未归档的观察记录）和 `daily-focus/`（用户每日聚焦数据），其余目录删除。
 
 | 目录                | 归档操作                             |
 | ------------------- | ------------------------------------ |
 | `notepads/`         | 保留（清理已吸收的条目后）           |
+| `skill-observations/` | 保留（归档已 ACTIONED/DECLINED 条目后） |
+| `daily-focus/`      | 保留（用户每日聚焦数据，跨天延续依赖此目录） |
 | `boulder.json`      | 删除（运行时进度，任务完成即失效）   |
 | `drafts/`           | 删除（中间产物暂存）                 |
 | `evidence/`         | 删除（QA 证据，测试通过即失效）      |

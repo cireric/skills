@@ -1,0 +1,6 @@
+{
+  "focus_dir": ".omo/daily-focus",
+  "todo_filename": "todo.md",
+  "top_n": 3,
+  "default_language": "zh"
+}
