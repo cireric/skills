@@ -1,6 +1,6 @@
 # ADR-0001: Daily Focus Skill Enhancements
 
-**Status:** Accepted  
+**Status:** Partially superseded by ADR-0002 (Decision #1 — archive rule)  
 **Date:** 2026-07-29  
 **Context:** Grill session on daily-focus skill optimization
 
