@@ -32,17 +32,15 @@ except ImportError:
     sys.exit(1)
 
 DEFAULT_OBS_DIR = ".omo/skill-observations"
-DEFAULT_ARCHIVE_AFTER_DAYS = 0
-DEFAULT_REVIEW_INTERVAL = 7
-DEFAULT_LOCK_TIMEOUT = 5
-DEFAULT_TYPE = "internal"
-
 LOG_FILENAME = "log.md"
 REVIEW_DATE_FILENAME = "last-review-date.txt"
 ARCHIVE_DIRNAME = "archive"
 CONFIG_FILENAME = "config.json"
+PRINCIPLES_FILENAME = "cross-cutting-principles.md"
+SKILL_UPDATES_DIRNAME = "skill-updates"
+REVIEW_DATE_NEVER = "never"
 
-LOG_HEADER = (
+_LOG_HEADER = (
     "# Skill Observation Log\n\n"
     "Observations captured during task-oriented work.\n\n"
     "**Status key:** OPEN = not yet actioned | "
@@ -51,9 +49,9 @@ LOG_HEADER = (
     "resolved statuses always carry their resolution date\n\n---\n"
 )
 
-OBS_HEADER_RE = re.compile(r"^### Observation (\d+):", re.MULTILINE)
-STATUS_LINE_RE = re.compile(r"^\*\*Status:\*\*\s*(.+)$", re.MULTILINE)
-DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_OBS_HEADER_RE = re.compile(r"^### Observation (\d+):", re.MULTILINE)
+_STATUS_LINE_RE = re.compile(r"^\*\*Status:\*\*\s*(.+)$", re.MULTILINE)
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def _skill_dir() -> Path:
@@ -70,16 +68,19 @@ def _load_config() -> dict:
     return {}
 
 
+def _cfg(key: str, default):
+    return _load_config().get(key, default)
+
+
 def obs_dir() -> Path:
-    cfg = _load_config()
-    p = cfg.get("observation_dir", DEFAULT_OBS_DIR)
     env = os.environ.get("TASK_OBSERVER_DIR")
-    root = Path(env) if env else Path(p)
-    return root
+    if env:
+        return Path(env)
+    return Path(_cfg("observation_dir", DEFAULT_OBS_DIR))
 
 
 def lock_path() -> Path:
-    return obs_dir() / "log.md.lock"
+    return obs_dir() / (LOG_FILENAME + ".lock")
 
 
 def log_path() -> Path:
@@ -103,26 +104,26 @@ def _today() -> str:
 
 
 def _parse_entries(text: str) -> list[dict]:
-    headers = list(OBS_HEADER_RE.finditer(text))
+    headers = list(_OBS_HEADER_RE.finditer(text))
     entries = []
     for i, m in enumerate(headers):
         num = int(m.group(1))
         start = m.start()
         end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
         body = text[start:end]
-        status_match = STATUS_LINE_RE.search(body)
+        status_match = _STATUS_LINE_RE.search(body)
         status = status_match.group(1).strip() if status_match else "OPEN"
         entries.append({"num": num, "start": start, "end": end, "body": body, "status": status})
     return entries
 
 
 def _highest_number(text: str) -> int:
-    nums = [int(m.group(1)) for m in OBS_HEADER_RE.finditer(text)]
+    nums = [int(m.group(1)) for m in _OBS_HEADER_RE.finditer(text)]
     return max(nums) if nums else 0
 
 
 def _count_headers(text: str) -> int:
-    return len(OBS_HEADER_RE.findall(text))
+    return len(_OBS_HEADER_RE.findall(text))
 
 
 def _is_resolved(status: str) -> bool:
@@ -130,7 +131,7 @@ def _is_resolved(status: str) -> bool:
 
 
 def _resolved_date(status: str) -> str | None:
-    m = DATE_RE.search(status)
+    m = _DATE_RE.search(status)
     return m.group(0) if m else None
 
 
@@ -162,24 +163,24 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     lp = log_path()
     if not lp.exists():
-        lp.write_text(LOG_HEADER, encoding="utf-8")
+        lp.write_text(_LOG_HEADER, encoding="utf-8")
 
     rdp = review_date_path()
     if not rdp.exists():
-        rdp.write_text("never", encoding="utf-8")
+        rdp.write_text(REVIEW_DATE_NEVER, encoding="utf-8")
 
     cp = _skill_dir() / CONFIG_FILENAME
     if not cp.exists():
         default_cfg = {
             "observation_dir": DEFAULT_OBS_DIR,
-            "review_interval_days": DEFAULT_REVIEW_INTERVAL,
-            "default_type": DEFAULT_TYPE,
-            "lock_timeout_seconds": DEFAULT_LOCK_TIMEOUT,
-            "archive_after_days": DEFAULT_ARCHIVE_AFTER_DAYS,
+            "review_interval_days": 7,
+            "default_type": "internal",
+            "lock_timeout_seconds": 5,
+            "archive_after_days": 0,
         }
         cp.write_text(json.dumps(default_cfg, indent=2) + "\n", encoding="utf-8")
 
-    principles = d.parent / "cross-cutting-principles.md"
+    principles = d.parent / PRINCIPLES_FILENAME
     if not principles.exists():
         principles.write_text(
             "# Cross-Cutting Principles\n\n"
@@ -192,9 +193,8 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 
 def cmd_append(args: argparse.Namespace) -> int:
-    cfg = _load_config()
-    timeout = cfg.get("lock_timeout_seconds", DEFAULT_LOCK_TIMEOUT)
-    obs_type = args.type or cfg.get("default_type", DEFAULT_TYPE)
+    timeout = _cfg("lock_timeout_seconds", 5)
+    obs_type = args.type or _cfg("default_type", "internal")
     lp = log_path()
 
     if not lp.exists():
@@ -206,7 +206,7 @@ def cmd_append(args: argparse.Namespace) -> int:
         with lock:
             text = lp.read_text(encoding="utf-8")
             proposed = _highest_number(text) + 1
-            existing_nums = {int(m.group(1)) for m in OBS_HEADER_RE.finditer(text)}
+            existing_nums = {int(m.group(1)) for m in _OBS_HEADER_RE.finditer(text)}
             while proposed in existing_nums:
                 proposed += 1
 
@@ -227,7 +227,7 @@ def cmd_append(args: argparse.Namespace) -> int:
                       f"pre={pre_count} post={post_count} expected={pre_count + 1}",
                       file=sys.stderr)
 
-            occ = len(OBS_HEADER_RE.findall(post_text))
+            occ = len(_OBS_HEADER_RE.findall(post_text))
             proposed_pattern = f"### Observation {proposed}:"
             occ_proposed = post_text.count(proposed_pattern)
             if occ_proposed > 1:
@@ -242,8 +242,7 @@ def cmd_append(args: argparse.Namespace) -> int:
 
 
 def cmd_mark(args: argparse.Namespace) -> int:
-    cfg = _load_config()
-    timeout = cfg.get("lock_timeout_seconds", DEFAULT_LOCK_TIMEOUT)
+    timeout = _cfg("lock_timeout_seconds", 5)
     lp = log_path()
 
     if not lp.exists():
@@ -256,7 +255,7 @@ def cmd_mark(args: argparse.Namespace) -> int:
         with lock:
             text = lp.read_text(encoding="utf-8")
             pre_count = _count_headers(text)
-            backup = obs_dir() / f"log.md.bak-{_today()}"
+            backup = obs_dir() / f"{LOG_FILENAME}.bak-{_today()}"
             shutil.copy2(str(lp), str(backup))
 
             entries = _parse_entries(text)
@@ -316,9 +315,8 @@ def cmd_mark(args: argparse.Namespace) -> int:
 
 
 def cmd_archive(args: argparse.Namespace) -> int:
-    cfg = _load_config()
-    timeout = cfg.get("lock_timeout_seconds", DEFAULT_LOCK_TIMEOUT)
-    archive_after = cfg.get("archive_after_days", DEFAULT_ARCHIVE_AFTER_DAYS)
+    timeout = _cfg("lock_timeout_seconds", 5)
+    archive_after = _cfg("archive_after_days", 0)
     lp = log_path()
 
     if not lp.exists():
@@ -331,7 +329,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
         with lock:
             text = lp.read_text(encoding="utf-8")
             pre_count = _count_headers(text)
-            backup = obs_dir() / f"log.md.bak-{today}"
+            backup = obs_dir() / f"{LOG_FILENAME}.bak-{today}"
             shutil.copy2(str(lp), str(backup))
 
             entries = _parse_entries(text)
@@ -349,19 +347,19 @@ def cmd_archive(args: argparse.Namespace) -> int:
                 print("no entries to archive")
                 return 0
 
-            archive_text = LOG_HEADER
+            archive_text = _LOG_HEADER
             for e in to_archive:
                 archive_text += e["body"]
 
             ad = archive_dir()
             ad.mkdir(parents=True, exist_ok=True)
-            archive_file = ad / f"log-{today}.md"
+            archive_file = ad / f"{LOG_FILENAME.replace('.md', '')}-{today}.md"
             if archive_file.exists():
                 existing = archive_file.read_text(encoding="utf-8")
-                archive_text = existing + "\n" + archive_text[len(LOG_HEADER):]
+                archive_text = existing + "\n" + archive_text[len(_LOG_HEADER):]
             archive_file.write_text(archive_text, encoding="utf-8")
 
-            new_text = LOG_HEADER
+            new_text = _LOG_HEADER
             for e in to_keep:
                 new_text += e["body"]
             lp.write_text(new_text, encoding="utf-8")
@@ -382,8 +380,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    cfg = _load_config()
-    review_interval = cfg.get("review_interval_days", DEFAULT_REVIEW_INTERVAL)
+    review_interval = _cfg("review_interval_days", 7)
     lp = log_path()
 
     if not lp.exists():
@@ -413,7 +410,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     review_date = rdp.read_text(encoding="utf-8").strip() if rdp.exists() else "unknown"
 
     review_due = False
-    if review_date == "never":
+    if review_date == REVIEW_DATE_NEVER:
         review_due = open_count > 0
     else:
         try:
@@ -448,7 +445,7 @@ def cmd_stage(args: argparse.Namespace) -> int:
         print(f"ERROR: {args.skill_path} not found.", file=sys.stderr)
         return 1
 
-    dest_base = obs_dir().parent / "skill-updates" / _today() / src.name
+    dest_base = obs_dir().parent / SKILL_UPDATES_DIRNAME / _today() / src.name
     dest_base.mkdir(parents=True, exist_ok=True)
 
     shutil.copytree(str(src), str(dest_base), dirs_exist_ok=True)
