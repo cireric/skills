@@ -1,17 +1,18 @@
 # Issue tracker: Local Markdown
 
-Issues and PRDs for this repo live as markdown files in `docs/`.
+Specs/PRDs for this repo live in `.omo/specs/`; implementation issues live as markdown files in `.scratch/`.
 
 ## Conventions
 
-- PRDs are `docs/prd-<feature-slug>.md`
-- Implementation issues are `docs/issues/<NNN>-<slug>.md`, numbered from `001`
+- One feature per directory: `.scratch/<feature-slug>/`
+- Specs/PRDs are `.omo/specs/<feature-slug>.md` (PRDs keep the `prd-` prefix: `.omo/specs/prd-<feature-slug>.md`)
+- Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NNN>-<slug>.md`, numbered from `001` — never a single combined tickets file
 - Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
 
 ## When a skill says "publish to the issue tracker"
 
-Create a new file under `docs/issues/` (creating the directory if needed).
+Create a new file under `.scratch/<feature-slug>/issues/` (creating the directory if needed).
 
 ## When a skill says "fetch the relevant ticket"
 
