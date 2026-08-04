@@ -34,7 +34,9 @@
 
 ## task-observer 激活
 
-任何任务导向会话开始时（将使用工具并产出交付物），先加载 `task-observer` skill，确保技能改进机会在整个会话中被捕获。加载任何 skill 时，检查 `.omo/skill-observations/log.md` 中该 skill 的 OPEN 观察记录，在当前工作中应用其洞察。
+当加载可观察 skill（当前：deep-research、info-collector）时，plugin 自动触发 task-observer 加载。无需手动激活。
+
+新增本地 skill 时，按 3 维度评估是否加入观察列表：执行步数（多阶段/有门控=高）、合规风险（agent 有动机偷懒=高）、改进价值（有脚本/ADR 可改=高）。≥2 个维度为高 → 加入 plugin 的 OBSERVABLE_SKILLS 集合。
 
 task-observer 观察范围：skill 文件缺陷（L1）、skill 间协作（L2）、工作流/方法论缺陷（L3）。项目经验、agent 行为、工具 quirks 归 `learnings` skill。
 

@@ -15,6 +15,9 @@ from typing import TypedDict
 from .constants import (
     _VALID_AUDIENCES,
     _VALID_CONFIDENCE,
+    _VALID_CONVERGENCE_TYPES,
+    _VALID_DEEP_DIVE_TARGET_STATUSES,
+    _VALID_DEEP_DIVE_TRIGGER_REASONS,
     _VALID_DEPTH_STRATEGIES,
     _VALID_DEPTHS,
     _VALID_EVIDENCE_TYPES,
@@ -76,6 +79,26 @@ class CollectedEntryDict(TypedDict, total=False):
     vendor_affiliation: str
     source_file: str
     direction: str  # ADR 0052: which scope.search_directions this source serves, or "other"
+
+
+class DeepDiveTargetDict(TypedDict, total=False):
+    id: str
+    section_id: str
+    claim_summary: str
+    trigger_reason: str
+    search_queries: list[str]
+    target_tiers: list[int]
+    status: str
+    skip_reason: str | None
+    new_sources: list[str]
+    round_created: int
+
+
+class DeepDivePlanDict(TypedDict, total=False):
+    round: int
+    max_rounds: int
+    targets: list[DeepDiveTargetDict]
+    convergence: dict | None
 
 
 _SCOPE_REQUIRED_FIELDS = (
@@ -309,3 +332,79 @@ def validate_collected(data: list) -> list[ValidationError]:
             if not isinstance(d, str) or not d.strip():
                 errors.append(_err(f"{prefix}.direction", "must be a non-empty string if present"))
     return errors
+
+
+_DEEP_DIVE_PLAN_REQUIRED_FIELDS = ("round", "max_rounds", "targets")
+_DEEP_DIVE_TARGET_REQUIRED_FIELDS = ("id", "trigger_reason", "status", "round_created")
+
+
+def validate_deep_dive_plan(data: dict) -> list[ValidationError]:
+    errors: list[ValidationError] = []
+    for field in _DEEP_DIVE_PLAN_REQUIRED_FIELDS:
+        if field not in data:
+            errors.append(_err(field, f"missing required field: {field}"))
+    if "round" in data and not isinstance(data["round"], int):
+        errors.append(_err("round", f"expected int, got {type(data['round']).__name__}"))
+    if "max_rounds" in data and not isinstance(data["max_rounds"], int):
+        errors.append(_err("max_rounds", f"expected int, got {type(data['max_rounds']).__name__}"))
+    targets = data.get("targets")
+    if targets is None:
+        errors.append(_err("targets", "missing required field: targets"))
+    elif not isinstance(targets, list):
+        errors.append(_err("targets", f"expected list, got {type(targets).__name__}"))
+    else:
+        _validate_deep_dive_targets(targets, errors)
+    if "convergence" in data and data["convergence"] is not None:
+        conv = data["convergence"]
+        if not isinstance(conv, dict):
+            errors.append(_err("convergence", f"expected dict or null, got {type(conv).__name__}"))
+        elif "type" not in conv:
+            errors.append(_err("convergence.type", "missing required field: type"))
+        elif conv["type"] not in _VALID_CONVERGENCE_TYPES:
+            errors.append(_err("convergence.type", f"invalid convergence type '{conv['type']}'"))
+    return errors
+
+
+def _validate_deep_dive_targets(targets: list, errors: list[ValidationError]) -> None:
+    for i, target in enumerate(targets):
+        prefix = f"targets[{i}]"
+        if not isinstance(target, dict):
+            errors.append(_err(prefix, f"expected dict, got {type(target).__name__}"))
+            continue
+        for field in _DEEP_DIVE_TARGET_REQUIRED_FIELDS:
+            if field not in target:
+                errors.append(_err(f"{prefix}.{field}", f"missing required field: {field}"))
+        if "id" in target and not isinstance(target["id"], str):
+            errors.append(_err(f"{prefix}.id", f"expected str, got {type(target['id']).__name__}"))
+        if "trigger_reason" in target:
+            tr = target["trigger_reason"]
+            if not isinstance(tr, str):
+                errors.append(_err(f"{prefix}.trigger_reason", f"expected str, got {type(tr).__name__}"))
+            elif tr not in _VALID_DEEP_DIVE_TRIGGER_REASONS:
+                errors.append(_err(f"{prefix}.trigger_reason", f"invalid trigger_reason '{tr}'"))
+        if "status" in target:
+            st = target["status"]
+            if not isinstance(st, str):
+                errors.append(_err(f"{prefix}.status", f"expected str, got {type(st).__name__}"))
+            elif st not in _VALID_DEEP_DIVE_TARGET_STATUSES:
+                errors.append(_err(f"{prefix}.status", f"invalid status '{st}'"))
+        if "round_created" in target and not isinstance(target["round_created"], int):
+            errors.append(_err(f"{prefix}.round_created", f"expected int, got {type(target['round_created']).__name__}"))
+        if "search_queries" in target:
+            sq = target["search_queries"]
+            if not isinstance(sq, list):
+                errors.append(_err(f"{prefix}.search_queries", f"expected list, got {type(sq).__name__}"))
+            elif not all(isinstance(q, str) for q in sq):
+                errors.append(_err(f"{prefix}.search_queries", "all items must be strings"))
+        if "target_tiers" in target:
+            tt = target["target_tiers"]
+            if not isinstance(tt, list):
+                errors.append(_err(f"{prefix}.target_tiers", f"expected list, got {type(tt).__name__}"))
+            elif not all(isinstance(t, int) for t in tt):
+                errors.append(_err(f"{prefix}.target_tiers", "all items must be integers"))
+        if "new_sources" in target:
+            ns = target["new_sources"]
+            if not isinstance(ns, list):
+                errors.append(_err(f"{prefix}.new_sources", f"expected list, got {type(ns).__name__}"))
+            elif not all(isinstance(s, str) for s in ns):
+                errors.append(_err(f"{prefix}.new_sources", "all items must be strings"))

@@ -67,7 +67,7 @@ Observations captured during task-oriented work.
 
 ### Observation 6: Orchestrator gate check requires direction IDs in search_log to match scope.json
 
-**Status:** ACTIONED (2026-07-31) — Applied to deep-research docs/orchestrator-interface.md: added direction field format constraint + fixed example (weekly review)
+**Status:** OPEN
 **Date:** 2026-07-31
 **Session context:** Deep-research on RISC-V AI edge commercial viability 2026
 **Skill:** deep-research
@@ -79,18 +79,3 @@ Observations captured during task-oriented work.
 **Suggested improvement:** Clarify in orchestrator-interface.md or orchestrator.py that search_log direction field must use scope.json direction IDs, not free-text labels
 
 **Principle:** Gate checks that match on IDs should document the expected format; free-text labels in structured data cause silent mismatches
-
-### Observation 7: deep-research was a hollow shell — 527-line orchestrator.py was just a prompt di
-
-**Status:** OPEN
-**Date:** 2026-08-03
-**Session context:** Merged deep-research skill into info-collector as deep_dive phase (ADR 0064)
-**Skill:** deep-research
-**Type:** internal
-**Phase/Area:** merge execution
-
-**Issue:** deep-research was a hollow shell — 527-line orchestrator.py was just a prompt dispatcher with trivial gate checks, no fetch infrastructure, no quality validation. Tests were pseudo-tests asserting Python assignment operations.
-
-**Suggested improvement:** Merged iterative deep-dive into info-collector as new pipeline phase (deep_dive) with proper gate checks, config integration, and 37 passing tests
-
-**Principle:** When a skill's implementation is far below its design spec, merge the design value into a skill with working infrastructure rather than building out the hollow shell

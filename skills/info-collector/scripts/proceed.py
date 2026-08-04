@@ -19,6 +19,7 @@ from .lib.exceptions import ArtifactError
 from .lib.constants import (
     ARTIFACT_ANALYSIS,
     ARTIFACT_COLLECTED,
+    ARTIFACT_DEEP_DIVE_PLAN,
     ARTIFACT_FIX_LIST,
     ARTIFACT_PIPELINE_STATE,
     ARTIFACT_REVIEW_REPORT,
@@ -300,7 +301,7 @@ def write_phase_state(workdir: Path, phase: str) -> None:
 def detect_current_phase(workdir: Path) -> str:
     """Return current phase string based on state file or artifact presence.
 
-    Returns one of: pre_scope, post_scope, post_search, post_analysis, post_review, post_final
+    Returns one of: pre_scope, post_scope, post_search, post_analysis, post_deep_dive, post_review, post_final
     """
     if not workdir.exists():
         return "pre_scope"
@@ -309,7 +310,7 @@ def detect_current_phase(workdir: Path) -> str:
         try:
             state = read_json(state_path)
             phase = state.get("current_phase", "")
-            if phase in ("pre_scope", "post_scope", "post_search", "post_analysis", "post_review", "post_final"):
+            if phase in ("pre_scope", "post_scope", "post_search", "post_analysis", "post_deep_dive", "post_review", "post_final"):
                 return phase
         except (ArtifactError, OSError):
             pass
@@ -493,6 +494,50 @@ def _gate_analysis(workdir: Path) -> list[str]:
     return errors
 
 
+def _gate_deep_dive(workdir: Path, config: dict | None, to_phase: str) -> list[str]:
+    """Deep-dive gate (ADR 0064).
+
+    deep_dive→search: lightweight check — plan must exist with pending/in_progress targets.
+    deep_dive→review: full DeepDiveGate check.
+    """
+    from .deep_dive_gate import DeepDiveGate
+
+    errors: list[str] = []
+
+    if to_phase == "search":
+        plan_path = workdir / ARTIFACT_DEEP_DIVE_PLAN
+        if not plan_path.exists():
+            errors.append("[BLOCKER] deep_dive_plan.json not found. Run `deep-dive-plan` first.")
+            return errors
+        try:
+            plan = read_json(plan_path)
+        except ArtifactError:
+            errors.append("[BLOCKER] deep_dive_plan.json is not valid JSON.")
+            return errors
+        targets = plan.get("targets", [])
+        active = [t for t in targets if isinstance(t, dict) and t.get("status") in ("pending", "in_progress")]
+        if not active:
+            errors.append("[BLOCKER] No pending or in_progress deep-dive targets. All targets are completed or skipped — proceed to review instead.")
+        return errors
+
+    if to_phase == "review":
+        results = DeepDiveGate(workdir, config).check()
+        for r in results:
+            if r.passed:
+                continue
+            if r.level == "BLOCKER":
+                errors.append(f"[BLOCKER] {r.name}: {r.message}")
+                for hint in r.repair_hints:
+                    errors.append(f"  → {hint}")
+            else:
+                print(f"  [{r.level}] {r.name}: {r.message}", file=sys.stderr)
+                for hint in r.repair_hints:
+                    print(f"  → {hint}", file=sys.stderr)
+        return errors
+
+    return errors
+
+
 def _check_review_report_exists(workdir: Path) -> CheckResult:
     """Check that review_report.md exists and is non-empty.
 
@@ -605,10 +650,21 @@ def proceeds(
             f"Invalid transition: --from {from_phase} --to {to_phase}"
         ]
 
+    if from_phase == "analysis" and to_phase == "deep_dive":
+        scope_path = workdir / ARTIFACT_SCOPE
+        try:
+            scope = read_json(scope_path)
+        except ArtifactError:
+            return False, ["[BLOCKER] scope.json not found. Cannot verify depth for deep_dive transition."]
+        depth = scope.get("depth", "standard")
+        if depth != "deep":
+            return False, [f"[BLOCKER] deep_dive phase requires depth='deep', but scope.json has depth='{depth}'. Use analysis→review instead."]
+
     gate_fn = {
         "scope": lambda: _gate_scope(workdir, config),
         "search": lambda: _gate_search(workdir, config),
         "analysis": lambda: _gate_analysis(workdir),
+        "deep_dive": lambda: _gate_deep_dive(workdir, config, to_phase),
         "review": lambda: _gate_review(workdir, to_phase),
     }.get(from_phase)
 

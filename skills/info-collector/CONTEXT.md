@@ -25,7 +25,7 @@ A scope.json field that informs AI behavior without driving deterministic code l
 _Avoid_: advisory field
 
 **depth**:
-Search depth (quick, standard, deep). A behavior-driving field — drives per-direction minimum source count in search gate (quick=1, standard=3, deep=5) and search plan generation.
+Search depth (quick, standard, deep). A behavior-driving field — drives per-direction minimum source count in search gate (quick=1, standard=3, deep=5), single_source_ratio threshold, and deep_dive phase activation (ADR 0064). When depth=deep, the pipeline adds an iterative deep-dive loop between analysis and review phases.
 _Avoid_: research level, thoroughness
 
 **summary**:
@@ -121,7 +121,7 @@ Axis-B multi-source corroboration metric: ratio of claims whose `sources` has fe
 _Avoid_: single-source rate, source diversity ratio
 
 **Chinese community source**:
-Tier 4 UGC sources in Chinese: Zhihu (zhihu.com) and Weibo (weibo.com). Both carry `language: "zh"` and rely on exa (exa_web_fetch_exa / exa_web_search_exa) as the primary fetch path because autonomous fetch (webfetch/playwright) is unreachable in the no-egress environment. Weibo is best-effort (login-wall / anti-bot may yield fetch_failed); Zhihu is the dependable Chinese-community voice.
+Tier 4 UGC sources in Chinese. Core: Zhihu (zhihu.com) and Weibo (weibo.com) — both carry `language: "zh"` and rely on exa (exa_web_fetch_exa / exa_web_search_exa) as the primary fetch path because autonomous fetch (webfetch/playwright) is unreachable in the no-egress environment. Weibo is best-effort (login-wall / anti-bot may yield fetch_failed); Zhihu is the dependable Chinese-community voice. Extended: V2EX (v2ex.com, tech forum), 掘金 (juejin.cn, developer community), 豆瓣 (douban.com, books/film/lifestyle reviews), 小红书 (xiaohongshu.com, lifestyle/UGC) — also `language: "zh"`, exa-reachable, but coverage varies by topic (V2EX/掘金 strong for tech, 豆瓣 for cultural/product reviews, 小红书 for consumer/生活 topics).
 _Avoid_: Chinese source, CN community source
 
 **review_status**:
@@ -272,10 +272,35 @@ _Avoid_: repo root, workspace root
 - **scope.json** — Phase 1 output: topic, goal_type, depth, audience, report_language, scope_description, search_directions (fallback reference, ADR 0046), decision_questions? (hint field), english_title?
 - **collected.json** — Phase 2 output: array of {url, title, snippet, source_tier, fetched_content, covered_directions?, vendor_affiliation?}
 - **analysis.json** — Phase 3a output: topic, goal_type, sections (each with id, title, content, depth_strategy, key_insights, tensions, claims)
+- **deep_dive_plan.json** — Phase 3.5 output (depth=deep only): round, max_rounds, targets (each with id, section_id, claim_summary, trigger_reason, search_queries, target_tiers, status, skip_reason, new_sources, round_created), convergence
 - **review_report.md** — Phase 3b output: subagent review findings
 - **fix_list.json** — Phase 3b output: structured fix list from review subagent (issue_id, type, severity, section, description, recommendation). Machine-consumable complement to review_report.md. Introduced by ADR 0055.
 - **fix_report.json** — Phase 3c output: per-issue fix status from review-fix subagent (fixed/skipped+reason). Consumed by repair loop to determine passed/degraded. Introduced by ADR 0055.
-- **config.json** — Skill configuration: sources (4 tiers, each with language field), routes (10 goal_types), output_dir, default_report_language, default_depth, goal_type_defaults
+- **config.json** — Skill configuration: sources (4 tiers, each with language field), routes (10 goal_types), output_dir, default_report_language, default_depth, goal_type_defaults, deep_dive_defaults
+
+**deep_dive phase**:
+Pipeline phase between analysis and review, active only when depth=deep. Iteratively deepens research by targeting source_absent/indirect claims, single-source claims, and unresolved tensions. Converges via hard/natural/soft conditions. Introduced by ADR 0064 (merging deep-research skill's iterative deepening into info-collector).
+_Avoid_: deep research, deep-research skill (superseded)
+
+**deep_dive_plan.json**:
+Artifact listing deep-dive targets with trigger_reason, search_queries, target_tiers, status, and convergence field. Created by `deep-dive-plan` CLI command. Updated each round. Each target has a trigger_reason (source_absent, source_indirect, single_source, tension_unresolved) and tracks new_sources collected during deep-dive.
+_Avoid_: deep dive plan, research plan
+
+**deep_dive target**:
+A specific claim or tension identified for deeper investigation. Each target has: id, section_id, claim_summary, trigger_reason, search_queries, target_tiers, status (pending/in_progress/completed/skipped), skip_reason, new_sources, round_created. Status transitions: pending → in_progress → completed|skipped.
+_Avoid_: deep dive item, research direction
+
+**deep_dive convergence**:
+The condition that terminates the deep-dive loop. Three types: hard (round budget exhausted — guaranteed termination), natural (all trigger conditions resolved — early termination), soft (consecutive rounds with no new findings — potential exhaustion). Priority: hard > natural > soft. Declared by `deep-dive-converge` CLI command.
+_Avoid_: stop condition, termination, convergence (unqualified)
+
+**deep_dive loop**:
+The iterative cycle: identify targets → search/fetch → update analysis → check convergence. Maximum rounds controlled by deep_dive_defaults.max_rounds in config.json (default 3). Re-search loop (deep_dive→search) uses lightweight gate checking only new sources, not full SearchGate.
+_Avoid_: deep research loop, inner loop
+
+**deep_dive trigger_reason**:
+Why a target was identified for deep-dive. Four valid values: source_absent (claim's source not found in fetched_content), source_indirect (claim relies on indirect/tier-3+ source), single_source (claim relies on only one source), tension_unresolved (analysis section has unresolved tension). Thresholds configurable in deep_dive_defaults.
+_Avoid_: trigger type, trigger category
 
 ## Relationships
 
@@ -314,6 +339,12 @@ _Avoid_: repo root, workspace root
 - **信任边界** validates subagent output before writing to section_file: structural validation (schema) + semantic validation (URL match against collected.json). `ref_marker_validity` and `claim_source_ref_coverage` remain as defense-in-depth at gate level (ADR 0053, ADR 0054)
 - **repair loop** closes the review→fix→re-validate cycle: review-fix subagent + fix_report.json self-report + lightweight review verification. Max 2 rounds. BLOCKER all fixed → passed, otherwise → degraded (ADR 0055)
 - **incomplete section** (`status: "incomplete"`) implies `degraded` review_status, but `degraded` does not imply incomplete section — degraded may also result from unresolved review issues in the repair loop
+- **deep_dive phase** activates only when **depth** = "deep"; quick/standard pipelines skip deep_dive entirely (analysis → review directly)
+- **deep_dive_plan.json** is created by `deep-dive-plan` CLI; targets are identified from **source_verification** (source_absent/source_indirect), **single_source_ratio**, and unresolved **tensions** in analysis.json
+- **deep_dive convergence** has three types: hard (round ≥ max_rounds, guaranteed termination), natural (all triggers resolved, early stop), soft (no new findings, potential exhaustion). Hard > natural > soft priority (ADR 0064)
+- **deep_dive loop** re-enters search phase via deep_dive → search transition with lightweight gate (only checks plan has pending targets, not full SearchGate)
+- **deep_dive target** status transitions: pending → in_progress → completed|skipped; skipped requires skip_reason
+- new sources collected during deep_dive loop use **direction** = `"deep_dive"` in collected.json
 
 ## Route Decisions (ADR 0031)
 

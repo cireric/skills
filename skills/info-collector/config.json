@@ -93,5 +93,13 @@
     "playwright_enabled": true,
     "playwright_channel": "chrome",
     "playwright_timeout": 30000
+  },
+  "deep_dive_defaults": {
+    "max_rounds": 3,
+    "min_sources_per_target": 3,
+    "trigger_source_absent_count": 1,
+    "trigger_indirect_ratio": 0.30,
+    "trigger_single_source_ratio": 0.50,
+    "soft_convergence_rounds": 2
   }
 }

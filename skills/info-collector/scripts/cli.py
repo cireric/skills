@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from .lib.constants import ARTIFACT_ANALYSIS, ARTIFACT_COLLECTED, ARTIFACT_PIPELINE_STATE, ARTIFACT_REVIEW_REPORT, ARTIFACT_SCOPE, _PHASE_ARTIFACTS
+from .lib.constants import ARTIFACT_ANALYSIS, ARTIFACT_COLLECTED, ARTIFACT_DEEP_DIVE_PLAN, ARTIFACT_PIPELINE_STATE, ARTIFACT_REVIEW_REPORT, ARTIFACT_SCOPE, _PHASE_ARTIFACTS
 from .lib.exceptions import InfoCollectorError
 from .lib.utils import config_path, find_project_root
 
@@ -256,6 +256,50 @@ def cmd_batch_fetch(args: argparse.Namespace) -> None:
     _impl(args)
 
 
+def cmd_deep_dive_plan(args: argparse.Namespace) -> None:
+    from .deep_dive_gate import generate_deep_dive_plan
+
+    workdir = getattr(args, "_workdir", None) or _resolve_workdir()
+    config = _load_config()
+    plan = generate_deep_dive_plan(workdir, config)
+    targets = plan.get("targets", [])
+    print(f"Deep-dive plan generated: {len(targets)} target(s), round {plan['round']}/{plan['max_rounds']}")
+    for t in targets:
+        status = t.get("status", "pending")
+        reason = t.get("trigger_reason", "?")
+        summary = t.get("claim_summary", "")[:80]
+        print(f"  [{t.get('id', '?')}] {reason}: {summary} ({status})")
+    if not targets:
+        print("No deep-dive targets identified. You may proceed directly to review.")
+
+
+def cmd_deep_dive_converge(args: argparse.Namespace) -> None:
+    from .deep_dive_gate import determine_convergence
+
+    workdir = getattr(args, "_workdir", None) or _resolve_workdir()
+    config = _load_config()
+    convergence = determine_convergence(workdir, config)
+    if convergence is None:
+        print("No convergence yet — deep-dive targets remain. Continue searching.")
+    else:
+        from .lib.utils import read_json, write_json
+        plan_path = workdir / ARTIFACT_DEEP_DIVE_PLAN
+        try:
+            plan = read_json(plan_path)
+        except Exception:
+            print("deep_dive_plan.json not found or unreadable.", file=sys.stderr)
+            sys.exit(1)
+        plan["convergence"] = convergence
+        write_json(plan, plan_path)
+        print(f"Convergence: {convergence['type']} — {convergence['reason']}")
+        if convergence["type"] == "hard":
+            print("Hard convergence: round budget exhausted. Proceed to review.")
+        elif convergence["type"] == "natural":
+            print("Natural convergence: all trigger conditions resolved. Proceed to review.")
+        elif convergence["type"] == "soft":
+            print("Soft convergence: no new findings in recent rounds. Consider proceeding to review.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Info-Collector Skill CLI")
     parser.add_argument("--workdir", default=None, help="项目根目录路径（缺省时自动检测 .git/ 所在目录）")
@@ -298,6 +342,12 @@ def main() -> None:
     p_batch.add_argument("--from-stdin", action="store_true", help="Read batch JSON from stdin")
     p_batch.add_argument("--pending", action="store_true", help="List URLs that still need fetching")
     p_batch.set_defaults(func=cmd_batch_fetch)
+
+    p_dd_plan = sub.add_parser("deep-dive-plan", help="Generate deep_dive_plan.json from current analysis")
+    p_dd_plan.set_defaults(func=cmd_deep_dive_plan)
+
+    p_dd_converge = sub.add_parser("deep-dive-converge", help="Check convergence and update deep_dive_plan.json")
+    p_dd_converge.set_defaults(func=cmd_deep_dive_converge)
 
     args = parser.parse_args()
     args._workdir = _resolve_workdir(args.workdir)

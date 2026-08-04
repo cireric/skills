@@ -496,9 +496,9 @@ class TestChineseSourceCountInTier1:
         assert zh_names == {"CNKI", "Wanfang", "CQVIP", "CBOA"}
         assert len(zh_sources) == 4
 
-    def test_tier4_has_exactly_2_chinese_sources(self, _real_config):
+    def test_tier4_has_exactly_6_chinese_sources(self, _real_config):
         tier4 = _real_config["sources"]["4"]["sources"]
         zh_sources = [s for s in tier4 if s.get("language") == "zh"]
         zh_names = {s["name"] for s in zh_sources}
-        assert zh_names == {"Zhihu", "Weibo"}
-        assert len(zh_sources) == 2
+        assert zh_names == {"Zhihu", "Weibo", "V2EX", "掘金", "豆瓣", "小红书"}
+        assert len(zh_sources) == 6

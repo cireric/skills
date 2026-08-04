@@ -1,18 +1,24 @@
 export const AutoTaskObserver = async ({ project, client, $, directory, worktree }) => {
-  return {
-    event: async ({ event }) => {
-      if (event.type !== "session.created") return
+  const OBSERVABLE_SKILLS = new Set([
+    "deep-research",
+    "info-collector",
+  ])
 
-      const sessionID = event.properties.info.id
+  return {
+    "tool.execute.after": async (input, output) => {
+      if (input.tool !== "skill") return
+
+      const skillName = output.args?.name || ""
+      if (!OBSERVABLE_SKILLS.has(skillName)) return
 
       try {
         await client.session.promptAsync({
-          path: { id: sessionID },
+          path: { id: input.sessionID },
           body: {
             parts: [
               {
                 type: "text",
-                text: "[system] Load the task-observer skill now and run its Session Start Protocol (init + status check). Do not reply to this message — proceed silently and wait for the user's first input.",
+                text: "[system] A skill with observation value was loaded. Load task-observer skill now and run its Session Start Protocol. Do not reply — proceed silently.",
                 synthetic: true,
               },
             ],

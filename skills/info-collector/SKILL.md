@@ -97,6 +97,47 @@ description: >
 
 subagent 失败时降级为自审。
 
+### Phase 3.5: Deep Dive（仅 depth=deep，ADR 0064）
+
+当 scope.json 的 depth 为 "deep" 时，analysis gate 通过后进入迭代深挖循环，替代直接进入 review。
+
+**触发条件**（自动从 analysis.json 识别）：
+
+- `source_absent` claims：来源原文中找不到支撑数据
+- `source_indirect` ratio > 30%：间接来源占比过高
+- `single_source` ratio > 50%：单源 claim 过多
+- `tension_unresolved`：未解决的矛盾
+
+**执行流程**：
+
+1. 运行 `python -m scripts.cli deep-dive-plan` 生成 `deep_dive_plan.json`
+2. 运行 `python -m scripts.cli proceed --from analysis --to deep_dive`
+3. 对每个 target：搜索 + fetch + 更新 collected.json + 更新 analysis section
+4. 运行 `python -m scripts.cli deep-dive-converge` 检查收敛
+5. 收敛 → `python -m scripts.cli proceed --from deep_dive --to review`
+6. 未收敛 → `python -m scripts.cli proceed --from deep_dive --to search`（回环补充搜索）
+
+**收敛条件**（优先级从高到低）：
+
+| 类型 | 条件 | 说明 |
+|------|------|------|
+| Hard | round >= max_rounds（默认 3） | 预算耗尽，保证终止 |
+| Natural | 所有触发条件已消除 | 证据闭环，提前终止 |
+| Soft | 连续 2 轮无新发现 | 方向潜力耗尽 |
+
+**Gate 检查**（`deep_dive→review` 时）：
+
+- `deep_dive_plan_exists`：BLOCKER — plan 文件必须存在
+- `target_completion`：BLOCKER — 所有 target 状态为 completed/skipped
+- `deep_dive_source_depth`：BLOCKER — 每个 completed target 有 ≥3 新来源
+- `deep_dive_verification`：BLOCKER — deep_dive claims 非 source_absent
+- `convergence_declared`：WARN — convergence 字段已填写
+- `round_budget`：INFO — 当前 round / max_rounds
+
+**回环搜索**（`deep_dive→search`）：轻量检查，只验证 plan 存在且有 pending/in_progress targets，不重跑完整 SearchGate。
+
+**新来源的 direction 字段**：回环搜索追加到 collected.json 的新 entry，direction 设为 `"deep_dive"`。
+
 ### Phase 4: Report
 
 生成最终报告，渲染验证。

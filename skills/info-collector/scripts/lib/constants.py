@@ -226,12 +226,17 @@ ARTIFACT_LIGHTWEIGHT_REVIEW = "lightweight_review_result.json"
 
 ARTIFACT_CONFIG = "config.json"
 
+ARTIFACT_DEEP_DIVE_PLAN = "deep_dive_plan.json"
+
 # ── Pipeline configuration ──
 
 _VALID_TRANSITIONS_SET = {
     ("scope", "search"),
     ("search", "analysis"),
+    ("analysis", "deep_dive"),
     ("analysis", "review"),
+    ("deep_dive", "search"),
+    ("deep_dive", "review"),
     ("review", "final"),
     ("review", "review"),
 }
@@ -240,9 +245,28 @@ _PHASE_ARTIFACTS: dict[str, list[str]] = {
     "scope": [ARTIFACT_SCOPE, ARTIFACT_COLLECTED, ARTIFACT_ANALYSIS, ARTIFACT_REVIEW_REPORT, ARTIFACT_PIPELINE_STATE],
     "search": [ARTIFACT_COLLECTED, ARTIFACT_ANALYSIS, ARTIFACT_REVIEW_REPORT],
     "analysis": [ARTIFACT_ANALYSIS, ARTIFACT_REVIEW_REPORT],
+    "deep_dive": [ARTIFACT_DEEP_DIVE_PLAN],
     "review": [ARTIFACT_REVIEW_REPORT],
     "final": [ARTIFACT_PIPELINE_STATE],
 }
+
+
+# ── Deep-dive phase (ADR 0064) ──
+
+_DEEP_DIVE_MAX_ROUNDS = 3
+_DEEP_DIVE_MIN_SOURCES_PER_TARGET = 3
+_DEEP_DIVE_TRIGGER_SOURCE_ABSENT_COUNT = 1
+_DEEP_DIVE_TRIGGER_INDIRECT_RATIO = 0.30
+_DEEP_DIVE_TRIGGER_SINGLE_SOURCE_RATIO = 0.50
+_DEEP_DIVE_SOFT_CONVERGENCE_ROUNDS = 2
+
+_VALID_DEEP_DIVE_TARGET_STATUSES = frozenset({"pending", "in_progress", "completed", "skipped"})
+
+_VALID_DEEP_DIVE_TRIGGER_REASONS = frozenset({
+    "source_absent", "source_indirect", "single_source", "tension_unresolved",
+})
+
+_VALID_CONVERGENCE_TYPES = frozenset({"hard", "natural", "soft"})
 
 
 # ── Display labels ──
