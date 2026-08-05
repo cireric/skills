@@ -1,10 +1,14 @@
 # 把 oh-my-openagent 当作脚手架：中高价值保留配置指南
 
+> **适用版本**：`oh-my-openagent` v4.19.4（dev 分支 @ `9cee074d`，2026-08-04）；`opencode` SDK `@opencode-ai/plugin` + `@opencode-ai/sdk` 1.15.13（omo `doctor` 最低要求 opencode ≥ 1.4.0）。
+>
+> **版本偏移警告**：本文 §3.5 的 hook 完整名单基于 v3.x 时期整理的 56 个 hook（详见 [`oh-my-openagent-architecture.md` §13.1](../research/oh-my-openagent-architecture.md#L1390-L1405)），v4 系列可能有增删。落地后请以 `bunx oh-my-openagent doctor` 的实际输出为准，并把任何差异回填本文。
+>
 > **场景**：已在使用 `opencode` + `oh-my-openagent`(omo)，希望把这个偏重的编排框架裁剪为「仅屏蔽低价值项、中高价值全保留」的个人全局脚手架。
 >
 > **策略**：以「价值指数」为唯一阈值——极高/高/中 → 保留，低 → 屏蔽。结论是一份可直接落盘的 `~/.config/opencode/oh-my-openagent.jsonc`。
 >
-> **证据**：本文所有功能名录、默认值、屏蔽键均来自 omo 官方 GitHub 仓库（文档 + 源码），详见文末「证据来源」。
+> **证据**：本文所有功能名录、默认值、屏蔽键均来自 omo 官方 GitHub 仓库（文档 + 源码），详见文末「证据来源」。每条证据附 commit / release / PR 锚点。
 
 ---
 
@@ -25,7 +29,7 @@
 
 ### 1.1 环境特征
 
-- 运行时：`opencode` + `oh-my-openagent`(omo) 插件。
+- 运行时：`opencode`（SDK 1.15.13，≥1.4.0 满足 omo doctor 门槛）+ `oh-my-openagent`(omo) v4.19.4 插件。
 - 自有 **provider**：`astroncodingplan` / `deepseek`，**无** GPT / Claude / Gemini 等 omo 默认模型。
 - 已有自有 skills 仓库（`cireric-skills`：`book-grill` / `info-collector` / `reading-grill` / `url2md` 等）与项目级 `AGENTS.md` 双层规则体系。
 
@@ -113,23 +117,25 @@ omo 提供一组 `disabled_*` 键（均在插件配置中）：
 
 ### 3.1 Agents（11）
 
-| Agent | 作用 | 价值 | 动作 |
+> **同名实体澄清**：`atlas` 在 §3.5 D 还存在一个**同名 hook**（参与 boulder-state 续接、计划文件解析等副作用），与 agent 是不同实体。下面表格只针对 agent；hook 是否保留见 §3.5 D。
+
+| Agent | 作用 | 动作 | 理由 |
 |---|---|---|---|
-| sisyphus | 主编排 agent（插件依赖） | 极高 | **留** |
-| prometheus | 规划访谈（重型、评审不收敛） | 低 | **关** |
-| atlas | Todo 编排执行（依赖 prometheus 元数据） | 低 | **关** |
-| oracle | 架构/调试咨询 | 高 | **留** |
-| librarian | 文档/代码检索 | 中高 | **留** |
-| explore | 快 grep | 中高 | **留** |
-| metis | plan 顾问（配 prometheus） | 中 | **留** |
-| momus | 严厉 critic | 中 | **留** |
-| sisyphus-junior | 轻量子 agent（分类委托） | 中 | **留** |
-| hephaestus | 工程/实现，**硬性要求 GPT 家族** | 中（无 GPT→不可复活） | **关** |
-| multimodal-looker | 多模态看图 | 低（无图像模型） | **关** |
+| sisyphus | 主编排 agent（插件依赖） | **留** | 框架运行依赖，不可 disable |
+| oracle | 架构/调试咨询 | **留** | 高增值、只读、无模型/环境依赖 |
+| librarian | 文档/代码检索 | **留** | 中高增值、无环境依赖 |
+| explore | 快 grep | **留** | 中高增值、无环境依赖 |
+| metis | plan 顾问 | **留** | 中增值；虽然常配 prometheus，但 prometheus 关闭后 metis 仍可作为独立 plan 顾问被委托 |
+| momus | 严厉 critic | **留** | 中增值、无环境依赖 |
+| sisyphus-junior | 轻量子 agent（分类委托） | **留** | 中增值、无环境依赖 |
+| prometheus | 规划访谈 | **关** | 规划评审循环**不收敛**——多轮审稿总能从不同角度发现问题、缺终止条件，且整体过度流程化。详见下方决策块 |
+| atlas | Todo 编排执行 | **关** | 最佳表现**依赖** prometheus 元数据契约；二者绑定，留 atlas 必留 prometheus，否则退化为即兴分解。详见下方决策块 |
+| hephaestus | 工程/实现 | **关** | 硬性要求 GPT 家族（`isHephaestusSupportedModel` + `requiresProvider` 限定 openai/github-copilot/venice/opencode/vercel），无 GPT 环境下无法复活 |
+| multimodal-looker | 多模态看图 | **关** | 无图像模型，环境不可用 |
 
 `disabled_agents`: `["hephaestus","multimodal-looker","prometheus","atlas"]`
 
-> **最终决策（已定）：关闭 `prometheus` + `atlas`。**
+> **关于 `prometheus` + `atlas` 关闭决策的完整论证**
 >
 > 在「已有工程纪律 + 用 `grill-with-docs` 做需求发现、无 GPT」的场景下，二者**净收益为负**：
 > - `prometheus` 是唯一产出 Atlas 结构化元数据（`Parallel Execution Graph` / `Delegation Recommendation` 等）的环节，但其规划评审循环**不收敛**——多轮审稿总能从不同角度发现问题、缺终止条件，且整体过度流程化。
@@ -141,58 +147,80 @@ omo 提供一组 `disabled_*` 键（均在插件配置中）：
 
 ### 3.2 Skills（内置）
 
-| Skill | 作用 | 价值 | 动作 |
+> **同名实体澄清**：`comment-checker` 在 §3.5 还存在一个**同名 hook**（Session 类，拦截 AI-slop 注释的运行时执行体），与 skill 是不同实体——skill 是可被 agent 调用的能力，hook 是生命周期回调。两者均保留。
+
+| Skill | 作用 | 动作 | 理由 |
 |---|---|---|---|
-| git-master | 原子提交/变基/历史检索（无模型依赖） | 高 | **留** |
-| comment-checker | 拦截 AI-slop 注释 | 高 | **留** |
-| ast-grep | 25 语言结构化搜索/改写 | 中 | **留** |
-| frontend-ui-ux | 设计优先 UI | 中 | **留** |
-| review-work | 5-agent 并行 review（走普通 `task()` 子 agent，**非** team 专属） | 中 | **留** |
-| $omo:remove-ai-slops | 清 AI 味代码 | 中 | **留** |
-| init-deep | 自动生成分层 AGENTS.md | 中 | **留** |
-| playwright / playwright-cli / agent-browser / dev-browser | 浏览器自动化（MCP / CLI / Bash / 持久页四通道） | 中 | **留** |
-| frontend | UI 实现 | 中 | **留** |
-| security-research | Team Mode 驱动安全审计 | 低（依赖 team） | 关 |
-| security-review | alias | 低 | 关 |
-| team-mode | team 工具技能 | 低（依赖 team） | 关 |
-| hyperplan | 5 critics 对抗规划（built on Team Mode） | 低（依赖 team） | 关 |
+| git-master | 原子提交/变基/历史检索（无模型依赖） | **留** | 高增值、无环境依赖 |
+| comment-checker | 拦截 AI-slop 注释 | **留** | 高增值、无环境依赖；同名 hook 亦保留 |
+| ast-grep | 25 语言结构化搜索/改写 | **留** | 中增值、无环境依赖 |
+| frontend-ui-ux | 设计优先 UI | **留** | 中增值、无环境依赖 |
+| review-work | 5-agent 并行 review（走普通 `task()` 子 agent，**非** team 专属） | **留** | 中增值、无环境依赖 |
+| $omo:remove-ai-slops | 清 AI 味代码 | **留** | 中增值、无环境依赖 |
+| init-deep | 自动生成分层 AGENTS.md | **留** | 中增值、无环境依赖 |
+| playwright / playwright-cli / agent-browser / dev-browser | 浏览器自动化（MCP / CLI / Bash / 持久页四通道） | **留** | 中增值、无环境依赖 |
+| frontend | UI 实现 | **留** | 中增值、无环境依赖 |
+| security-research | Team Mode 驱动安全审计 | **关** | 依赖 Team Mode，本配置 team 关闭 |
+| security-review | alias | **关** | 同上 |
+| team-mode | team 工具技能 | **关** | 依赖 Team Mode，本配置 team 关闭 |
+| hyperplan | 5 critics 对抗规划（built on Team Mode） | **关** | 依赖 Team Mode，本配置 team 关闭 |
 
 `disabled_skills`: `["security-research","security-review","team-mode","hyperplan"]`
 
 ### 3.3 Commands（斜杠）
 
-| Command | 作用 | 价值 | 动作 |
+> **同名实体澄清**：`start-work` 在 §3.5 D 还存在一个**同名 hook**（参与 boulder.json 的 RESUME/INIT 流程），与 command 是不同实体。下面表格只针对 command；hook 是否保留见 §3.5 D。**注意**：禁用 `/start-work` 命令不影响 `start-work` hook 的运行。
+
+| Command | 作用 | 动作 | 理由 |
 |---|---|---|---|
-| start-work | spawn prometheus 访谈 | 低（prometheus 已关，inert） | 关 |
-| ralph-loop / ulw-loop / cancel-ralph | 自循环开发 | 中 | **留** |
-| refactor | LSP+AST+TDD 重构 | 中 | **留** |
-| handoff | 生成换 session 摘要 | 中 | **留** |
-| init-deep / remove-ai-slops | 生成 AGENTS / 清 AI 味 | 中 | **留** |
-| stop-continuation | 停循环+续接 | 低 | 关 |
-| hyperplan | 对抗规划（依赖 team） | 低 | 关 |
+| ralph-loop / ulw-loop / cancel-ralph | 自循环开发 | **留** | 中增值、无环境依赖 |
+| refactor | LSP+AST+TDD 重构 | **留** | 中增值、无环境依赖 |
+| handoff | 生成换 session 摘要 | **留** | 中增值、无环境依赖 |
+| init-deep / remove-ai-slops | 生成 AGENTS / 清 AI 味 | **留** | 中增值、无环境依赖 |
+| start-work | spawn prometheus 访谈 | **关** | prometheus 已关，命令失效；同名 hook 保留 |
+| stop-continuation | 停循环+续接 | **关** | 急停按钮，非日常工具；配套 hook 已禁用 |
+| hyperplan | 对抗规划（依赖 team） | **关** | 依赖 Team Mode，本配置 team 关闭 |
 
 `disabled_commands`: `["stop-continuation","hyperplan","start-work"]`
 
 ### 3.4 MCPs（内置）
 
-| MCP | 作用 | 价值 | 动作 |
+| MCP | 作用 | 动作 | 理由 |
 |---|---|---|---|
-| context7 | 库官方文档 | 高 | **留** |
-| lsp | 诊断/跳转/重命名 | 高 | **留** |
-| websearch (Exa) | 联网搜索 | 中 | **留** |
-| grep_app | GitHub 代码搜索 | 中 | **留** |
+| context7 | 库官方文档 | **留** | 高增值、无环境依赖 |
+| lsp | 诊断/跳转/重命名 | **留** | 高增值、无环境依赖 |
+| websearch (Exa) | 联网搜索 | **留** | 中增值、无环境依赖 |
+| grep_app | GitHub 代码搜索 | **留** | 中增值、无环境依赖 |
 
 `disabled_mcps`：无（4 个全留）。
 
-### 3.5 Hooks（50+，分组）
+### 3.5 Hooks（v3.x 时期 56 个，分组）
 
-**A. 安全/防护（全留，勿关）**：`rules-injector`、`write-existing-file-guard`、`bash-file-read-guard`、`webfetch-redirect-guard`、`prometheus-md-only`、`tool-pair-validator`、`thinking-block-validator`、`team-tool-gating`、`no-sisyphus-gpt`(官方标注勿关)。
+> **完整性声明**：以下 A-D 组保留的 40 个 hook + E 组屏蔽的 16 个 hook = 56 个，与 [`oh-my-openagent-architecture.md` §13.1](../research/oh-my-openagent-architecture.md#L1390-L1405) v3.x 时期整理的 56 个基础 hook 一致。v4 系列实际数量可能不同，以 `bunx oh-my-openagent doctor` 输出为准。
+>
+> **`thinking-block-validator` 例外**：本配置 §2.4 列出的安全类 hook 中包含 `thinking-block-validator`，但 §13.1 的 56 hook 名单中**找不到**此项，可能是 v4 新增或文档遗漏。本配置**保留**它（不进入 `disabled_hooks`），但因不在 56 个计数内，下列 A-D 组不显式列出。落地时若 doctor 报"未知 hook 名"，无需调整 `disabled_hooks`——保留项不在校验范围内。
 
-**B. 上下文/压缩（高价值，留）**：`preemptive-compaction`、`compaction-context-injector`、`compaction-todo-preserver`、`directory-agents-injector`(注：OpenCode 1.1.37+ 原生支持 AGENTS.md 后自动停用)、`directory-readme-injector`。
+**A. 安全/防护（8 个，全留，勿关）**：
 
-**C. 稳定性/恢复（中，留）**：`tool-output-truncator`、`empty-task-response-detector`、`edit-error-recovery`、`json-error-recovery`、`delegate-task-retry`、`non-interactive-env`、`interactive-bash-session`、`runtime-fallback`、`task-resume-info`、`model-fallback`(hook)。
+`rules-injector`、`write-existing-file-guard`、`bash-file-read-guard`、`webfetch-redirect-guard`、`prometheus-md-only`、`tool-pair-validator`、`team-tool-gating`、`no-sisyphus-gpt`(官方标注勿关)。
 
-**D. 编排/模式（中，留）**：`keyword-detector`(IntentGate)、`think-mode`、`ralph-loop`、`auto-slash-command`、`start-work`、`atlas`、`sisyphus-junior-notepad`、`unstable-agent-babysitter`、`todo-continuation-enforcer`、`category-skill-reminder`。
+> 另：`thinking-block-validator`（见上方例外说明）也属安全类、保留，但不计入 56 个名单。
+
+**B. 上下文/压缩（5 个，留）**：
+
+`preemptive-compaction`、`compaction-context-injector`、`compaction-todo-preserver`、`directory-agents-injector`、`directory-readme-injector`。
+
+> `directory-agents-injector`：opencode 1.1.37+ 原生支持 AGENTS.md 后，此 hook 检测到原生支持会自动停用（避免重复注入）。当前环境 opencode 1.15.13 ≥ 1.1.37，hook 已自动停用，无需手动 disable。
+
+**C. 稳定性/恢复（10 个，留）**：
+
+`tool-output-truncator`、`empty-task-response-detector`、`edit-error-recovery`、`json-error-recovery`、`delegate-task-retry`、`non-interactive-env`、`interactive-bash-session`、`runtime-fallback`、`task-resume-info`、`model-fallback`(hook)。
+
+**D. 编排/模式（17 个，留）**：
+
+`keyword-detector`(IntentGate)、`think-mode`、`auto-slash-command`、`start-work`(同名 command 已禁用，hook 保留参与 boulder 流程)、`atlas`(同名 agent 已禁用，hook 保留参与续接)、`sisyphus-junior-notepad`、`unstable-agent-babysitter`、`todo-continuation-enforcer`、`category-skill-reminder`、`notepad-write-guard`(强制 notepad append-only)、`hephaestus-agents-md-injector`(agent 已禁用，hook 无触发场景但保留)、`codegraph-bootstrap`、`ast-grep-sg-provision`、`monitor-status-injector`、`goal`(continuation)、`comment-checker`(同名 skill 亦保留)、`plan-format-validator`。
+
+> 注：v3.x §13.1 名单中**不存在** `ralph-loop` 这个 hook——`ralph-loop` 是 command 不是 hook，旧版文档此处有误，已删除。
 
 **E. 屏蔽（低价值：通知/提示/兼容/环境专属，16 个）**：
 
@@ -209,20 +237,20 @@ omo 提供一组 `disabled_*` 键（均在插件配置中）：
 ]
 ```
 
-> A–D 组共 30+ 个 hooks 均保留（不进入 `disabled_hooks`）。
+> A–D 组共 40 个 hooks 均保留（不进入 `disabled_hooks`）。
 
 ### 3.6 其他模块
 
-| 模块 | 默认 | 推荐 |
-|---|---|---|
-| team_mode | 关 | 保持关（独立重型功能，按需开） |
-| auto_update | 开 | 关 |
-| hashline_edit | 关 | 保持关 |
-| new_task_system_enabled | 关 | 保持关 |
-| runtime_fallback | 关 | **开**（`runtime_fallback: true`，防 429/5xx 自动切模型） |
-| claude_code.* | 开 | 全关 |
-| tmux / browser_automation_engine | — | 关 tmux；`browser_automation_engine` 保持默认(playwright MCP)，其余浏览器技能按需可用 |
-| monitor / openclaw / codegraph / babysitting | — | 关（默认即关） |
+| 模块 | 默认 | 推荐 | 说明 |
+|---|---|---|---|
+| team_mode | 关 | 保持关 | 独立重型功能，按需开 |
+| auto_update | 开 | **关** | 脚手架场景需可复现，关闭自动更新 |
+| hashline_edit | 关 | 保持关 | hashline 注入争议较大，opencode 原生行号已够用 |
+| new_task_system_enabled | 关 | 保持关 | 新 task 系统未稳定，沿用旧系统 |
+| runtime_fallback | 关 | **开**（覆盖默认） | 防 429/5xx 自动切模型；需配合 `fallback_models` 或 category 链中备用模型 |
+| claude_code.* | 开 | **全关** | opencode 原生已支持 hooks/commands/skills/agents/mcp/plugins，兼容层多余 |
+| tmux / browser_automation_engine | — | 关 tmux；`browser_automation_engine` 保持默认(playwright MCP) | 其余浏览器技能按需可用 |
+| monitor / openclaw / codegraph / babysitting | — | 关 | 默认即关 |
 
 ### 3.7 Team Mode 相关项（确认全屏蔽）
 
@@ -315,6 +343,7 @@ omo 提供一组 `disabled_*` 键（均在插件配置中）：
 
 ## 7. 风险提醒
 
+- **版本偏移**（v4 新增风险）：本文 §3.5 的 56 个 hook 名单基于 v3.x 整理，v4.19.4 实际数量可能不同。升级 omo 后必须重跑 `bunx oh-my-openagent doctor` 校验 `disabled_hooks` 是否仍全部存在、是否漏列新增低价值 hook。
 - `disabled_hooks` 若误列了 8 个安全类 hook 之一，omo 启动会 toast 警告；以 §2.4 清单为准。
 - 配置名统一用 `oh-my-openagent`，别与旧 `oh-my-opencode` 混用（旧名优先级更高会赢）。
 - `runtime_fallback: true` 会在模型错误时自动切换，请确保 `fallback_models` 或 category 链中有可用备用模型，否则回退到默认。
@@ -325,19 +354,21 @@ omo 提供一组 `disabled_*` 键（均在插件配置中）：
 
 ## 8. 证据来源
 
-本文结论均可在 omo 官方仓库 `code-yeongyu/oh-my-openagent` 核验：
+本文结论均可在 omo 官方仓库 `code-yeongyu/oh-my-openagent` 核验。**版本锚定**：本文档基于 v4.19.4（release tag `v4.19.4`，发布于 2026-08-01）撰写，dev 分支最新 commit `9cee074d`（2026-08-04）。下表中 PR 编号、commit hash、release tag 均为可追溯锚点。
 
-| 结论 | 来源文件 |
-|---|---|
-| 功能面总览、hooks 分层、commands、MCPs 名录 | `docs/reference/features.md`、`docs/reference/configuration.md` |
-| 11 个 agent 名称与作用 | `src/agents/AGENTS.md`、`src/config/schema/agent-names.ts` |
-| skills 名录与说明（含 review-work、team-mode 条件加载） | `src/features/builtin-skills/AGENTS.md` |
-| `disabled_*` 键与 schema（`team_mode` / `auto_update` / `runtime_fallback` / `claude_code` 等） | `packages/omo-opencode/src/config/schema/oh-my-opencode-config.ts` |
-| 安全类 hooks 清单与「勿关」警告；`no-sisyphus-gpt` 勿关；`directory-agents-injector` 自动停用 | `docs/reference/configuration.md` |
-| `hephaestus` 硬性要求 GPT 家族（`isHephaestusSupportedModel` + `requiresProvider`），无 GPT 时 omo 自行跳过 | `docs/guide/agent-model-matching.md`、`packages/omo-opencode/src/agents/builtin-agents/hephaestus-agent.ts` |
-| `review-work` 用普通 `task()` 子 agent 并行，**非** Team Mode 专属 | `packages/shared-skills/skills/review-work/SKILL.md` |
-| `team-mode` 条件加载（`shouldLoad: team_mode.enabled`）；`hyperplan` / `security-research` 依赖 Team Mode | `src/features/builtin-skills/skills/team-mode.ts`、`docs/guide/team-mode.md`、PR #3493 |
-| Prometheus 写计划到 `.sisyphus/plans/*.md`、`/start-work` 建 `boulder.json`；Atlas 宽松消费计划、无严格解析器、缺 Prometheus 元数据时退化为即兴分解 | `docs/guide/orchestration.md`、PR #2602（"tighten plan contract"） |
-| Atlas notepad 机制：`.omo/notepads/{plan-name}/` 分类文件（learnings/issues/problems/...）、`<notepad_protocol>` 读前/附后协议、跨 task 注入 "Inherited Wisdom"、`notepad-write-guard` hook 拒绝 Write 强制 append-only、数据默认被动需主动复盘（Issue #1364） | `docs/guide/orchestration.md`、`src/agents/atlas/gpt.ts`(commit 565d099)、`src/hooks/notepad-write-guard/index.ts`(PR #4082/#3685)、`src/hooks/atlas/verification-reminders.ts`、Issue #1364 |
-| 配置名优先级 `oh-my-opencode` > `oh-my-openagent` | `README.md` |
-| 两层配置与安装 merge 方式 | `docs/guide/installation.md` |
+| 结论 | 来源文件 | 锚点 |
+|---|---|---|
+| 功能面总览、hooks 分层、commands、MCPs 名录 | `docs/reference/features.md`、`docs/reference/configuration.md` | v4.19.4 |
+| 11 个 agent 名称与作用 | `src/agents/AGENTS.md`、`src/config/schema/agent-names.ts` | v4.19.4 |
+| skills 名录与说明（含 review-work、team-mode 条件加载） | `src/features/builtin-skills/AGENTS.md` | v4.19.4 |
+| `disabled_*` 键与 schema（`team_mode` / `auto_update` / `runtime_fallback` / `claude_code` 等） | `packages/omo-opencode/src/config/schema/oh-my-opencode-config.ts` | v4.19.4 |
+| 安全类 hooks 清单与「勿关」警告；`no-sisyphus-gpt` 勿关；`directory-agents-injector` 自动停用 | `docs/reference/configuration.md` | v4.19.4 |
+| `hephaestus` 硬性要求 GPT 家族（`isHephaestusSupportedModel` + `requiresProvider`），无 GPT 时 omo 自行跳过 | `docs/guide/agent-model-matching.md`、`packages/omo-opencode/src/agents/builtin-agents/hephaestus-agent.ts` | v4.19.4 |
+| `review-work` 用普通 `task()` 子 agent 并行，**非** Team Mode 专属 | `packages/shared-skills/skills/review-work/SKILL.md` | v4.19.4 |
+| `team-mode` 条件加载（`shouldLoad: team_mode.enabled`）；`hyperplan` / `security-research` 依赖 Team Mode | `src/features/builtin-skills/skills/team-mode.ts`、`docs/guide/team-mode.md` | PR #3493 |
+| Prometheus 写计划到 `.sisyphus/plans/*.md`、`/start-work` 建 `boulder.json`；Atlas 宽松消费计划、无严格解析器、缺 Prometheus 元数据时退化为即兴分解 | `docs/guide/orchestration.md` | PR #2602（"tighten plan contract"） |
+| Atlas notepad 机制：`.omo/notepads/{plan-name}/` 分类文件、`<notepad_protocol>` 读前/附后协议、跨 task 注入 "Inherited Wisdom"、`notepad-write-guard` hook 拒绝 Write 强制 append-only、数据默认被动需主动复盘 | `docs/guide/orchestration.md`、`src/agents/atlas/gpt.ts`、`src/hooks/notepad-write-guard/index.ts`、`src/hooks/atlas/verification-reminders.ts` | commit `565d099`、PR #4082 / #3685、Issue #1364 |
+| 配置名优先级 `oh-my-opencode` > `oh-my-openagent` | `README.md` | v4.19.4 |
+| 两层配置与安装 merge 方式 | `docs/guide/installation.md` | v4.19.4 |
+| `doctor` 最低 OpenCode 版本 `>= 1.4.0`；SDK 依赖 `@opencode-ai/plugin` + `@opencode-ai/sdk` 1.15.13 | `packages/omo-opencode/package.json`、`src/cli/commands/doctor.ts` | v4.19.4 |
+| v3.x 时期 56 个 hook 完整名单（本文 §3.5 A-E 分组的来源） | [`oh-my-openagent-architecture.md` §13.1](../research/oh-my-openagent-architecture.md#L1390-L1405) | v3.x 时期整理，v4 待核 |

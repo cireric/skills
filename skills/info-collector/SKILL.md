@@ -1,12 +1,45 @@
 ---
 name: info-collector
 description: >
-  Invoke via /info-collector only. Structured research pipeline that produces
-  a panoramic map with traceable sources — a starting point for deep research,
-  not a citable authority.
+  [DEPRECATED — ADR 0065, 2026-08-05] Invoke via /info-collector only.
+  Structured research pipeline that produces a panoramic map with traceable
+  sources — a starting point for deep research, not a citable authority.
 ---
 
-# Info-Collector Skill
+<!--
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║                    ⚠️  THIS SKILL IS DEPRECATED                    ║
+  ║                  See ADR 0065 (2026-08-05) for details             ║
+  ╚══════════════════════════════════════════════════════════════════╝
+
+  退役原因（完整分析见 docs/adr/0065-decommission-info-collector.md）：
+
+  1. 永不收敛的优化 treadmill — 为"零缺陷 starting point"这个矛盾目标加 gate
+  2. 90% 功能是重造轮子 — fetcher / search_gate / report_checks / deep_dive
+     都有更成熟的替代品（Anthropic deep-research / omo ulw-research / GitHub
+     开源生态）
+  3. 核心 IP（source_verification 三级别）与结构化 claims pipeline 强耦合，
+     无法独立抽取给轻量 research skill 用
+  4. AI-verifying-AI 反模式 — trust_boundary / repair_loop / claim_validator
+     大部分违反 ADR 0028 自己确立的"LLM 不可信"原则
+
+  保留内容（不删除，原地归档）：
+  - 64 个 ADR — 完整设计决策链，可回溯
+  - references/source-verification-protocol.md — source_verification 的
+    prompt 模板版（牺牲确定性，零维护）
+  - references/writing-guide.md — false depth / synthesis guard / precision
+    rules，提炼为通用写作指南见 docs/research/research-writing-guide.md
+  - 全部代码 — 作为"如何不设计 research skill"的反例参考
+
+  未来调研请改用：
+  - 轻量调研 → Matt Pocock research skill
+  - 重量级调研 → Anthropic deep-research / omo ulw-research / GitHub 开源
+    生态（见 docs/research/research-tooling-options.md）
+
+  本文件以下内容为历史归档，仅作参考。
+-->
+
+# Info-Collector Skill  <!-- DEPRECATED -->
 
 ## 目标
 
