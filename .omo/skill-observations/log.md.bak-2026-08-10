@@ -23,7 +23,7 @@ Observations captured during task-oriented work.
 
 ### Observation 2: log.md.bak-*（mark/archive 的写前快照）与 archive/log-*.md（已解决条目移出账本）职责不同但用户难以区分：.bak 无清
 
-**Status:** ACTIONED (2026-08-10) — Applied to task-observer task_observer.py + README.md (weekly review, staged 2026-08-10)
+**Status:** OPEN
 **Date:** 2026-08-10
 **Session context:** task-observer 周审查：用户质疑 log.md.bak 与 archive/ 双归档冗余
 **Skill:** task-observer

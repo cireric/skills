@@ -1,0 +1,7 @@
+{
+  "observation_dir": ".omo/skill-observations",
+  "review_interval_days": 7,
+  "default_type": "internal",
+  "lock_timeout_seconds": 5,
+  "archive_after_days": 0
+}

@@ -1,0 +1,78 @@
+{
+  "sources": {
+    "1": {
+      "name": "Academic / Standards",
+      "sources": [
+        {"name": "arXiv", "domain": "arxiv.org", "site_query": "arxiv.org", "language": "en"},
+        {"name": "Google Scholar", "domain": "scholar.google.com", "site_query": "scholar.google.com", "language": "en"},
+        {"name": "PubMed", "domain": "pubmed.ncbi.nlm.nih.gov", "site_query": "pubmed.ncbi.nlm.nih.gov", "language": "en"},
+        {"name": "CNKI", "domain": "cnki.net", "site_query": "cnki.net", "language": "zh"},
+        {"name": "Semantic Scholar", "domain": "semanticscholar.org", "site_query": "semanticscholar.org", "language": "en"},
+        {"name": "ACL Anthology", "domain": "aclanthology.org", "site_query": "aclanthology.org", "language": "en"},
+        {"name": "Wanfang", "domain": "wanfangdata.com.cn", "site_query": "wanfangdata.com.cn", "language": "zh"},
+        {"name": "CQVIP", "domain": "oa.cqvip.com", "site_query": "oa.cqvip.com", "language": "zh"},
+        {"name": "CBOA", "domain": "cboa.cqvip.com", "site_query": "cboa.cqvip.com", "language": "zh"}
+      ]
+    },
+    "2": {
+      "name": "Documentation / Open Source",
+      "sources": [
+        {"name": "GitHub", "domain": "github.com", "site_query": "github.com", "language": "en"},
+        {"name": "Wikipedia", "domain": "en.wikipedia.org", "site_query": "en.wikipedia.org", "language": "en"},
+        {"name": "Wikipedia (zh)", "domain": "zh.wikipedia.org", "site_query": "zh.wikipedia.org", "language": "zh"},
+        {"name": "Hugging Face", "domain": "huggingface.co", "site_query": "huggingface.co", "language": "en"},
+        {"name": "MDN Web Docs", "domain": "developer.mozilla.org", "site_query": "developer.mozilla.org", "language": "en"},
+        {"name": "PyPI", "domain": "pypi.org", "site_query": "pypi.org", "language": "en"},
+        {"name": "Gitee", "domain": "gitee.com", "site_query": "gitee.com", "language": "zh"}
+      ]
+    },
+    "3": {
+      "name": "Industry / Expert Blogs",
+      "sources": [
+        {"name": "Medium", "domain": "medium.com", "site_query": "medium.com", "language": "en"},
+        {"name": "IEEE Spectrum", "domain": "spectrum.ieee.org", "site_query": "spectrum.ieee.org", "language": "en"},
+        {"name": "MIT Technology Review", "domain": "technologyreview.com", "site_query": "technologyreview.com", "language": "en"},
+        {"name": "Substack", "domain": "substack.com", "site_query": "substack.com", "language": "en"},
+        {"name": "36氪", "domain": "36kr.com", "site_query": "36kr.com", "language": "zh"},
+        {"name": "InfoQ 中文", "domain": "infoq.cn", "site_query": "infoq.cn", "language": "zh"},
+        {"name": "机器之心", "domain": "jiqizhixin.com", "site_query": "jiqizhixin.com", "language": "zh"},
+        {"name": "少数派", "domain": "sspai.com", "site_query": "sspai.com", "language": "zh"}
+      ]
+    },
+    "4": {
+      "name": "Community / UGC",
+      "sources": [
+        {"name": "Reddit", "domain": "reddit.com", "site_query": "reddit.com", "language": "en"},
+        {"name": "Hacker News", "domain": "news.ycombinator.com", "site_query": "news.ycombinator.com", "language": "en"},
+        {"name": "Stack Overflow", "domain": "stackoverflow.com", "site_query": "stackoverflow.com", "language": "en"},
+        {"name": "Zhihu", "domain": "zhihu.com", "site_query": "zhihu.com", "language": "zh"},
+        {"name": "Weibo", "domain": "weibo.com", "site_query": "weibo.com", "language": "zh"},
+        {"name": "V2EX", "domain": "v2ex.com", "site_query": "v2ex.com", "language": "zh"},
+        {"name": "掘金", "domain": "juejin.cn", "site_query": "juejin.cn", "language": "zh"},
+        {"name": "豆瓣", "domain": "douban.com", "site_query": "douban.com", "language": "zh"}
+      ]
+    }
+  },
+  "routes": {
+    "exploratory": {"entry_tier": 4, "path": [4, 3, 2]},
+    "panoramic_understanding": {"entry_tier": 2, "path": [2, 1, 3, 4]},
+    "tech_selection": {"entry_tier": 2, "path": [2, 3, 4, 1]},
+    "feasibility_assessment": {"entry_tier": 2, "path": [2, 1, 3]},
+    "competitive_comparison": {"entry_tier": 2, "path": [2, 1, 3, 4]},
+    "academic_research": {"entry_tier": 1, "path": [1], "optional_tiers": [2]},
+    "fact_check": {"entry_tier": 1, "path": [1, 2, 4]},
+    "background_check": {"entry_tier": 3, "path": [3, 2, 1, 4]},
+    "market_analysis": {"entry_tier": 3, "path": [3, 4, 1, 2]},
+    "other": "auto"
+  },
+  "tier_rules": {
+    "indirect_conditions": [
+      "source_tier >= 3 AND evidence_type in (official_data, third_party_estimate)",
+      "source_type in (vendor_benchmark, vendor_survey, vendor_blog) AND precision in (exact, range) AND source_tier >= 3"
+    ],
+    "default_other_route": [2, 3, 1, 4]
+  },
+  "output_dir": "./reports/",
+  "default_report_language": "zh",
+  "default_depth": "standard"
+}
