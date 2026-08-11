@@ -31,5 +31,3 @@ Principles that apply across multiple skills, discovered during observation.
 **Status:** active
 
 ---
-
-

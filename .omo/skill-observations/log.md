@@ -6,32 +6,49 @@ Observations captured during task-oriented work.
 
 ---
 
-### Observation 1: 后台 agent 在 Windows PowerShell 控制台运行文档化命令 venv-python -m scripts.cli verify 时，打印验
+### Observation 3: 对 direct-file URL(裸 mp4 链接而非站点页面),yt-dlp 泛型 extractor 不填充 duration/resolution,in
 
-**Status:** ACTIONED (2026-08-10) — Applied to intent-research cli.py + SKILL.md (weekly review, staged 2026-08-10)
-**Date:** 2026-08-10
-**Session context:** intent-research 运行：调研 opencode 模型使用（Phase 2-5 后台 agent 执行 verify 步骤）
-**Skill:** intent-research
+**Status:** ACTIONED (2026-08-11) — Applied to video-download SKILL.md core workflow step 2 (in-session correction, verified in iteration-2 eval)
+**Date:** 2026-08-11
+**Session context:** video-download skill 创建与 eval:iteration-1 的 eval-2 用 direct-file URL 查元数据
+**Skill:** video-download
 **Type:** internal
-**Phase/Area:** Phase 3 Verify 步骤（cli.py verify 命令）
+**Phase/Area:** cli.py info/formats 子命令 + SKILL.md 核心流程
 
-**Issue:** 后台 agent 在 Windows PowerShell 控制台运行文档化命令 venv-python -m scripts.cli verify 时，打印验证摘要的 ‡/† 字符（cli.py:134-135）因 GBK 控制台编码抛 UnicodeEncodeError 崩溃一次；用 PYTHONIOENCODING=utf-8 临时解决。文档命令在文档平台（Windows PowerShell）上不可开箱执行
+**Issue:** 对 direct-file URL(裸 mp4 链接而非站点页面),yt-dlp 泛型 extractor 不填充 duration/resolution,info/formats 输出只有标题和格式数量;iteration-1 的 with_skill agent 被迫自行用 ffprobe 补充
 
-**Suggested improvement:** cli.py 入口处对 sys.stdout.reconfigure(encoding='utf-8', errors='replace') 做 hasattr 保护（Python 3.7+），使 ‡/† 打印在 GBK 控制台不崩溃；或 SKILL.md CLI 节补充 Windows 下 PYTHONIOENCODING=utf-8 说明
+**Suggested improvement:** SKILL.md 核心流程步骤 2 已加说明:direct-file URL 元数据稀疏时用 ffprobe 或 ffmpeg-toolkit 的 info 补充;iteration-2 验证修复生效
 
-**Principle:** 文档化命令必须在文档声明的平台上开箱可执行：不仅模块路径（PYTHONPATH）要可解析，输出编码（非 ASCII 标记字符）也必须在该平台默认控制台编码下不崩溃；代码层 reconfigure 比文档层环境变量更可靠
+**Principle:** 工具封装型 skill 应显式文档化其底层工具在边缘输入(泛型 URL)下的元数据局限,而非假设字段永远完整
 
-### Observation 2: log.md.bak-*（mark/archive 的写前快照）与 archive/log-*.md（已解决条目移出账本）职责不同但用户难以区分：.bak 无清
+**Reference file:** video-download-workspace/iteration-1/eval-2-metadata-report/with_skill/run-1/outputs/metadata-report.md
 
-**Status:** ACTIONED (2026-08-10) — Applied to task-observer task_observer.py + README.md (weekly review, staged 2026-08-10)
-**Date:** 2026-08-10
-**Session context:** task-observer 周审查：用户质疑 log.md.bak 与 archive/ 双归档冗余
-**Skill:** task-observer
+### Observation 4: 因为技能 CLI 物理存在于共享工作区(仓库内 skills/ 目录),baseline(无技能)agent 自己发现了 skills/video-downlo
+
+**Status:** OPEN
+**Date:** 2026-08-11
+**Session context:** video-download skill eval 方法论:iteration-2 baseline 被污染
+**Skill:** skill-creator
 **Type:** internal
-**Phase/Area:** scripts/task_observer.py 备份机制（cmd_mark/cmd_archive .bak 快照）
+**Phase/Area:** eval 设计与评分
 
-**Issue:** log.md.bak-*（mark/archive 的写前快照）与 archive/log-*.md（已解决条目移出账本）职责不同但用户难以区分：.bak 无清理机制永久累积（现有 7/30、7/31、8/7、8/10 四个），按天覆盖只保留当天最后状态，SKILL.md 未文档化该机制；另有死配置 archive_after_days（config.json 有、cmd_archive 读取但归档条件硬编码 rd < today 从未生效）
+**Issue:** 因为技能 CLI 物理存在于共享工作区(仓库内 skills/ 目录),baseline(无技能)agent 自己发现了 skills/video-download/cli.py 并直接使用,iteration-2 的 without_skill 与 with_skill 产出完全相同(连 mp3 都是 20035B),对比失去区分度
 
-**Suggested improvement:** SKILL.md 或脚本 docstring 文档化 .bak 的用途与生命周期；增加 .bak 清理规则（如保留最近 N 个或归档后删除）；删除死配置 archive_after_days 或实现其语义
+**Suggested improvement:** 对工具封装型 skill,若 CLI 在仓库内,with/without eval 需把 baseline 隔离到不含该 CLI 的副本工作区,或改用行为级断言(是否手拼命令/是否验证输出),仅结果导向断言无法区分
 
-**Principle:** 防御性机制（写前快照）若不可见、无生命周期说明，会被用户误读为冗余：任何为崩溃恢复保留的文件都需要文档化用途+清理规则，死配置（读了未用）应删除或实现
+**Principle:** 评估工具封装型 skill 时,共享工作区本身就是基线污染源;结果导向断言对'已知工具的封装'无区分度,行为级断言或工作区隔离才有意义
+
+### Observation 5: 真实站点被 Cloudflare 反爬拦截,CLI 无 --extractor-args/--add-header/impe
+
+**Status:** ACTIONED (2026-08-11) — Applied to video-download cli.py (--impersonate + VIDEO_DOWNLOAD_YTDLP_BIN) and SKILL.md/USAGE.md error table (weekly review)
+**Date:** 2026-08-11
+**Session context:** video-download 技能真实使用:下载流媒体视频被 Cloudflare 拦截
+**Skill:** video-download
+**Type:** internal
+**Phase/Area:** cli.py download 子命令 + SKILL.md 错误处理表
+
+**Issue:** 真实站点被 Cloudflare 反爬拦截,CLI 无 --extractor-args/--add-header/impersonation 支持;按 SKILL.md 错误表加 --cookies-from-browser 无效,因为 cf_clearance 绑定 TLS 指纹,curl 即使带 cookies 也 403;最终靠 venv 装 yt-dlp[curl-cffi] + --extractor-args generic:impersonate + 浏览器 cookies 才提取到 m3u8
+
+**Suggested improvement:** 给 cli.py 加 --impersonate 开关(映射 --extractor-args generic:impersonate)和 --add-header 透传;SKILL.md 错误表 403 行补充:先试 cookies,仍 403 则需 impersonation(curl_cffi)或 playwright 提取直链
+
+**Principle:** 现代反爬(Cloudflare)是分层防御:header 检查→cookie 挑战→TLS 指纹;工具封装 skill 必须把'指纹伪造'能力纳入 CLI,否则真实站点场景必然失败,且错误表要写全升级路径而非只写第一层解法

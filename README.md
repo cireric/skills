@@ -15,7 +15,9 @@ skills/
 ├── info-collector/        # 结构化技术调研报告（Python CLI）
 ├── reading-grill/         # 苏格拉底式阅读拷问（纯 Markdown）
 ├── book-grill/            # 读书反思与笔记（纯 Markdown）
-└── daily-focus/           # 每日聚焦：重要-紧急矩阵挑出今日 Top 3（纯 Markdown）
+├── daily-focus/           # 每日聚焦：重要-紧急矩阵挑出今日 Top 3（纯 Markdown）
+├── ffmpeg-toolkit/        # 视频处理：格式转换/分辨率/压缩/裁剪/GIF 等（Python CLI，封装 ffmpeg）
+└── video-download/        # 视频下载：yt-dlp 封装，支持 info/formats/download/audio/version（Python CLI）
 ```
 
 - 各 skill 互相独立，无共享代码
@@ -29,6 +31,10 @@ skills/
 | reading-grill | 苏格拉底式阅读拷问 | 纯 Markdown，L1 回忆→L2 理解→L3 批判性反思 |
 | book-grill | 读书反思与笔记 | 纯 Markdown，4 阶段类型自适应提问 |
 | daily-focus | 每日聚焦，挑出今日 Top 3 | 纯 Markdown，脑暴+本地待办→重要-紧急矩阵→Top 3→每日存盘 |
+| [ffmpeg-toolkit](./skills/ffmpeg-toolkit/README.md) | 视频处理：转换/缩放/压缩/裁剪/拼接/音频/GIF/倍速 | Python CLI，封装 ffmpeg，11 个子命令 + 参数白名单校验 |
+| video-download | 视频下载：YouTube/B 站等 1700+ 站点，格式选择/提取音频/播放列表 | Python CLI，封装 yt-dlp，5 个子命令（info/formats/download/audio/version），[使用指南](./skills/video-download/USAGE.md) |
+
+依赖：ffmpeg-toolkit 需要系统安装 ffmpeg（macOS：`brew install ffmpeg`）；video-download 需要系统安装 yt-dlp + ffmpeg（macOS：`brew install yt-dlp ffmpeg`）。
 
 ## 运行测试
 
@@ -39,6 +45,8 @@ skills/
 # 单个 skill
 .venv\Scripts\python.exe -m pytest skills/info-collector/tests/ -v
 .venv\Scripts\python.exe -m pytest skills/reading-grill/tests/ -v
+.venv\Scripts\python.exe -m pytest skills/ffmpeg-toolkit/tests/ -v
+.venv\Scripts\python.exe -m pytest skills/video-download/tests/ -v
 ```
 
 ## 实现细节

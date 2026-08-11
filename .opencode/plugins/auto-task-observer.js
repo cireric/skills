@@ -1,9 +1,11 @@
 export const AutoTaskObserver = async ({ project, client, $, directory, worktree }) => {
   const OBSERVABLE_SKILLS = new Set([
     "intent-research",
+    "video-download",
   ])
   const SKILL_MARKERS = {
     "intent-research": ["# Intent-Research Skill", "Invoke via /intent-research only"],
+    "video-download": ["# Video Download 视频下载"],
   }
   const triggered = new Set()
 

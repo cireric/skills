@@ -1,0 +1,8 @@
+{
+  "output_dir": "",
+  "format": "",
+  "audio_format": "mp3",
+  "overwrite": false,
+  "metadata_timeout": 120,
+  "default_sub_langs": "en.*,zh.*"
+}

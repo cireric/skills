@@ -1,0 +1,88 @@
+{
+  "skill_name": "video-download",
+  "evals": [
+    {
+      "id": 1,
+      "name": "download-single-video",
+      "prompt": "帮我把 http://127.0.0.1:8931/sample.mp4 这个视频下载到本地，输出目录用 {{OUTPUTS}}，保存成 mp4 文件。下载完成后告诉我文件保存到了哪里。",
+      "expected_output": "A .mp4 file downloaded into the outputs directory; the agent reports the final file path. Uses the video-download skill CLI.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "mp4 file exists in outputs dir",
+          "description": "A .mp4 file is present in the run's outputs directory",
+          "type": "file_exists",
+          "check": "any *.mp4 in outputs/",
+          "expect": true
+        },
+        {
+          "name": "downloaded file is a real video (>50KB)",
+          "description": "The downloaded mp4 is substantial, matching the 91KB sample — not an empty placeholder",
+          "type": "file_size",
+          "check": "mp4 file size > 50000 bytes",
+          "expect": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "metadata-report",
+      "prompt": "查一下 http://127.0.0.1:8931/sample.mp4 这个视频的信息：标题、时长、格式/分辨率情况。把结果整理成一份简短报告（Markdown），保存到 {{OUTPUTS}} 目录下，并在对话里总结关键信息。",
+      "expected_output": "A Markdown report file in outputs containing title, duration, and format/resolution info; conversation summary mentions key facts.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "markdown report exists in outputs dir",
+          "description": "A .md report file is present in the run's outputs directory",
+          "type": "file_exists",
+          "check": "any *.md in outputs/",
+          "expect": true
+        },
+        {
+          "name": "report contains video title",
+          "description": "Report mentions the video title 'sample'",
+          "type": "content_contains",
+          "check": "report text contains 'sample'",
+          "expect": true
+        },
+        {
+          "name": "report contains resolution info",
+          "description": "Report mentions the video resolution (1280x720 / 720p)",
+          "type": "content_contains",
+          "check": "report text contains '720'",
+          "expect": true
+        },
+        {
+          "name": "report contains duration info",
+          "description": "Report mentions the video duration (~2 seconds)",
+          "type": "content_contains",
+          "check": "report text contains duration marker (2s / 2 sec / 00:00:02)",
+          "expect": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "extract-audio",
+      "prompt": "把 http://127.0.0.1:8931/sample.mp4 的音频提取出来转成 mp3，保存到 {{OUTPUTS}} 目录。",
+      "expected_output": "An .mp3 file in the outputs directory extracted from the sample video.",
+      "files": [],
+      "assertions": [
+        {
+          "name": "mp3 file exists in outputs dir",
+          "description": "An .mp3 file is present in the run's outputs directory",
+          "type": "file_exists",
+          "check": "any *.mp3 in outputs/",
+          "expect": true
+        },
+        {
+          "name": "mp3 file is real audio (>10KB)",
+          "description": "The extracted mp3 is substantial (real extraction was 20KB) — not an empty placeholder",
+          "type": "file_size",
+          "check": "mp3 file size > 10000 bytes",
+          "expect": true
+        }
+      ]
+    }
+  ]
+}
