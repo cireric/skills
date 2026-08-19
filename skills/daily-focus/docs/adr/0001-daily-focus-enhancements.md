@@ -1,6 +1,6 @@
 # ADR-0001: Daily Focus Skill Enhancements
 
-**Status:** Partially superseded by ADR-0002 (Decision #1 — archive rule)  
+**Status:** Partially superseded by ADR-0002 (Decision #1 — archive rule)；Partially superseded by ADR-0005 (Decision #1 — carryover 交互方式：逐条询问→批量 + 忽略标注带日期)  
 **Date:** 2026-07-29  
 **Context:** Grill session on daily-focus skill optimization
 
