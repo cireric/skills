@@ -8,7 +8,7 @@ from typing import List, NamedTuple, Optional, Sequence
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ffmpeg_toolkit import cli
 
 
 class FakeBins(NamedTuple):
@@ -28,8 +28,6 @@ class FakeBins(NamedTuple):
         self, args: Sequence[str]
     ) -> "FakeBins.Result":
         """Run cli.main with args, capturing stdout/stderr/exitcode."""
-        import cli  # lazy import so monkeypatch takes effect
-
         old_stdout = sys.stdout
         old_stderr = sys.stderr
         try:
@@ -54,8 +52,6 @@ class FakeBins(NamedTuple):
 @pytest.fixture
 def fake_bins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeBins:
     """Set up fake ffmpeg/ffprobe binaries and monkeypatch CLI paths."""
-    import cli
-
     fake_dir = Path(__file__).resolve().parent / "fake_bin"
     ffmpeg_fake = str(fake_dir / "ffmpeg.py")
     ffprobe_fake = str(fake_dir / "ffprobe.py")

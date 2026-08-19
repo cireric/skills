@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-from scripts.reporter import (
+from intent_research.reporter import (
     _resolve_ref_markers,
     _render_references,
     _render_verification_summary,
@@ -10,7 +10,7 @@ from scripts.reporter import (
     generate_report,
     build_front_matter,
 )
-from scripts.lib.utils import write_json, normalize_url
+from intent_research.lib.utils import write_json, normalize_url
 
 
 class TestResolveRefMarkers:

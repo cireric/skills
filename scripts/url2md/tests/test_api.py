@@ -94,3 +94,23 @@ class TestBrowserManagerImportError:
                 assert "playwright" in str(e)
             finally:
                 bm.async_playwright = saved
+
+
+class TestCrawlUrlListDispatch:
+    def test_list_page_passes_download_imgs_kwarg(self):
+        import asyncio
+        from unittest.mock import patch
+
+        from lib.api import crawl_url
+
+        with patch("lib.api._crawl_list_page") as mock_list:
+            with patch("lib.api._run_async", side_effect=lambda coro: asyncio.run(coro)):
+                result = crawl_url(
+                    "https://www.zhihu.com/question/12345?sort=vote_count",
+                    output_dir="out/",
+                    download_images=True,
+                )
+        assert result is mock_list.return_value
+        kwargs = mock_list.call_args.kwargs
+        assert kwargs["download_imgs"] is True
+        assert "download_images" not in kwargs

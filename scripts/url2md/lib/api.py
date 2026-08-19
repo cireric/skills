@@ -10,8 +10,8 @@ from pathlib import Path
 
 from .browser import BrowserManager
 from .downloader import download_images
-from .extractor import convert_to_markdown, extract_article, extract_list_links
-from .selectors import detect_platform, get_platform_config, is_article_page, is_list_page
+from .extractor import ZHIHU_ANSWER_URL_RE, convert_to_markdown, extract_article, extract_list_links
+from .selectors import Platform, detect_platform, get_platform_config, is_article_page, is_list_page
 from .utils import configure_asyncio, sanitize_filename
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,15 @@ async def crawl_single_article(
                 )
         markdown = convert_to_markdown(article, platform=platform, labels=labels, image_width=image_width)
         Path(output_dir).mkdir(parents=True, exist_ok=True)
-        md_filename = filename or f"{sanitize_filename(article.title)}.md"
+        if filename:
+            md_filename = filename
+        else:
+            stem = sanitize_filename(article.title)
+            if platform == Platform.ZHIHU:
+                answer_match = ZHIHU_ANSWER_URL_RE.search(url)
+                if answer_match:
+                    stem = f"{stem}-{answer_match.group('aid')}"
+            md_filename = f"{stem}.md"
         md_path = os.path.join(output_dir, md_filename)
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(markdown)
@@ -315,7 +323,7 @@ def crawl_url(
         return _run_async(
             _crawl_list_page(
                 url, output_dir,
-                download_images=download_images, images_dir=images_dir,
+                download_imgs=download_images, images_dir=images_dir,
                 limit=limit, delay=delay,
                 max_concurrent=max_concurrent, max_retries=max_retries,
                 cookies_file=cookies_file, **browser_kwargs, **extra_kwargs,

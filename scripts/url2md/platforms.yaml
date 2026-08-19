@@ -49,17 +49,19 @@ platforms:
     wait_until: "networkidle"
 
   zhihu:
-    name: "知乎专栏"
+    name: "知乎"
     article_patterns:
       - 'zhuanlan\.zhihu\.com/p/'
+      - 'zhihu\.com/question/\d+/answer/\d+'
     list_patterns:
       - 'zhuanlan\.zhihu\.com/p/\?page='
       - 'zhihu\.com/people/.*/posts'
+      - 'zhihu\.com/question/\d+/?(?:[?#]|$)'
     article_selector: ".Post-RichText, .RichText, .RichContent-inner"
-    title_selector: ".Post-Title, .ContentItem-title, h1.Post-Title"
+    title_selector: "h1.QuestionHeader-title, .Post-Title, .ContentItem-title, h1.Post-Title"
     author_selector: ".AuthorInfo-name, .UserLink-author"
     date_selector: ".ContentItem-time, .Post-Time"
-    list_link_selector: "a[href*='/p/']"
+    list_link_selector: "a[href*='/p/'], a[href*='/answer/']"
     needs_scroll: false
     wait_selector: ".Post-RichText, .RichText"
     tail_noise_markers:

@@ -2,6 +2,7 @@
 
 import asyncio
 import html
+import json
 import logging
 import random
 import re
@@ -11,6 +12,10 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 from .selectors import Platform, get_platform_config, is_article_page
 
 logger = logging.getLogger(__name__)
+
+ZHIHU_QUESTION_RE = re.compile(r"zhihu\.com/question/(?P<qid>\d+)/?(?:[?#]|$)")
+ZHIHU_ANSWER_URL_RE = re.compile(r"zhihu\.com/question/(?P<qid>\d+)/answer/(?P<aid>\d+)")
+ZHIHU_INITIAL_DATA_SELECTOR = "script#js-initialData, script[data-initial-state]"
 
 DEFAULT_MAX_SCROLL_NO_CHANGE = 3
 DEFAULT_TAIL_SCAN_LINES = 30
@@ -141,34 +146,39 @@ async def extract_article(page, platform: Platform, scroll_step_delay: float = D
         author = await _extract_field(page, config.get("author_selector"))
         date = await _extract_field(page, config.get("date_selector"))
         content = ""
+        content_elem = None
         article_selector = config.get("article_selector")
         if article_selector:
             content_elem = await page.query_selector(article_selector)
             if content_elem:
                 content = await content_elem.inner_html()
         images = []
-        img_selectors = []
-        if article_selector:
-            for sel in article_selector.split(","):
-                img_selectors.append(f"{sel.strip()} img")
-        else:
-            img_selectors = ["img"]
-        for img_sel in img_selectors:
-            try:
-                img_elements = await page.query_selector_all(img_sel)
-                for img in img_elements:
-                    try:
-                        src = await img.get_attribute("data-src") or await img.get_attribute("src")
-                        if src and not src.startswith("data:"):
-                            src = clean_image_url(src, platform=platform)
-                            if src and src not in images:
-                                images.append(src)
-                    except Exception as e:
-                        logger.debug(f"提取图片失败: {e}")
-                        continue
-            except Exception as e:
-                logger.debug(f"查询图片元素失败: {e}")
-                continue
+        # 图片收集：按配置的每个子选择器查询其内 img，避免只取第一个匹配元素时漏图
+        try:
+            img_selectors = []
+            if article_selector:
+                for sel in article_selector.split(","):
+                    img_selectors.append(f"{sel.strip()} img")
+            else:
+                img_selectors = ["img"]
+            for img_sel in img_selectors:
+                try:
+                    img_elements = await page.query_selector_all(img_sel)
+                    for img in img_elements:
+                        try:
+                            src = await img.get_attribute("data-src") or await img.get_attribute("src")
+                            if src and not src.startswith("data:"):
+                                src = clean_image_url(src, platform=platform)
+                                if src and src not in images:
+                                    images.append(src)
+                        except Exception as e:
+                            logger.debug(f"提取图片失败: {e}")
+                            continue
+                except Exception as e:
+                    logger.debug(f"查询图片元素失败: {e}")
+                    continue
+        except Exception as e:
+            logger.debug(f"查询图片元素失败: {e}")
         return ArticleData(
             title=title.strip(),
             author=author.strip(),
@@ -200,6 +210,12 @@ async def extract_list_links(page, platform: Platform, scroll: bool = True, max_
         config = get_platform_config(platform)
         link_selector = config.get("list_link_selector", "a")
         links: set[str] = set()
+        # 知乎问题页：优先从 js-initialData 提取已加载回答的链接（DOM 链接不可靠）
+        if platform == Platform.ZHIHU:
+            question_match = ZHIHU_QUESTION_RE.search(page.url)
+            if question_match:
+                initial_links = await _extract_zhihu_answer_links(page, question_match.group("qid"))
+                links.update(initial_links)
         if scroll and config.get("needs_scroll", False):
             prev_count = 0
             no_change_count = 0
@@ -220,6 +236,38 @@ async def extract_list_links(page, platform: Platform, scroll: bool = True, max_
     except Exception as e:
         logger.error(f"提取列表链接失败: {e}")
         raise ExtractError(f"提取列表链接失败: {e}") from e
+
+
+def extract_answer_ids_from_initial_data(script_text: str) -> list[str]:
+    """从知乎 js-initialData 中提取已加载回答的 ID 列表.
+
+    结构: JSON → initialState.entities.answers → {answer_id: ...}
+    返回按原始顺序的回答 ID；解析失败或结构缺失时返回空列表。
+    """
+    if not script_text:
+        return []
+    try:
+        data = json.loads(script_text)
+    except (ValueError, TypeError):
+        logger.warning("js-initialData 解析失败，回退到 DOM 链接提取")
+        return []
+    answers = ((data or {}).get("initialState") or {}).get("entities", {}).get("answers") or {}
+    return [str(aid) for aid in answers if str(aid).isdigit()]
+
+
+async def _extract_zhihu_answer_links(page, question_id: str) -> list[str]:
+    try:
+        script_text = await page.evaluate(
+            f"""() => {{
+                const s = document.querySelector('{ZHIHU_INITIAL_DATA_SELECTOR}');
+                return s ? s.textContent : '';
+            }}"""
+        )
+    except Exception as e:
+        logger.debug(f"读取 js-initialData 失败: {e}")
+        return []
+    ids = extract_answer_ids_from_initial_data(script_text)
+    return [f"https://www.zhihu.com/question/{question_id}/answer/{aid}" for aid in ids]
 
 
 def convert_img_tag(img_tag: str, platform: Platform | None = None, image_width: int = DEFAULT_IMAGE_WIDTH) -> str:

@@ -1,14 +1,14 @@
 import pytest
 from pathlib import Path
 
-from scripts.verify import (
+from intent_research.verify import (
     _normalize_numbers,
     _number_found_in_source,
     _is_indirect_source,
     _compute_source_verification,
     verify_claims,
 )
-from scripts.lib.utils import write_json, normalize_url, build_collected_by_url
+from intent_research.lib.utils import write_json, normalize_url, build_collected_by_url
 
 
 class TestNormalizeNumbers:

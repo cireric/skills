@@ -1,6 +1,6 @@
 # ADR-0002: Time-based Archive for Historical Daily Focus Files
 
-**Status:** Accepted  
+**Status:** Partially superseded by ADR-0003 (Deferred — configurable archive threshold)  
 **Date:** 2026-07-30  
 **Supersedes:** ADR-0001, Decision #1 (archive rule)  
 

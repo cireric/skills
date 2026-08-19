@@ -261,7 +261,7 @@ Write `.workdir/scope.json`:
 
 CJK topics require `english_title`.
 
-Gate: `python -m scripts.cli scope-check`
+Gate: `python -m intent_research.cli scope-check`
 
 ### Phase 2–5: Background Task
 
@@ -299,9 +299,9 @@ Main agent confirms: *"Research task started. Report will be saved to `reports/<
 - `source_tier` is auto-assigned by URL domain matching against config.json; if domain not in config, default Tier 3; agent may override with `tier_override_reason`
 - Source files must be written through the fetch tool — never write source content directly
 - Prefer primary sources; match search language to source language
-- Exa is the primary fetch path: `exa_web_fetch_exa` → `python -m scripts.cli fetch --from-stdin`
+- Exa is the primary fetch path: `exa_web_fetch_exa` → `python -m intent_research.cli fetch --from-stdin`
 
-Gate: `python -m scripts.cli scope-check`
+Gate: `python -m intent_research.cli scope-check`
 
 ### Phase 3: Analysis (background agent, async)
 
@@ -355,14 +355,14 @@ Field notes:
 - `confidence` field removed — not needed; reliability is expressed by `evidence_type` + `precision` + `source_verification`.
 - `tier_override_reason` on claims — if agent overrides the default tier for a source, this field is required.
 
-Gate: `python -m scripts.cli scope-check`
+Gate: `python -m intent_research.cli scope-check`
 
-Verify: `python -m scripts.cli verify` (automatically invoked between Phase 3 and Phase 4)
+Verify: `python -m intent_research.cli verify` (automatically invoked between Phase 3 and Phase 4)
 
 ### Verify (automatic, between Phase 3 and Phase 4)
 
 ```bash
-python -m scripts.cli verify
+python -m intent_research.cli verify
 ```
 
 Reads analysis.json + collected.json + sources/ directory. For each claim:
@@ -390,7 +390,7 @@ This is self-edit (author's checklist), not a quality gate. It belongs to "lever
 ### Phase 5: Report (background agent, async)
 
 ```bash
-python -m scripts.cli report
+python -m intent_research.cli report
 ```
 
 Auto-rendered Markdown with:
@@ -457,7 +457,7 @@ Checks scope.json, collected.json, and analysis.json compliance:
 Reads JSON array from stdin, writes source files and updates collected.json:
 
 ```bash
-echo '[{"url": "...", "content": "...", "tier": 1, "direction": "tech_arch"}]' | python -m scripts.cli fetch --from-stdin
+echo '[{"url": "...", "content": "...", "tier": 1, "direction": "tech_arch"}]' | python -m intent_research.cli fetch --from-stdin
 ```
 
 **Tier auto-assignment**: If `tier` is not provided, CLI matches URL domain against config.json sources. If domain not found, defaults to Tier 3. Agent may override by providing `tier` + `tier_override_reason`.
@@ -467,7 +467,7 @@ echo '[{"url": "...", "content": "...", "tier": 1, "direction": "tech_arch"}]' |
 Deterministic source verification. Automatically invoked between Phase 3 and Phase 4.
 
 ```bash
-python -m scripts.cli verify
+python -m intent_research.cli verify
 ```
 
 Reads analysis.json + collected.json + sources/ directory. For each claim:

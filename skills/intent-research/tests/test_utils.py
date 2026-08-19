@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.lib.utils import (
+from intent_research.lib.utils import (
     normalize_url,
     compute_url_hash,
     infer_tier_from_url,

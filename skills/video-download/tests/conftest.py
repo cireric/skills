@@ -7,7 +7,7 @@ from typing import List, NamedTuple, Sequence
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from video_download import cli
 
 
 class FakeYtDlp(NamedTuple):
@@ -24,8 +24,6 @@ class FakeYtDlp(NamedTuple):
 
     def run(self, args: Sequence[str]) -> "FakeYtDlp.Result":
         """Run cli.main with args, capturing stdout/stderr/exitcode."""
-        import cli  # lazy import so monkeypatch takes effect
-
         old_stdout = sys.stdout
         old_stderr = sys.stderr
         try:
@@ -50,10 +48,10 @@ class FakeYtDlp(NamedTuple):
 @pytest.fixture
 def fake_ytdlp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeYtDlp:
     """Point the CLI at the fake yt-dlp binary."""
-    import cli
-
     fake_bin = str(Path(__file__).resolve().parent / "fake_bin" / "yt-dlp.py")
     log_path = tmp_path / "ytdlp_log.txt"
     monkeypatch.setenv("FAKE_LOG", str(log_path))
     monkeypatch.setattr(cli, "YTDLP_BIN", fake_bin)
+    # 无 --output-dir 的下载用例会把文件写到 CWD，隔离到 tmp_path，避免污染工作目录
+    monkeypatch.chdir(tmp_path)
     return FakeYtDlp(log_path=log_path)

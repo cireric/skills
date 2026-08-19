@@ -26,10 +26,16 @@ Disclosed reference for the url2md skill. Agent loads this on demand — not nee
 | Platform | Article Page | List Page |
 |----------|--------------|-----------|
 | 微信公众号 | ✅ | ✅ |
-| 知乎专栏 | ✅ | ✅ |
+| 知乎（专栏 + 问答） | ✅ | ✅ |
 | 简书 | ✅ | ✅ |
 | Bilibili专栏 | ✅ | ✅ |
 | 通用网页 | ✅ | ❌ |
+
+### Zhihu Q&A
+
+- Article URL: `zhihu.com/question/{qid}/answer/{aid}` — extracts only the target answer (first `.RichContent-inner`); file named `{title}-{aid}.md`.
+- List URL: `zhihu.com/question/{qid}` — answer links are extracted from the page's `js-initialData` (`initialState.entities.answers` keys, implemented in `lib/extractor.py` for zhihu question pages), with DOM link scraping as fallback.
+- Only answers in the first SSR batch are listed; full crawling requires login (`cookies_file`).
 
 ## Dependencies
 

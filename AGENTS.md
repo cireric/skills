@@ -11,9 +11,19 @@
 | 不改 config.json | 预配置文件，运行期间修改会破坏可复现性                                                                                                                                                     |
 | 依赖先查后装     | 执行 skill 脚本前，先 `pip list` 或 `import` 检查第三方库是否已安装；缺失时用 venv pip 安装                                                                                                |
 
+## 每日聚焦提醒
+
+每个新会话开始时，检查 `.omo/daily-focus/YYYY-MM-DD.md`（今日文件，`YYYY-MM-DD` 取系统当天日期）是否存在：
+
+- **不存在** → 向用户提一句「今天还没做每日聚焦，要跑 `/daily-focus` 吗？」，随后**立即回到用户的原始请求**，不阻塞、不展开。
+- **存在** → 静默跳过。
+
+规则约束：只提醒一次（本次会话已提醒过则跳过）；不判断星期（周末是否做聚焦由用户决定）。
+
 ## 约定
 
-- `conftest.py` 将 skill 目录加入 `sys.path` 以支持 import
+- `conftest.py` 将 skill 目录加入 `sys.path` 以支持 import（包化 skill 改用 `pytest.ini` 的 `pythonpath`）
+- skill 顶层模块名全局唯一：全局跑 test 时多个 skill 共享一个进程，同名顶层模块会被 `sys.modules` 缓存遮蔽（守卫测试 `skills/tests/test_module_names_unique.py` 把关）；顶层 `cli.py` 薄壳只作按路径执行的入口，禁止被测试 import
 - 用 `tmp_path` fixture 做文件隔离，不污染工作目录
 - 用 `monkeypatch` 覆盖 `_SKILL_DIR`（集成测试）
 - CLI 测试直接构造 `Namespace` args，不启动子进程

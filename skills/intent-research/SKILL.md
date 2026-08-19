@@ -100,7 +100,7 @@ Write `.workdir/scope.json`:
 }
 ```
 
-Gate: `venv-python -m scripts.cli scope-check`
+Gate: `venv-python -m intent_research.cli scope-check`
 
 ### Phase 2-5: Background Task
 
@@ -144,9 +144,9 @@ Max rounds are hard limits. Early convergence is allowed.
 - `source_tier` is auto-assigned by URL domain matching against config.json; if domain not in config, default Tier 3; agent may override with `tier_override_reason`
 - Source files must be written through the fetch tool — never write source content directly
 - Prefer primary sources; match search language to source language
-- Exa is the primary fetch path: `exa_web_fetch_exa` → `venv-python -m scripts.cli fetch --from-stdin`
+- Exa is the primary fetch path: `exa_web_fetch_exa` → `venv-python -m intent_research.cli fetch --from-stdin`
 
-Gate: `venv-python -m scripts.cli scope-check`
+Gate: `venv-python -m intent_research.cli scope-check`
 
 ### Phase 3: Analysis (background agent, async)
 
@@ -199,12 +199,12 @@ Field notes:
 - `decision_questions_answered` per section — explicit traceability from section to DQs it answers
 - `tier_override_reason` on claims — required if agent overrides the default tier for a source
 
-Gate: `venv-python -m scripts.cli scope-check`
+Gate: `venv-python -m intent_research.cli scope-check`
 
 ### Verify (automatic, between Phase 3 and Phase 4)
 
 ```bash
-venv-python -m scripts.cli verify
+venv-python -m intent_research.cli verify
 ```
 
 Reads analysis.json + collected.json + sources/ directory. For each claim:
@@ -240,7 +240,7 @@ This is self-edit (author's checklist), not a quality gate.
 ### Phase 5: Report (background agent, async)
 
 ```bash
-venv-python -m scripts.cli report
+venv-python -m intent_research.cli report
 ```
 
 Auto-rendered Markdown with:
@@ -289,16 +289,16 @@ All commands use the venv Python interpreter, abbreviated `venv-python` below.
 
 **Convention:** `venv-python` means the venv Python for the current platform — Windows: `.venv\Scripts\python.exe` · Linux/macOS: `.venv/bin/python` (mirrors AGENTS.md). Substitute your platform's path when running commands literally.
 
-**Environment requirement**: the `scripts` package lives under the skill directory (`skills/intent-research/scripts`), not in the project root. Commands must be run with the skill directory on `PYTHONPATH`; otherwise `No module named scripts.cli`:
+**Environment requirement**: the `intent_research` package lives under the skill directory (`skills/intent-research/intent_research`), not in the project root. Commands must be run with the skill directory on `PYTHONPATH`; otherwise `No module named intent_research.cli`:
 
 ```powershell
 # PowerShell (Windows)
-$env:PYTHONPATH = "skills\intent-research"; venv-python -m scripts.cli <command>
+$env:PYTHONPATH = "skills\intent-research"; venv-python -m intent_research.cli <command>
 ```
 
 ```bash
 # bash (Linux/macOS)
-PYTHONPATH=skills/intent-research venv-python -m scripts.cli <command>
+PYTHONPATH=skills/intent-research venv-python -m intent_research.cli <command>
 ```
 
 Run from the project root (where `AGENTS.md` lives) so `.workdir/` and `reports/` resolve correctly.
@@ -322,13 +322,13 @@ Reads a JSON array, writes source files and updates collected.json.
 **Preferred: `--from-file`** — write the JSON array to a local UTF-8 file (e.g., `.workdir/fetch-batch.json`), then pass the path. Avoids shell-pipe encoding issues on Windows:
 
 ```bash
-venv-python -m scripts.cli fetch --from-file .workdir/fetch-batch.json
+venv-python -m intent_research.cli fetch --from-file .workdir/fetch-batch.json
 ```
 
 **`--from-stdin`** (bash only — PowerShell 5.1 pipes can corrupt UTF-8 content):
 
 ```bash
-echo '[{"url": "...", "content": "...", "tier": 1, "direction": "tech_arch"}]' | venv-python -m scripts.cli fetch --from-stdin
+echo '[{"url": "...", "content": "...", "tier": 1, "direction": "tech_arch"}]' | venv-python -m intent_research.cli fetch --from-stdin
 ```
 
 JSON item fields: `url` (required), `content`, `title`, `tier`, `direction`, `snippet`, `tier_override_reason`.

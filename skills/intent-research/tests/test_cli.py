@@ -3,8 +3,8 @@ import pytest
 from argparse import Namespace
 from pathlib import Path
 
-from scripts.cli import cmd_scope_check, cmd_fetch, cmd_verify, cmd_report
-from scripts.lib.utils import write_json, read_json
+from intent_research.cli import cmd_scope_check, cmd_fetch, cmd_verify, cmd_report
+from intent_research.lib.utils import write_json, read_json
 
 
 class _FakeStdin:

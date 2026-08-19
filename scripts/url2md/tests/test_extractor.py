@@ -2,15 +2,47 @@ import asyncio
 from unittest.mock import AsyncMock
 
 from lib.extractor import (
+    ZHIHU_QUESTION_RE,
     _convert_html_to_markdown,
     clean_image_url,
     convert_img_tag,
     convert_to_markdown,
+    extract_answer_ids_from_initial_data,
     ArticleData,
     remove_noise_elements,
     truncate_tail_noise,
 )
 from lib.selectors import Platform
+
+
+class TestExtractAnswerIdsFromInitialData:
+    def test_returns_answer_ids_in_order(self):
+        script = '{"initialState": {"entities": {"answers": {"111": null, "222": null, "333": null}}}}'
+        assert extract_answer_ids_from_initial_data(script) == ["111", "222", "333"]
+
+    def test_filters_non_numeric_keys(self):
+        script = '{"initialState": {"entities": {"answers": {"abc": null, "222": null}}}}'
+        assert extract_answer_ids_from_initial_data(script) == ["222"]
+
+    def test_missing_structure_returns_empty(self):
+        assert extract_answer_ids_from_initial_data('{"other": 1}') == []
+        assert extract_answer_ids_from_initial_data("") == []
+
+    def test_invalid_json_returns_empty(self):
+        assert extract_answer_ids_from_initial_data("not json {") == []
+
+
+class TestZhihuPatterns:
+    def test_question_re_matches_trailing_slash(self):
+        # 回归：带尾斜杠的问题页 URL 必须仍被识别为知乎问题页
+        m = ZHIHU_QUESTION_RE.search("https://www.zhihu.com/question/12345/")
+        assert m is not None
+        assert m.group("qid") == "12345"
+
+    def test_question_re_matches_query_and_fragment(self):
+        assert ZHIHU_QUESTION_RE.search("https://www.zhihu.com/question/12345?sort=vote_count")
+        assert ZHIHU_QUESTION_RE.search("https://www.zhihu.com/question/12345#top")
+        assert not ZHIHU_QUESTION_RE.search("https://www.zhihu.com/question/abc")
 
 
 class TestExtractArticleWaitsForSelector:
@@ -37,6 +69,61 @@ class TestExtractArticleWaitsForSelector:
         page.query_selector_all = AsyncMock(return_value=[])
         asyncio.run(extract_article(page, Platform.GENERIC))
         page.wait_for_selector.assert_not_awaited()
+
+    def test_images_collected_from_all_selector_matches(self):
+        """恢复旧行为：图片从每个 article_selector 匹配里收集（<sel> img），
+        而不是只取第一个匹配元素内的图（首个选择器命中局部区块时会漏图）。"""
+        from lib.extractor import extract_article
+        page = AsyncMock()
+        page.url = "https://example.com/article"
+        page.title = AsyncMock(return_value="Test Title")
+        content_elem = AsyncMock()
+        content_elem.inner_html = AsyncMock(return_value="<p>Content</p>")
+        # Py3.14 下 AsyncMock 子属性 awaited 结果是 AsyncMock，.strip() 为异步 mock；
+        # 显式给内文/标题返回值，保证字段提取返回真实字符串
+        content_elem.inner_text = AsyncMock(return_value="Fake Title")
+        page.query_selector = AsyncMock(return_value=content_elem)
+
+        def _img(src):
+            img = AsyncMock()
+            img.get_attribute = AsyncMock(
+                side_effect=lambda name: src if name == "data-src" else None
+            )
+            return img
+
+        # generic article_selector: "article, main, .content, .post, .entry"
+        imgs_by_selector = {
+            "article img": [_img("https://a.example/1.jpg")],
+            "main img": [],
+            ".content img": [
+                _img("https://a.example/1.jpg"),
+                _img("https://b.example/2.jpg"),
+            ],
+            ".post img": [],
+            ".entry img": [],
+        }
+        page.query_selector_all = AsyncMock(
+            side_effect=lambda sel: imgs_by_selector.get(sel, [])
+        )
+        article = asyncio.run(extract_article(page, Platform.GENERIC))
+        assert sorted(article.images) == [
+            "https://a.example/1.jpg",
+            "https://b.example/2.jpg",
+        ]
+        for sel in ("article", "main", ".content", ".post", ".entry"):
+            page.query_selector_all.assert_any_await(f"{sel} img")
+
+    def test_images_fallback_to_page_when_no_content(self):
+        from lib.extractor import extract_article
+        page = AsyncMock()
+        page.url = "https://example.com/article"
+        page.title = AsyncMock(return_value="Test Title")
+        page.query_selector = AsyncMock(return_value=None)
+        page.query_selector_all = AsyncMock(return_value=[])
+        asyncio.run(extract_article(page, Platform.GENERIC))
+        # 无内容元素时仍按配置的子选择器查询 img（旧行为）
+        for sel in ("article", "main", ".content", ".post", ".entry"):
+            page.query_selector_all.assert_any_await(f"{sel} img")
 
 
 class TestCleanImageUrl:

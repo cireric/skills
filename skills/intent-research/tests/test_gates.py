@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-from scripts.gates import (
+from intent_research.gates import (
     check_scope,
     check_collected,
     check_source_sufficiency,
@@ -9,7 +9,7 @@ from scripts.gates import (
     check_ref_markers,
     run_all_checks,
 )
-from scripts.lib.utils import write_json, normalize_url
+from intent_research.lib.utils import write_json, normalize_url
 
 
 class TestCheckScope:

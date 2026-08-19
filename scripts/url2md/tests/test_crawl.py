@@ -2,6 +2,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 _scripts_dir = str(Path(__file__).resolve().parent.parent / "scripts")
 if _scripts_dir not in sys.path:
     sys.path.insert(0, _scripts_dir)
@@ -60,3 +62,74 @@ class TestPreflightCheck:
         with patch("crawl._find_system_chrome", return_value=None):
             errors = _preflight_check()
             assert any("Chrome not found" in e for e in errors)
+
+
+def _make_crawl_result(success, files=None, error=None, count=1):
+    from lib.api import CrawlResult
+    return CrawlResult(success=success, files=files or [], error=error, article_count=count)
+
+
+class TestMultiUrlCrawl:
+    def test_multiple_urls_crawl_all(self, capsys):
+        from crawl import main
+        with patch("crawl.sys.argv", ["crawl.py", "https://a.com/1", "https://a.com/2", "--output", "out/"]):
+            with patch("crawl._preflight_check", return_value=[]):
+                with patch("lib.api.crawl_url", side_effect=[
+                    _make_crawl_result(True, ["out/one.md"]),
+                    _make_crawl_result(True, ["out/two.md"]),
+                ]) as mock_crawl:
+                    main()
+        assert mock_crawl.call_count == 2
+        assert mock_crawl.call_args_list[0].kwargs["url"] == "https://a.com/1"
+        assert mock_crawl.call_args_list[1].kwargs["url"] == "https://a.com/2"
+        out = capsys.readouterr().out
+        assert "已保存到: out/one.md" in out
+        assert "已保存到: out/two.md" in out
+        assert '"out/one.md"' in out and '"out/two.md"' in out
+
+    def test_partial_failure_keeps_successes(self, capsys):
+        from crawl import main
+        with patch("crawl.sys.argv", ["crawl.py", "https://a.com/1", "https://a.com/2"]):
+            with patch("crawl._preflight_check", return_value=[]):
+                with patch("lib.api.crawl_url", side_effect=[
+                    _make_crawl_result(False, error="boom"),
+                    _make_crawl_result(True, ["out/two.md"]),
+                ]):
+                    main()
+        out = capsys.readouterr().out
+        assert "抓取失败: https://a.com/1: boom" in out
+        assert "已保存到: out/two.md" in out
+
+    def test_all_fail_exits_nonzero(self, capsys):
+        from crawl import main
+        with patch("crawl.sys.argv", ["crawl.py", "https://a.com/1", "https://a.com/2"]):
+            with patch("crawl._preflight_check", return_value=[]):
+                with patch("lib.api.crawl_url", return_value=_make_crawl_result(False, error="boom")):
+                    with pytest.raises(SystemExit) as exc:
+                        main()
+        assert exc.value.code == 1
+
+    def test_filename_rejected_for_multiple_urls(self):
+        from crawl import main
+        with patch("crawl.sys.argv", ["crawl.py", "https://a.com/1", "https://a.com/2", "--filename", "x.md"]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        assert exc.value.code == 2
+
+
+class TestPreflightStandalone:
+    def test_preflight_runs_without_url(self, capsys):
+        """回归：`--preflight` 必须可独立运行（url 可选）。"""
+        from crawl import main
+        with patch("crawl.sys.argv", ["crawl.py", "--preflight"]):
+            with patch("crawl._preflight_check", return_value=[]):
+                main()
+        out = capsys.readouterr().out
+        assert "PREFLIGHT OK" in out
+
+    def test_no_url_without_preflight_is_usage_error(self):
+        from crawl import main
+        with patch("crawl.sys.argv", ["crawl.py"]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        assert exc.value.code == 2

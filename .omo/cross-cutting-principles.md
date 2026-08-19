@@ -10,7 +10,7 @@ Principles that apply across multiple skills, discovered during observation.
 
 **Added:** 2026-08-07
 **Applies to:** all skills with CLI commands
-**Requirement:** Skill 文档中的命令必须以文档所在环境可直接执行的方式给出。模块不在默认 import 路径时（如 `-m scripts.cli` 而 scripts 包在 skill 子目录），文档必须写明 PYTHONPATH 等环境变量配置，且示例须在目标平台（含 Windows PowerShell）验证过。
+**Requirement:** Skill 文档中的命令必须以文档所在环境可直接执行的方式给出。模块不在默认 import 路径时（如 `-m intent_research.cli` 而该包在 skill 子目录），文档必须写明 PYTHONPATH 等环境变量配置，且示例须在目标平台（含 Windows PowerShell）验证过。
 **Propagation:** immediate
 **Status:** active
 

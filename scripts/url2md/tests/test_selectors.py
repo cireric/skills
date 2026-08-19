@@ -56,6 +56,23 @@ class TestDetectPlatform:
     def test_zhihu_article(self):
         assert detect_platform("https://zhuanlan.zhihu.com/p/12345") == Platform.ZHIHU
 
+    def test_zhihu_answer_article(self):
+        assert detect_platform("https://www.zhihu.com/question/12345/answer/67890") == Platform.ZHIHU
+
+    def test_zhihu_question_list(self):
+        assert detect_platform("https://www.zhihu.com/question/12345") == Platform.ZHIHU
+
+    def test_zhihu_question_list_with_query(self):
+        assert detect_platform("https://www.zhihu.com/question/12345?sort=vote_count") == Platform.ZHIHU
+
+    def test_zhihu_question_list_trailing_slash(self):
+        # 回归：带尾斜杠的问题页 URL 不得被误判为 GENERIC
+        assert detect_platform("https://www.zhihu.com/question/12345/") == Platform.ZHIHU
+        assert is_list_page("https://www.zhihu.com/question/12345/") is True
+
+    def test_zhihu_answer_article_trailing_slash(self):
+        assert detect_platform("https://www.zhihu.com/question/12345/answer/67890/") == Platform.ZHIHU
+
     def test_jianshu_article(self):
         assert detect_platform("https://www.jianshu.com/p/abc123") == Platform.JIANSHU
 
@@ -82,6 +99,18 @@ class TestIsArticlePage:
     def test_generic_false(self):
         assert is_article_page("https://example.com/article") is False
 
+    def test_zhihu_answer_true(self):
+        assert is_article_page("https://www.zhihu.com/question/12345/answer/67890") is True
+
+    def test_zhihu_question_false(self):
+        assert is_article_page("https://www.zhihu.com/question/12345") is False
+
+    def test_zhihu_question_query_false(self):
+        assert is_article_page("https://www.zhihu.com/question/12345?sort=vote_count") is False
+
+    def test_zhihu_column_true(self):
+        assert is_article_page("https://zhuanlan.zhihu.com/p/12345") is True
+
 
 class TestIsListPage:
     def test_wechat_list_true(self):
@@ -92,3 +121,15 @@ class TestIsListPage:
 
     def test_generic_false(self):
         assert is_list_page("https://example.com/article") is False
+
+    def test_zhihu_question_true(self):
+        assert is_list_page("https://www.zhihu.com/question/12345") is True
+
+    def test_zhihu_question_query_true(self):
+        assert is_list_page("https://www.zhihu.com/question/12345?sort=vote_count") is True
+
+    def test_zhihu_answer_false(self):
+        assert is_list_page("https://www.zhihu.com/question/12345/answer/67890") is False
+
+    def test_zhihu_column_false(self):
+        assert is_list_page("https://zhuanlan.zhihu.com/p/12345") is False
