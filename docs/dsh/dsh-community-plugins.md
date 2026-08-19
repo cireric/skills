@@ -52,6 +52,8 @@
 | dsh-record-replay | - | 录制一段动作序列，之后回放复用 |
 | dsh-github-connector | - | 会话内直接执行 GitHub 操作 |
 
+> ⚠️ **关于行哈希编辑（hashline / hash_edit 类）**：独立插件形态在 dsh 生态**仍为空位**，但 **oh-my-dsh**（github.com/amplifthq/oh-my-dsh，dsh 的精选 overlay 发行版，锁 rc.7）的 Core 层内含 `hash_edit` 工具（packages/editor）：SHA-256 前 8 位 hex 逐行锚点 + fs 层 replaceIfVersion 版本守卫 + expected_anchors 全覆盖校验，且 @file 引用内容会渲染为 hash_edit 锚点。注意其 portable 版不支持原生 Windows（须 WSL2）。dsh 内置编辑器仍为 str_replace_editor。自建独立插件的需求规格见 `dsh-hash-edit-plugin-requirements.md`。
+
 ### 2.4 视觉能力（给纯文本 DeepSeek 补眼睛）
 
 | 插件 | 仓库 | Star | 功能 |
