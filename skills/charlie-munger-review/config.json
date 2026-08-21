@@ -2,6 +2,8 @@
   "notes_dir": ".omo/munger-notes",
   "max_deep_dive_biases": 3,
   "max_scan_selection": 7,
+  "max_total_questions": 20,
+  "scan_scope": "core",
   "history_top_n": 5,
   "severity_weights": {"轻": 1, "中": 3, "重": 5},
   "safety_protocol_enabled": true,
