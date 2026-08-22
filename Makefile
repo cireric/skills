@@ -16,7 +16,8 @@ help:
 	@echo "  url2md-preflight      Check url2md dependencies"
 	@echo ""
 	@echo "Maintenance:"
-	@echo "  clean                 Remove caches and temp files"
+	@echo "  clean                 Remove caches and temp files (cross-platform, keeps output/)"
+	@echo "                        extra flags: scripts/cleanup.py --help"
 
 # ---- url2md ----
 
@@ -33,19 +34,4 @@ url2md-preflight:
 # ---- Maintenance ----
 
 clean:
-	@echo "Cleaning caches and temp files..."
-ifeq ($(OS),Windows_NT)
-	@if exist .pytest_cache rd /s /q .pytest_cache
-	@if exist .playwright-mcp rd /s /q .playwright-mcp
-	@if exist .coverage del /q .coverage
-	@if exist htmlcov rd /s /q htmlcov
-	@if exist .research_tmp del /q .research_tmp
-	@for /d %%d in (__pycache__) do @if exist %%d rd /s /q %%d
-	@for /d %%d in (skills\info-collector\__pycache__) do @if exist %%d rd /s /q %%d
-	@for /d %%d in (skills\info-collector\lib\__pycache__) do @if exist %%d rd /s /q %%d
-	@for /d %%d in (skills\info-collector\tests\__pycache__) do @if exist %%d rd /s /q %%d
-else
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	rm -rf .pytest_cache .coverage htmlcov .playwright-mcp .research_tmp
-endif
-	@echo "Done."
+	$(PYTHON) scripts/cleanup.py --keep-output
