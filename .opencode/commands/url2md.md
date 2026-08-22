@@ -5,6 +5,8 @@ agent: build
 
 Crawl the given URL to a Markdown file.
 
+> **Convention:** `venv-python` = the venv Python for the current platform — Windows: `.venv\Scripts\python.exe` · Linux/macOS: `.venv/bin/python` (per AGENTS.md). Substitute your platform's path when running the commands literally.
+
 ## Steps
 
 1. Run: `venv-python scripts/url2md/crawl.py $ARGUMENTS`

@@ -1,10 +1,9 @@
-"""同步 API 适配层 — skill 入口."""
+"""同步 API 适配层 — url2md 工具入口."""
 
 import asyncio
 import logging
 import os
 import random
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,6 +14,35 @@ from .selectors import Platform, detect_platform, get_platform_config, is_articl
 from .utils import configure_asyncio, sanitize_filename
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class CrawlOptions:
+    """抓取过程的稳定配置项（一次抓取内对所有 URL 共享）.
+
+    把原本在 crawl_single_article / _crawl_list_page / _crawl_article / crawl_url
+    之间重复约 25 次的同名参数收敛到此处，新增选项只需改这一处。
+    """
+
+    headless: bool = True
+    max_concurrent: int = 3
+    max_retries: int = 3
+    cookies_file: str | None = None
+    user_agent: str | None = None
+    browser_channel: str = "chrome"
+    viewport_width: int = 1920
+    viewport_height: int = 1080
+    locale: str = "zh-CN"
+    timezone: str = "Asia/Shanghai"
+    labels: dict[str, str] | None = None
+    scroll_step_delay: float = 0.3
+    scroll_settle_delay: float = 0.5
+    max_scroll_no_change: int = 3
+    image_width: int = 600
+    image_download_timeout: int = 30
+    delay_jitter: float = 3.0
+    backoff_base: float = 1.0
+    backoff_max_wait: float = 60.0
 
 
 @dataclass
@@ -41,46 +69,28 @@ def _run_async(coro):
 
 
 async def crawl_single_article(
+    options: CrawlOptions,
     url: str,
     output_dir: str,
     browser_manager: BrowserManager | None = None,
     download_imgs: bool | None = None,
     images_dir: str | None = None,
     filename: str | None = None,
-    headless: bool = True,
-    max_concurrent: int = 3,
-    max_retries: int = 3,
-    cookies_file: str | None = None,
-    user_agent: str | None = None,
-    browser_channel: str = "chrome",
-    viewport_width: int = 1920,
-    viewport_height: int = 1080,
-    locale: str = "zh-CN",
-    timezone: str = "Asia/Shanghai",
-    labels: dict[str, str] | None = None,
-    scroll_step_delay: float = 0.3,
-    scroll_settle_delay: float = 0.5,
-    max_scroll_no_change: int = 3,
-    image_width: int = 600,
-    image_download_timeout: int = 30,
-    delay_jitter: float = 3.0,
-    backoff_base: float = 1.0,
-    backoff_max_wait: float = 60.0,
 ) -> tuple[bool, str | None, str | None]:
     """抓取单篇文章."""
     platform = detect_platform(url)
     should_close = False
     if browser_manager is None:
         browser_manager = BrowserManager(
-            headless=headless,
-            user_agent=user_agent,
-            browser_channel=browser_channel,
-            viewport_width=viewport_width,
-            viewport_height=viewport_height,
-            locale=locale,
-            timezone=timezone,
+            headless=options.headless,
+            user_agent=options.user_agent,
+            browser_channel=options.browser_channel,
+            viewport_width=options.viewport_width,
+            viewport_height=options.viewport_height,
+            locale=options.locale,
+            timezone=options.timezone,
         )
-        await browser_manager.create_context(cookies_file=cookies_file)
+        await browser_manager.create_context(cookies_file=options.cookies_file)
         should_close = True
     page = await browser_manager.new_page()
     try:
@@ -89,22 +99,30 @@ async def crawl_single_article(
         if download_imgs is None:
             download_imgs = config.get("download_images", False)
         await page.goto(url, wait_until=wait_until)
-        article = await extract_article(page, platform, scroll_step_delay=scroll_step_delay, scroll_settle_delay=scroll_settle_delay)
+        article = await extract_article(
+            page, platform,
+            scroll_step_delay=options.scroll_step_delay,
+            scroll_settle_delay=options.scroll_settle_delay,
+        )
         if article is None:
             return False, None, "提取文章失败"
         if download_imgs and article.images:
             img_dir = images_dir or os.path.join(output_dir, "images")
             local_paths = await download_images(
                 article.images, img_dir, article.title,
-                referer=url, max_concurrent=max_concurrent, max_retries=max_retries,
-                timeout=image_download_timeout,
+                referer=url, max_concurrent=options.max_concurrent,
+                max_retries=options.max_retries, timeout=options.image_download_timeout,
             )
+            image_map = {}
             for orig_url, local_path in local_paths.items():
                 rel_path = os.path.relpath(local_path, output_dir).replace(os.sep, "/")
-                article.content = re.sub(
-                    re.escape(orig_url) + r"(?![\w\-])", rel_path, article.content
-                )
-        markdown = convert_to_markdown(article, platform=platform, labels=labels, image_width=image_width)
+                image_map[orig_url] = rel_path
+        else:
+            image_map = None
+        markdown = convert_to_markdown(
+            article, platform=platform, labels=options.labels,
+            image_width=options.image_width, image_map=image_map,
+        )
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         if filename:
             md_filename = filename
@@ -129,6 +147,7 @@ async def crawl_single_article(
 
 
 async def _crawl_list_page(
+    options: CrawlOptions,
     url: str,
     output_dir: str,
     browser_manager: BrowserManager | None = None,
@@ -136,40 +155,21 @@ async def _crawl_list_page(
     images_dir: str | None = None,
     limit: int | None = None,
     delay: float = 2.0,
-    headless: bool = True,
-    max_concurrent: int = 3,
-    max_retries: int = 3,
-    cookies_file: str | None = None,
-    user_agent: str | None = None,
-    browser_channel: str = "chrome",
-    viewport_width: int = 1920,
-    viewport_height: int = 1080,
-    locale: str = "zh-CN",
-    timezone: str = "Asia/Shanghai",
-    labels: dict[str, str] | None = None,
-    scroll_step_delay: float = 0.3,
-    scroll_settle_delay: float = 0.5,
-    max_scroll_no_change: int = 3,
-    image_width: int = 600,
-    image_download_timeout: int = 30,
-    delay_jitter: float = 3.0,
-    backoff_base: float = 1.0,
-    backoff_max_wait: float = 60.0,
 ) -> CrawlResult:
     """抓取列表页."""
     platform = detect_platform(url)
     should_close = False
     if browser_manager is None:
         browser_manager = BrowserManager(
-            headless=headless,
-            user_agent=user_agent,
-            browser_channel=browser_channel,
-            viewport_width=viewport_width,
-            viewport_height=viewport_height,
-            locale=locale,
-            timezone=timezone,
+            headless=options.headless,
+            user_agent=options.user_agent,
+            browser_channel=options.browser_channel,
+            viewport_width=options.viewport_width,
+            viewport_height=options.viewport_height,
+            locale=options.locale,
+            timezone=options.timezone,
         )
-        await browser_manager.create_context(cookies_file=cookies_file)
+        await browser_manager.create_context(cookies_file=options.cookies_file)
         should_close = True
     files = []
     errors = []
@@ -178,29 +178,20 @@ async def _crawl_list_page(
         config = get_platform_config(platform)
         wait_until = config.get("wait_until", "networkidle")
         await page.goto(url, wait_until=wait_until)
-        links = await extract_list_links(page, platform, max_scroll_no_change=max_scroll_no_change)
+        links = await extract_list_links(
+            page, platform, max_scroll_no_change=options.max_scroll_no_change
+        )
         if limit:
             links = links[:limit]
         await page.close()
         for i, link in enumerate(links, 1):
             if i > 1:
-                await asyncio.sleep(random.uniform(max(0.5, delay), delay + delay_jitter))
+                await asyncio.sleep(random.uniform(max(0.5, delay), delay + options.delay_jitter))
             success, file_path, error = await crawl_single_article(
-                link,
-                output_dir,
+                options, link, output_dir,
                 browser_manager=browser_manager,
                 download_imgs=download_imgs,
                 images_dir=images_dir,
-                max_concurrent=max_concurrent,
-                max_retries=max_retries,
-                labels=labels,
-                scroll_step_delay=scroll_step_delay,
-                scroll_settle_delay=scroll_settle_delay,
-                image_width=image_width,
-                image_download_timeout=image_download_timeout,
-                delay_jitter=delay_jitter,
-                backoff_base=backoff_base,
-                backoff_max_wait=backoff_max_wait,
             )
             if success and file_path:
                 files.append(file_path)
@@ -218,44 +209,16 @@ async def _crawl_list_page(
 
 
 async def _crawl_article(
-    url: str, output_dir: str, download_imgs: bool | None, filename: str | None = None,
-    headless: bool = True, max_concurrent: int = 3, max_retries: int = 3,
-    cookies_file: str | None = None,
-    user_agent: str | None = None,
-    browser_channel: str = "chrome",
-    viewport_width: int = 1920,
-    viewport_height: int = 1080,
-    locale: str = "zh-CN",
-    timezone: str = "Asia/Shanghai",
-    labels: dict[str, str] | None = None,
-    scroll_step_delay: float = 0.3,
-    scroll_settle_delay: float = 0.5,
-    max_scroll_no_change: int = 3,
-    image_width: int = 600,
-    image_download_timeout: int = 30,
-    delay_jitter: float = 3.0,
-    backoff_base: float = 1.0,
-    backoff_max_wait: float = 60.0,
+    options: CrawlOptions,
+    url: str,
+    output_dir: str,
+    download_imgs: bool | None,
+    filename: str | None = None,
 ) -> CrawlResult:
     """抓取单篇文章的通用逻辑."""
     success, file_path, error = await crawl_single_article(
-        url, output_dir, download_imgs=download_imgs, filename=filename,
-        headless=headless, max_concurrent=max_concurrent, max_retries=max_retries,
-        cookies_file=cookies_file,
-        user_agent=user_agent,
-        browser_channel=browser_channel,
-        viewport_width=viewport_width,
-        viewport_height=viewport_height,
-        locale=locale,
-        timezone=timezone,
-        labels=labels,
-        scroll_step_delay=scroll_step_delay,
-        scroll_settle_delay=scroll_settle_delay,
-        image_width=image_width,
-        image_download_timeout=image_download_timeout,
-        delay_jitter=delay_jitter,
-        backoff_base=backoff_base,
-        backoff_max_wait=backoff_max_wait,
+        options, url, output_dir,
+        download_imgs=download_imgs, filename=filename,
     )
     return CrawlResult(
         success=success,
@@ -297,12 +260,17 @@ def crawl_url(
     if output_dir is None:
         raise ValueError("output_dir is required (set in config.yaml or pass --output)")
     platform = detect_platform(url)
-    browser_kwargs = dict(
-        headless=headless, user_agent=user_agent, browser_channel=browser_channel,
-        viewport_width=viewport_width, viewport_height=viewport_height,
-        locale=locale, timezone=timezone,
-    )
-    extra_kwargs = dict(
+    options = CrawlOptions(
+        headless=headless,
+        max_concurrent=max_concurrent,
+        max_retries=max_retries,
+        cookies_file=cookies_file,
+        user_agent=user_agent,
+        browser_channel=browser_channel,
+        viewport_width=viewport_width,
+        viewport_height=viewport_height,
+        locale=locale,
+        timezone=timezone,
         labels=labels,
         scroll_step_delay=scroll_step_delay,
         scroll_settle_delay=scroll_settle_delay,
@@ -314,25 +282,15 @@ def crawl_url(
         backoff_max_wait=backoff_max_wait,
     )
     if is_article_page(url, platform):
-        return _run_async(_crawl_article(
-            url, output_dir, download_images, filename=filename,
-            max_concurrent=max_concurrent, max_retries=max_retries,
-            cookies_file=cookies_file, **browser_kwargs, **extra_kwargs,
-        ))
+        return _run_async(_crawl_article(options, url, output_dir, download_images, filename=filename))
     elif is_list_page(url, platform):
         return _run_async(
             _crawl_list_page(
-                url, output_dir,
+                options, url, output_dir,
                 download_imgs=download_images, images_dir=images_dir,
                 limit=limit, delay=delay,
-                max_concurrent=max_concurrent, max_retries=max_retries,
-                cookies_file=cookies_file, **browser_kwargs, **extra_kwargs,
             )
         )
     else:
         logger.warning(f"URL 类型无法识别，尝试按文章页处理: {url}")
-        return _run_async(_crawl_article(
-            url, output_dir, download_images, filename=filename,
-            max_concurrent=max_concurrent, max_retries=max_retries,
-            cookies_file=cookies_file, **browser_kwargs, **extra_kwargs,
-        ))
+        return _run_async(_crawl_article(options, url, output_dir, download_images, filename=filename))

@@ -186,6 +186,32 @@ class TestConvertImgTag:
     def test_no_src(self):
         assert convert_img_tag("<img>") == ""
 
+    def test_image_map_uses_local_path(self):
+        # 回归 #1：下载后应通过 image_map 把远程 URL 替换为本地相对路径
+        image_map = {"https://x.com/img.jpg": "images/abc.jpg"}
+        result = convert_img_tag('<img src="https://x.com/img.jpg" alt="photo">', image_map=image_map)
+        assert "images/abc.jpg" in result
+        assert "https://x.com/img.jpg" not in result
+
+    def test_image_map_escaped_amp_matches(self):
+        # 回归 #1：content 中 & 被转义为 &amp;，clean 后应与 map 键（clean 后 URL）匹配
+        cleaned = "https://x.com/a?wx_fmt=png&tp=webp"
+        image_map = {cleaned: "images/abc.jpg"}
+        tag = '<img src="https://x.com/a?wx_fmt=png&amp;tp=webp" alt="p">'
+        result = convert_img_tag(tag, platform=Platform.WECHAT, image_map=image_map)
+        assert "images/abc.jpg" in result
+        assert cleaned not in result
+
+    def test_image_map_stripped_query_matches(self):
+        # 回归 #1：清理后去除查询参数（如 utm），map 键为 clean 后 URL，
+        # content 中的原始 ?utm=1 不应残留在最终本地路径上
+        image_map = {"https://x.com/a.jpg": "images/abc.jpg"}
+        tag = '<img src="https://x.com/a.jpg?utm=1" alt="p">'
+        result = convert_img_tag(tag, platform=Platform.GENERIC, image_map=image_map)
+        assert "images/abc.jpg" in result
+        assert "utm=1" not in result
+        assert "https://x.com/a.jpg" not in result
+
 
 class TestConvertToMarkdown:
     def test_basic_article(self):

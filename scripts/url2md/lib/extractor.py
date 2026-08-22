@@ -270,8 +270,13 @@ async def _extract_zhihu_answer_links(page, question_id: str) -> list[str]:
     return [f"https://www.zhihu.com/question/{question_id}/answer/{aid}" for aid in ids]
 
 
-def convert_img_tag(img_tag: str, platform: Platform | None = None, image_width: int = DEFAULT_IMAGE_WIDTH) -> str:
-    """将 img 标签转换为 Markdown 格式."""
+def convert_img_tag(img_tag: str, platform: Platform | None = None, image_width: int = DEFAULT_IMAGE_WIDTH, image_map: dict[str, str] | None = None) -> str:
+    """将 img 标签转换为 Markdown 格式.
+
+    image_map: 已下载图片的 {清理后URL: 本地相对路径} 映射。命中时输出本地路径，
+    否则输出远程 URL。键使用与下载时一致的 clean_image_url 结果，因此不受
+    content 中 &amp; 转义或查询参数去除的影响。
+    """
     src_match = re.search(r'(?:data-)?src=["\']([^"\']+)["\']', img_tag)
     alt_match = re.search(r'alt=["\']([^"\']*)["\']', img_tag)
     if not src_match:
@@ -279,6 +284,9 @@ def convert_img_tag(img_tag: str, platform: Platform | None = None, image_width:
     src = src_match.group(1)
     alt = alt_match.group(1) if alt_match else "image"
     src = clean_image_url(src, platform=platform)
+    local_path = (image_map or {}).get(src)
+    if local_path:
+        src = local_path
     return f'\n![{alt}]({src}){{width="{image_width}"}}\n'
 
 
@@ -320,7 +328,7 @@ def _extract_code_lang(tag: str) -> str:
     return m.group(1) if m else ""
 
 
-def _convert_html_to_markdown(content: str, platform: Platform | None = None, image_width: int = DEFAULT_IMAGE_WIDTH) -> str:
+def _convert_html_to_markdown(content: str, platform: Platform | None = None, image_width: int = DEFAULT_IMAGE_WIDTH, image_map: dict[str, str] | None = None) -> str:
     content = remove_noise_elements(content, platform=platform)
 
     pre_placeholders: list[str] = []
@@ -361,7 +369,7 @@ def _convert_html_to_markdown(content: str, platform: Platform | None = None, im
         content,
         flags=re.DOTALL,
     )
-    content = re.sub(r"<img[^>]*>", lambda m: convert_img_tag(m.group(0), platform=platform, image_width=image_width), content)
+    content = re.sub(r"<img[^>]*>", lambda m: convert_img_tag(m.group(0), platform=platform, image_width=image_width, image_map=image_map), content)
     content = re.sub(r"!\[.*?\]\(data:image[^)]+\)", "", content)
     content = re.sub(r"<[^>]+>", "", content)
     for i, block in enumerate(pre_placeholders):
@@ -399,8 +407,11 @@ _DEFAULT_LABELS = {
 }
 
 
-def convert_to_markdown(article: ArticleData, platform: Platform | None = None, labels: dict[str, str] | None = None, image_width: int = DEFAULT_IMAGE_WIDTH) -> str:
-    """将文章转换为 Markdown 格式."""
+def convert_to_markdown(article: ArticleData, platform: Platform | None = None, labels: dict[str, str] | None = None, image_width: int = DEFAULT_IMAGE_WIDTH, image_map: dict[str, str] | None = None) -> str:
+    """将文章转换为 Markdown 格式.
+
+    image_map: 已下载图片的 {清理后URL: 本地相对路径} 映射（见 convert_img_tag）。
+    """
     if labels is None:
         labels = _DEFAULT_LABELS
     lines = []
@@ -414,7 +425,7 @@ def convert_to_markdown(article: ArticleData, platform: Platform | None = None, 
     lines.append("")
     lines.append("---")
     lines.append("")
-    content = _convert_html_to_markdown(article.content, platform=platform, image_width=image_width)
+    content = _convert_html_to_markdown(article.content, platform=platform, image_width=image_width, image_map=image_map)
     if platform is not None:
         config = get_platform_config(platform)
         markers = config.get("tail_noise_markers", [])
