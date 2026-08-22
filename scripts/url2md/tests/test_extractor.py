@@ -212,6 +212,75 @@ class TestConvertImgTag:
         assert "utm=1" not in result
         assert "https://x.com/a.jpg" not in result
 
+    def test_data_uri_placeholder_falls_back_to_data_actualsrc(self):
+        # 回归：知乎懒加载占位图 src 为 data:image/svg+xml（内含含 `>` 的 SVG），
+        # 必须回退取 data-actualsrc 的真实地址，而非渲染占位 SVG
+        tag = (
+            '<img src="data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\''
+            ' width=\'0\' height=\'0\'></svg>" data-actualsrc="https://x.com/real.jpg">'
+        )
+        result = convert_img_tag(tag)
+        assert "![image]" in result
+        assert "https://x.com/real.jpg" in result
+        assert "data:image" not in result
+
+    def test_data_uri_only_placeholder_returns_empty(self):
+        # 仅有 data: 占位、没有真实地址的图片应被跳过，避免输出 data: 图片
+        tag = (
+            '<img src="data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\'>'
+            '</svg>" data-caption="" class="content_image lazy">'
+        )
+        assert convert_img_tag(tag) == ""
+
+
+class TestZhihuLazyImageFigure:
+    FIGURE = (
+        '<figure data-size="normal">'
+        '<noscript><img src="https://picx.zhimg.com/50/v2-abc_720w.jpg?source=2c26e567"'
+        ' data-caption="" data-size="normal" data-original-token="v2-abc"'
+        ' class="content_image"/></noscript>'
+        '<div class="RichText-ConditionalImagePortal">'
+        '<img src="data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\''
+        ' width=\'0\' height=\'0\'></svg>" data-caption="" data-size="normal"'
+        ' data-original-token="v2-abc" class="content_image lazy"'
+        ' data-actualsrc="https://picx.zhimg.com/50/v2-abc_720w.jpg?source=2c26e567">'
+        '</div></figure>'
+    )
+
+    def test_no_leaked_attributes(self):
+        # 回归：含 `>` 的 SVG data URI 不应切断 img 标签，导致 data-caption /
+        # data-actualsrc 等属性碎片泄漏到正文（合法图片行自带的 {width=...} 除外）
+        md = _convert_html_to_markdown(self.FIGURE, platform=Platform.ZHIHU)
+        assert "data-caption" not in md
+        assert "data-actualsrc" not in md
+        assert "data-original-token" not in md
+        # 不应出现脱离图片链接、单独成行的 {width=...} 属性碎片
+        assert "\n{width" not in md
+        assert md.count("![image]") >= 1
+
+    def test_single_deduped_image(self):
+        # <noscript> 兜底图与懒加载图 data-actualsrc 指向同一地址，去重后只渲染一张
+        md = _convert_html_to_markdown(self.FIGURE, platform=Platform.ZHIHU)
+        assert md.count("![image]") == 1
+        assert "https://picx.zhimg.com/50/v2-abc_720w.jpg" in md
+
+    def test_working_pair_keeps_both_variants(self):
+        # 正常懒加载图（src 为真实 webp，非 data: 占位）应保留其变体，并与
+        # <noscript> 兜底图去重（二者地址不同，故保留两张）
+        figure = (
+            '<figure><noscript><img src="https://picx.zhimg.com/50/v2-xyz_720w.jpg"'
+            ' class="content_image"/></noscript>'
+            '<div class="RichText-ConditionalImagePortal">'
+            '<img src="https://pic1.zhimg.com/80/v2-xyz_720w.webp?source=2c26e567"'
+            ' class="content_image lazy"'
+            ' data-actualsrc="https://pic1.zhimg.com/50/v2-xyz_720w.jpg?source=2c26e567">'
+            '</div></figure>'
+        )
+        md = _convert_html_to_markdown(figure, platform=Platform.ZHIHU)
+        assert md.count("![image]") == 2
+        assert "v2-xyz_720w.webp" in md
+        assert "v2-xyz_720w.jpg" in md
+
 
 class TestConvertToMarkdown:
     def test_basic_article(self):

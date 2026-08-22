@@ -276,13 +276,26 @@ def convert_img_tag(img_tag: str, platform: Platform | None = None, image_width:
     image_map: 已下载图片的 {清理后URL: 本地相对路径} 映射。命中时输出本地路径，
     否则输出远程 URL。键使用与下载时一致的 clean_image_url 结果，因此不受
     content 中 &amp; 转义或查询参数去除的影响。
+
+    选择图片地址的优先级：先取 ``src``；若其为 ``data:`` 占位图（如知乎懒加载
+    的 ``data:image/svg+xml`` 占位），则回退到 ``data-actualsrc`` / ``data-src``
+    取真实地址。仍然拿到 ``data:`` 占位图时直接返回空串，避免把占位 SVG 渲染成
+    图片、也避免后续行残留 ``{width=...}`` 等属性碎片。
     """
-    src_match = re.search(r'(?:data-)?src=["\']([^"\']+)["\']', img_tag)
     alt_match = re.search(r'alt=["\']([^"\']*)["\']', img_tag)
-    if not src_match:
-        return ""
-    src = src_match.group(1)
     alt = alt_match.group(1) if alt_match else "image"
+    src = None
+    src_match = re.search(r'src=["\']([^"\']+)["\']', img_tag)
+    if src_match:
+        src = src_match.group(1)
+    if src and src.startswith("data:"):
+        for attr in ("data-actualsrc", "data-src"):
+            m = re.search(rf'{attr}=["\']([^"\']+)["\']', img_tag)
+            if m and not m.group(1).startswith("data:"):
+                src = m.group(1)
+                break
+    if not src or src.startswith("data:"):
+        return ""
     src = clean_image_url(src, platform=platform)
     local_path = (image_map or {}).get(src)
     if local_path:
@@ -321,6 +334,26 @@ _HTML_TO_MD_STEPS: list[tuple[str, str | re.Pattern, str]] = [
     ("ndash", r"&ndash;", "-"),
     ("mdash", r"&mdash;", "--"),
 ]
+
+
+def _dedupe_image_lines(content: str) -> str:
+    """去除重复的图片行。
+
+    同一张图常被渲染成多个 <img>（如知乎的 <noscript> 兜底图与懒加载占位图的
+    data-actualsrc 指向同一地址），转换后会产生重复的
+    ``![...](url){width=...}`` 行。按清理后的 URL 去重，保留首次出现。
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    img_re = re.compile(r'^!\[[^\]]*\]\((\S+?)\)\{width="\d+"\}\s*$')
+    for line in content.split("\n"):
+        m = img_re.match(line)
+        if m:
+            if m.group(1) in seen:
+                continue
+            seen.add(m.group(1))
+        out.append(line)
+    return "\n".join(out)
 
 
 def _extract_code_lang(tag: str) -> str:
@@ -369,9 +402,15 @@ def _convert_html_to_markdown(content: str, platform: Platform | None = None, im
         content,
         flags=re.DOTALL,
     )
-    content = re.sub(r"<img[^>]*>", lambda m: convert_img_tag(m.group(0), platform=platform, image_width=image_width, image_map=image_map), content)
+    content = re.sub(
+        r'<img\b(?:[^>"]|"[^"]*")*>',
+        lambda m: convert_img_tag(m.group(0), platform=platform, image_width=image_width, image_map=image_map),
+        content,
+        flags=re.DOTALL,
+    )
     content = re.sub(r"!\[.*?\]\(data:image[^)]+\)", "", content)
     content = re.sub(r"<[^>]+>", "", content)
+    content = _dedupe_image_lines(content)
     for i, block in enumerate(pre_placeholders):
         content = content.replace(f"\x00PRE{i}\x00", block)
     content = re.sub(r"\n{3,}", "\n\n", content)
