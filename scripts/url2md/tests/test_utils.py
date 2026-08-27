@@ -21,6 +21,13 @@ class TestSanitizeFilename:
     def test_none_like_empty(self):
         assert sanitize_filename(None) == "untitled"
 
+    def test_newline_and_control_chars_removed(self):
+        # 回归：Steam Workshop 页标题含换行（"订阅即可下载\nModTheSpire"），
+        # 换行残留会导致 open() 抛 [Errno 22] Invalid argument
+        assert sanitize_filename("订阅即可下载\nModTheSpire") == "订阅即可下载ModTheSpire"
+        assert sanitize_filename("a\r\nb\tc") == "abc"
+        assert "\n" not in sanitize_filename("x\ny") and "\r" not in sanitize_filename("x\ny") and "\t" not in sanitize_filename("x\ny")
+
 
 class TestExponentialBackoff:
     def test_first_attempt(self):

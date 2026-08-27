@@ -10,7 +10,7 @@ _SKILL_DIR = Path(__file__).parent.parent
 class TestLoadPlatformConfigs:
     def test_loads_all_platforms_from_yaml(self):
         configs = load_platform_configs(_SKILL_DIR / "platforms.yaml")
-        assert set(configs.keys()) == {Platform.WECHAT, Platform.ZHIHU, Platform.JIANSHU, Platform.BILIBILI, Platform.SSPAI, Platform.GENERIC}
+        assert set(configs.keys()) == {Platform.WECHAT, Platform.ZHIHU, Platform.JIANSHU, Platform.BILIBILI, Platform.SSPAI, Platform.REDDIT, Platform.XTWITTER, Platform.GENERIC}
 
     def test_wechat_config_has_required_fields(self):
         configs = load_platform_configs(_SKILL_DIR / "platforms.yaml")
@@ -87,6 +87,72 @@ class TestDetectPlatform:
 
     def test_generic(self):
         assert detect_platform("https://example.com/article") == Platform.GENERIC
+
+
+class TestRedditPlatform:
+    def test_www_reddit_comments_article(self):
+        url = "https://www.reddit.com/r/slaythespire/comments/17rn2ie/what_design_choices_makes_slay_the_spire_one_of/"
+        assert detect_platform(url) == Platform.REDDIT
+        assert is_article_page(url) is True
+
+    def test_old_reddit_comments_article(self):
+        url = "https://old.reddit.com/r/IAmA/comments/aj6sq1/were_mega_crit_games_creators_of_slay_the_spire/"
+        assert detect_platform(url) == Platform.REDDIT
+        assert is_article_page(url) is True
+
+    def test_short_comments_url(self):
+        # 无 r/ 子版块前缀、无标题 slug 的短链接也是文章页
+        url = "https://www.reddit.com/comments/17rn2ie/"
+        assert detect_platform(url) == Platform.REDDIT
+        assert is_article_page(url) is True
+
+    def test_subreddit_page_not_article(self):
+        assert is_article_page("https://www.reddit.com/r/slaythespire/") is False
+
+    def test_config_has_required_fields(self):
+        configs = load_platform_configs(_SKILL_DIR / "platforms.yaml")
+        rc = configs[Platform.REDDIT]
+        for key in ["name", "article_patterns", "list_patterns", "article_selector", "title_selector", "author_selector", "date_selector", "list_link_selector", "needs_scroll", "tail_noise_markers", "noise_html_patterns", "keep_query_params", "wait_until"]:
+            assert key in rc, f"reddit config missing key: {key}"
+
+
+class TestXTwitterPlatform:
+    def test_x_status_article(self):
+        url = "https://x.com/MegaCrit/status/2035125930876678627"
+        assert detect_platform(url) == Platform.XTWITTER
+        assert is_article_page(url) is True
+
+    def test_twitter_com_status_article(self):
+        url = "https://twitter.com/MegaCrit/status/1234567890"
+        assert detect_platform(url) == Platform.XTWITTER
+        assert is_article_page(url) is True
+
+    def test_x_profile_not_article(self):
+        assert is_article_page("https://x.com/MegaCrit") is False
+
+    def test_config_has_required_fields(self):
+        configs = load_platform_configs(_SKILL_DIR / "platforms.yaml")
+        xc = configs[Platform.XTWITTER]
+        for key in ["name", "article_patterns", "list_patterns", "article_selector", "title_selector", "author_selector", "date_selector", "list_link_selector", "needs_scroll", "tail_noise_markers", "noise_html_patterns", "keep_query_params", "wait_until"]:
+            assert key in xc, f"x config missing key: {key}"
+
+
+class TestRedditSelectorsAgainstNewDom:
+    """www.reddit.com 新版 DOM（shreddit web components）选择器约定."""
+
+    def test_title_uses_title_slot(self):
+        configs = load_platform_configs(_SKILL_DIR / "platforms.yaml")
+        assert "[slot='title']" in configs[Platform.REDDIT]["title_selector"]
+
+    def test_content_targets_main_landmark(self):
+        configs = load_platform_configs(_SKILL_DIR / "platforms.yaml")
+        assert "main" in configs[Platform.REDDIT]["article_selector"]
+
+    def test_wait_selector_targets_shreddit_post(self):
+        # 回归：old.reddit 已登录墙化，必须走 www 新 DOM 且等待 shreddit-post 水合完成，
+        # 否则 SPA 导航会打断 page.evaluate（Execution context destroyed）
+        configs = load_platform_configs(_SKILL_DIR / "platforms.yaml")
+        assert "shreddit-post" in configs[Platform.REDDIT].get("wait_selector", "")
 
 
 class TestIsArticlePage:

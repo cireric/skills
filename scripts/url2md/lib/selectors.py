@@ -21,6 +21,8 @@ class Platform(Enum):
     JIANSHU = "jianshu"
     BILIBILI = "bilibili"
     SSPAI = "sspai"
+    REDDIT = "reddit"
+    XTWITTER = "x"
     GENERIC = "generic"
 
 

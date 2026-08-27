@@ -21,6 +21,7 @@ def sanitize_filename(filename: str, max_length: int = 200) -> str:
     filename = filename.strip()
     invalid_chars = r'[<>:"/\\|?*\uff1a\uff1f\uff01\u300a\u300b]'
     filename = re.sub(invalid_chars, "", filename)
+    filename = re.sub(r"[\r\n\t\f\v]+", "", filename)  # 控制字符（换行等）会导致文件路径非法
     filename = filename.replace(" ", "_")
     if len(filename) > max_length:
         filename = filename[:max_length]

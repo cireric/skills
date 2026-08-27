@@ -17,6 +17,56 @@ ZHIHU_QUESTION_RE = re.compile(r"zhihu\.com/question/(?P<qid>\d+)/?(?:[?#]|$)")
 ZHIHU_ANSWER_URL_RE = re.compile(r"zhihu\.com/question/(?P<qid>\d+)/answer/(?P<aid>\d+)")
 ZHIHU_INITIAL_DATA_SELECTOR = "script#js-initialData, script[data-initial-state]"
 
+X_TWEET_ARTICLE_SELECTOR = "article"
+X_LOGIN_URL_MARKER = "/i/flow/login"
+
+# x.com 未登录页已剥离 data-testid / div[lang] 等稳定钩子，只能对 article 的
+# innerText 做行级解析：handle 行之后是（可选）日期行与正文，互动数字等噪声行截断。
+_X_ENGAGEMENT_LINE_RE = re.compile(
+    r"^(?:\d[\d.,]*万?|\d+(?:\.\d+)?[KkMm]|\d{1,2}:\d{2}(?:\s*·.*)?|Views|查看|翻译|Translate"
+    r"|Show more|显示更多|Show this thread|回复|转发|喜欢|书签|分享|GIF"
+    r"|Reply|Repost|Like|Bookmark|Share)$",
+    re.I,
+)
+_X_DATE_LINE_RE = re.compile(
+    r"^(?:\d{1,2}\s*(?:秒|分钟|小时|天|周|月|年)前?|\d{1,2}月\d{1,2}日|\d{1,2}/\d{1,2}"
+    r"|\d{1,2}-\d{1,2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\d{1,2}"
+    r"(?:,?\s*\d{4})?|\d+[smhd])$",
+    re.I,
+)
+
+
+def _parse_x_tweet_lines(lines: list[str]) -> dict:
+    """从单条推文 article 的 innerText 行序列中解析 {author, text}."""
+    author = ""
+    start = len(lines)
+    for i, line in enumerate(lines[:8]):
+        s = line.strip()
+        if s.startswith("@") and 1 < len(s) <= 16 and " " not in s:
+            author = s
+            start = i + 1
+            break
+    if not author:
+        return {"author": "", "text": ""}
+    if start < len(lines) and _X_DATE_LINE_RE.match(lines[start].strip()):
+        start += 1
+    text_parts: list[str] = []
+    for line in lines[start:]:
+        s = line.strip()
+        if _X_ENGAGEMENT_LINE_RE.match(s):
+            break
+        text_parts.append(s)
+    return {"author": author, "text": "\n".join(text_parts)}
+
+
+async def _wait_x_articles(page, timeout_ms: int = 20000) -> bool:
+    """等待 X 推文 article 渲染出现."""
+    try:
+        await page.wait_for_selector(X_TWEET_ARTICLE_SELECTOR, timeout=timeout_ms)
+        return True
+    except Exception:
+        return False
+
 DEFAULT_MAX_SCROLL_NO_CHANGE = 3
 DEFAULT_TAIL_SCAN_LINES = 30
 DEFAULT_SCROLL_STEP_DELAY = 0.3
@@ -99,6 +149,96 @@ class ArticleData:
             self.images = []
 
 
+def filter_x_thread_tweets(tweets: list[dict]) -> list[dict]:
+    """过滤 X 推文串：仅保留与首条推文同作者的推文（主线），保持原顺序.
+
+    首条无作者信息时视为无法判定主线，返回全部推文。
+    """
+    if not tweets:
+        return []
+    root_author = tweets[0].get("author") or ""
+    if not root_author:
+        return tweets
+    return [t for t in tweets if (t.get("author") or "") == root_author]
+
+
+def build_author_text_html(posts: list[dict]) -> str:
+    """将 {author, text} 列表合成为 HTML（每条一段，块间以 <hr> 分隔）.
+
+    文本经 html.escape 转义；空文本跳过；相邻重复项去重。
+    """
+    blocks = []
+    prev_key = None
+    for t in posts:
+        text = (t.get("text") or "").strip()
+        if not text:
+            continue
+        author = html.escape(t.get("author") or "")
+        escaped = html.escape(text)
+        key = (author, text)
+        if key == prev_key:
+            continue  # 相邻重复条目（引用视图与时间线视图各渲染一次）
+        prev_key = key
+        blocks.append(f"<p><strong>{author}</strong></p><p>{escaped}</p>")
+    return "\n<hr>\n".join(blocks)
+
+
+def build_x_thread_html(tweets: list[dict]) -> str:
+    """X 推文串渲染入口，见 build_author_text_html."""
+    return build_author_text_html(tweets)
+
+
+async def _extract_x_article(
+    page,
+    scroll_step_delay: float = DEFAULT_SCROLL_STEP_DELAY,
+    scroll_settle_delay: float = DEFAULT_SCROLL_SETTLE_DELAY,
+) -> ArticleData | None:
+    """提取 X/Twitter 推文串：等待渲染、滚动加载、逐条抽取 tweetText.
+
+    x.com 未登录渲染不稳定（概率性风控墙/慢加载），等待超时后重载重试一次。
+    """
+    found = await _wait_x_articles(page, timeout_ms=20000)
+    if not found:
+        try:
+            await page.reload(wait_until="domcontentloaded")
+            found = await _wait_x_articles(page, timeout_ms=20000)
+        except Exception:
+            found = False
+    if not found:
+        current_url = page.url
+        if X_LOGIN_URL_MARKER in current_url:
+            raise ExtractError(
+                "X 页面重定向到登录墙。请在 scripts/url2md/config.yaml 配置 cookies_file 后重试。"
+            )
+        raise ExtractError(
+            f"未找到推文内容（x.com 未登录渲染不稳定，可重试或配置 cookies_file）：{current_url}"
+        )
+    await _scroll_page(page, step_delay=scroll_step_delay, settle_delay=scroll_settle_delay)
+    raw_articles = await page.evaluate(
+        """() => {
+            // 只取叶子 article：嵌套容器 article 的 innerText 会包含子推文，造成重复
+            const all = Array.from(document.querySelectorAll("article"));
+            const leaves = all.filter(a => !a.querySelector("article"));
+            return (leaves.length ? leaves : all).map(a => ({
+                lines: a.innerText.split("\\n").map(s => s.trim()).filter(Boolean),
+            }));
+        }"""
+    )
+    kept = filter_x_thread_tweets([_parse_x_tweet_lines(a["lines"]) for a in (raw_articles or [])])
+    content_html = build_x_thread_html(kept)
+    first = kept[0] if kept else {}
+    handle = first.get("author", "")
+    snippet = re.sub(r"\s+", " ", first.get("text", ""))[:50].strip()
+    title = f"{handle} on X: {snippet}" if handle else await page.title()
+    return ArticleData(
+        title=title.strip(),
+        author=handle,
+        date="",
+        url=page.url,
+        content=content_html,
+    )
+
+
 async def _scroll_page(page, step_delay: float = DEFAULT_SCROLL_STEP_DELAY, settle_delay: float = DEFAULT_SCROLL_SETTLE_DELAY) -> None:
     """滚动页面以加载所有内容."""
     await page.evaluate(f"""
@@ -132,9 +272,61 @@ async def _extract_field(page, selector: str | None, fallback_method=None) -> st
     return fallback_method() if fallback_method else ""
 
 
+async def _extract_reddit_article(page) -> ArticleData | None:
+    """提取 Reddit 帖子：shreddit web components 结构化取值，避免 main 内脚本噪声."""
+    data = await page.evaluate(
+        """() => {
+            const post = document.querySelector("shreddit-post");
+            if (!post) return null;
+            const titleEl = post.querySelector("[slot='title']");
+            const authorAttr = post.getAttribute("author") || "";
+            const dateEl = post.querySelector("time");
+            const bodyEl = post.querySelector("[slot='text-body'] .md")
+                || post.querySelector("[slot='text-body']")
+                || post.querySelector(".md");
+            const comments = Array.from(document.querySelectorAll("shreddit-comment"))
+                .filter(c => !c.parentElement.closest("shreddit-comment"))
+                .map(c => {
+                    const body = c.querySelector("[slot='comment']");
+                    return { author: "u/" + (c.getAttribute("author") || "?"), text: body ? body.innerText : "" };
+                });
+            return {
+                title: titleEl ? titleEl.innerText : "",
+                author: authorAttr ? "u/" + authorAttr : "",
+                date: dateEl ? dateEl.innerText : "",
+                bodyHtml: bodyEl ? bodyEl.innerHTML : "",
+                comments,
+                url: location.href.split("?")[0],
+            };
+        }"""
+    )
+    if not data:
+        raise ExtractError("未找到 shreddit-post（页面可能被登录墙拦截或结构变更）")
+    comments_html = build_author_text_html(data.get("comments") or [])
+    body_html = data.get("bodyHtml") or ""
+    content = body_html + (f"\n<hr>\n{comments_html}" if comments_html else "")
+    return ArticleData(
+        title=(data.get("title") or "").strip(),
+        author=data.get("author") or "",
+        date=data.get("date") or "",
+        url=data.get("url") or page.url,
+        content=content,
+    )
+
+
 async def extract_article(page, platform: Platform, scroll_step_delay: float = DEFAULT_SCROLL_STEP_DELAY, scroll_settle_delay: float = DEFAULT_SCROLL_SETTLE_DELAY) -> ArticleData | None:
     """提取文章内容."""
     try:
+        if platform == Platform.XTWITTER:
+            return await _extract_x_article(
+                page,
+                scroll_step_delay=scroll_step_delay,
+                scroll_settle_delay=scroll_settle_delay,
+            )
+        if platform == Platform.REDDIT:
+            await page.wait_for_selector("shreddit-post", timeout=20000)
+            article = await _extract_reddit_article(page)
+            return article
         config = get_platform_config(platform)
         wait_selector = config.get("wait_selector")
         if wait_selector:
@@ -187,6 +379,8 @@ async def extract_article(page, platform: Platform, scroll_step_delay: float = D
             content=content,
             images=images,
         )
+    except ExtractError:
+        raise
     except Exception as e:
         logger.error(f"提取文章失败: {e}")
         return None

@@ -176,6 +176,45 @@ platforms:
     wait_until: "domcontentloaded"
     download_images: true
 
+  reddit:
+    name: "Reddit"
+    article_patterns:
+      - 'reddit\.com/(?:r/[^/]+/)?comments/\w+'
+    list_patterns:
+      - 'reddit\.com/r/[^/]+/?$'
+    article_selector: "main"
+    title_selector: "shreddit-post [slot='title'], shreddit-post h1"
+    author_selector: "[slot='authorName']"
+    date_selector: "shreddit-post time"
+    list_link_selector: "a[href*='/comments/']"
+    needs_scroll: true
+    wait_selector: "shreddit-post"
+    tail_noise_markers:
+      - "Reddit Inc ©"
+      - "使用 Reddit"
+      - "帮助 Reddit"
+      - "广告"
+    noise_html_patterns: []
+    keep_query_params: []
+    wait_until: "domcontentloaded"
+
+  x:
+    name: "X/Twitter"
+    article_patterns:
+      - '(?:x|twitter)\.com/[^/]+/status/\d+'
+    list_patterns: []
+    article_selector: "article"
+    title_selector: "h1"
+    author_selector: "[data-testid='User-Name']"
+    date_selector: "time"
+    list_link_selector: "a[href*='/status/']"
+    needs_scroll: true
+    wait_selector: "article"
+    tail_noise_markers: []
+    noise_html_patterns: []
+    keep_query_params: []
+    wait_until: "domcontentloaded"
+
   generic:
     name: "通用网页"
     article_patterns: []

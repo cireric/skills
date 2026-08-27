@@ -4,10 +4,14 @@ from unittest.mock import AsyncMock
 from lib.extractor import (
     ZHIHU_QUESTION_RE,
     _convert_html_to_markdown,
+    _parse_x_tweet_lines,
+    build_author_text_html,
+    build_x_thread_html,
     clean_image_url,
     convert_img_tag,
     convert_to_markdown,
     extract_answer_ids_from_initial_data,
+    filter_x_thread_tweets,
     ArticleData,
     remove_noise_elements,
     truncate_tail_noise,
@@ -428,3 +432,105 @@ class TestCodeBlockConversion:
         html = "<p>text</p>\n<code>line1\nline2</code>\n<p>more</p>"
         md = _convert_html_to_markdown(html)
         assert "`line1\nline2`" not in md
+
+
+class TestFilterXThreadTweets:
+    def test_keeps_root_author_chain_in_order(self):
+        tweets = [
+            {"author": "@megacrit", "text": "(1/4) hello"},
+            {"author": "@someone", "text": "a reply"},
+            {"author": "@megacrit", "text": "(2/4) world"},
+        ]
+        assert filter_x_thread_tweets(tweets) == [
+            {"author": "@megacrit", "text": "(1/4) hello"},
+            {"author": "@megacrit", "text": "(2/4) world"},
+        ]
+
+    def test_empty_input_returns_empty(self):
+        assert filter_x_thread_tweets([]) == []
+
+    def test_no_root_author_keeps_all(self):
+        tweets = [{"author": "", "text": "a"}, {"author": "@b", "text": "b"}]
+        assert len(filter_x_thread_tweets(tweets)) == 2
+
+
+class TestBuildXThreadHtml:
+    def test_escapes_html_in_text(self):
+        out = build_x_thread_html([{"author": "@a", "text": "<b>bold</b> & more"}])
+        assert "<b>bold</b>" not in out
+        assert "&lt;b&gt;bold&lt;/b&gt; &amp; more" in out
+
+    def test_skips_tweets_without_text(self):
+        out = build_x_thread_html([{"author": "@a", "text": ""}, {"author": "@a", "text": "hi"}])
+        assert out.count("<p><strong>@a</strong></p>") == 1
+
+    def test_joins_blocks_with_hr(self):
+        out = build_x_thread_html([
+            {"author": "@a", "text": "one"},
+            {"author": "@a", "text": "two"},
+        ])
+        assert "<hr>" in out
+        assert "one" in out and "two" in out
+
+    def test_empty_input_returns_empty_string(self):
+        assert build_x_thread_html([]) == ""
+
+    def test_dedupes_adjacent_identical_tweets(self):
+        out = build_x_thread_html([
+            {"author": "@a", "text": "same"},
+            {"author": "@a", "text": "same"},
+            {"author": "@a", "text": "diff"},
+        ])
+        assert out.count("same") == 1
+        assert "diff" in out
+
+
+class TestParseXTweetLines:
+    """x.com 未登录页已剥离 data-testid/div[lang]，只能解析 article innerText 行."""
+
+    def test_parses_handle_date_and_text(self):
+        lines = [
+            "Mega Crit on X:",
+            "@MegaCrit",
+            "3月20日",
+            "The first BIG balance pass is out!",
+            "Patch notes below.",
+            "216",
+            "285",
+        ]
+        d = _parse_x_tweet_lines(lines)
+        assert d["author"] == "@MegaCrit"
+        assert d["text"] == "The first BIG balance pass is out!\nPatch notes below."
+
+    def test_no_handle_returns_empty(self):
+        assert _parse_x_tweet_lines(["hello world"]) == {"author": "", "text": ""}
+
+    def test_stops_at_engagement_noise(self):
+        lines = ["@a", "real content here", "Views", "should be dropped"]
+        assert _parse_x_tweet_lines(lines)["text"] == "real content here"
+
+    def test_stops_at_pure_number_line(self):
+        lines = ["@a", "line one", "5179", "ignored"]
+        assert _parse_x_tweet_lines(lines)["text"] == "line one"
+
+    def test_date_line_is_skipped_only_if_date_like(self):
+        # 短行若是日期形态（3月20日 / Mar 20 / 3h）则跳过；普通短词不跳过
+        assert "text" not in _parse_x_tweet_lines(["@a", "3月20日", "body"])["author"]
+        d1 = _parse_x_tweet_lines(["@a", "3月20日", "body"])
+        assert d1["text"] == "body"
+        d2 = _parse_x_tweet_lines(["@a", "OK", "longer body text"])
+        assert d2["text"] == "OK\nlonger body text"
+
+    def test_stops_at_full_timestamp_line(self):
+        lines = ["@a", "real content", "6:46 · 2026年3月21日", "dropped tail"]
+        assert _parse_x_tweet_lines(lines)["text"] == "real content"
+
+    def test_stops_at_gif_marker(self):
+        lines = ["@a", "real content", "GIF", "dropped"]
+        assert _parse_x_tweet_lines(lines)["text"] == "real content"
+
+
+class TestBuildAuthorTextHtml:
+    def test_is_same_renderer_as_x_thread_variant(self):
+        posts = [{"author": "@a", "text": "one"}, {"author": "@b", "text": "two"}]
+        assert build_author_text_html(posts) == build_x_thread_html(posts)

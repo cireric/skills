@@ -42,7 +42,22 @@ Crawl web articles to Markdown — a deterministic CLI (no LLM steps). Supports 
 | 知乎（专栏 + 问答） | ✅ | ✅ |
 | 简书 | ✅ | ✅ |
 | Bilibili专栏 | ✅ | ✅ |
+| 少数派 | ✅ | ✅ |
+| Reddit（帖子 + 评论） | ✅ | ❌ |
+| X/Twitter（推文串） | ✅ | ❌ |
 | 通用网页 | ✅ | ❌ |
+
+### Reddit notes
+
+- 走 www 新版 DOM（shreddit web components），结构化提取帖子正文与一级评论。
+- old.reddit 已登录墙化（重定向 `/login/?reason=lor2`），勿用。
+- 首次加载偶发 SPA 导航打断 evaluate，已通过等待 `shreddit-post` 水合规避；仍失败时重试一次。
+
+### X/Twitter notes
+
+- 仅支持单条推文及其推文串（thread）：提取主线推文（同作者链），自动去互动噪声行。
+- **未登录渲染不稳定**：x.com 对未登录访客概率性返回风控墙，且已剥离 data-testid 等稳定钩子（当前按 article innerText 行解析）。失败会自动 reload 重试一次；仍失败请配置 `cookies_file` 后重试。
+- 推文串只保留与首条同作者的推文，回复不收录。
 
 ### Zhihu Q&A notes
 
